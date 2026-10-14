@@ -33,7 +33,8 @@ source folder happens to live.
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
 SEP = ";" if sys.platform == "win32" else ":"
 
 APP_NAME = "Pokemon D&D Companion"
@@ -74,7 +75,7 @@ def main():
     try:
         import PyInstaller.__main__
     except ImportError:
-        print("PyInstaller isn't installed. Run:\n    python -m pip install -r requirements-build.txt")
+        print("PyInstaller isn't installed. Run:\n    python -m pip install -r desktop/requirements-build.txt")
         sys.exit(1)
 
     for name in DATA_DIRS:
@@ -85,7 +86,7 @@ def main():
             print(f"Warning: expected file '{name}' not found next to build_desktop.py -- continuing without it.")
 
     args = [
-        str(ROOT / "desktop.py"),
+        str(HERE / "desktop.py"),
         "--name", APP_NAME,
         "--onedir",
         "--windowed",       # no console window behind the app

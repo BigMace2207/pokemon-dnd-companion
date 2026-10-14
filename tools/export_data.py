@@ -20,8 +20,8 @@ from pathlib import Path
 
 import openpyxl
 
-SRC = Path(__file__).resolve().parent.parent / "pokemon_full_dex.xlsx"
-OUT = Path(__file__).resolve().parent / "data"
+SRC = Path(__file__).resolve().parent.parent.parent / "pokemon_full_dex.xlsx"
+OUT = Path(__file__).resolve().parent.parent / "data"
 OUT.mkdir(exist_ok=True)
 
 GAME_CODES = {

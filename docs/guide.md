@@ -1,7 +1,7 @@
 > **Historical notes.** This is the original long-form README, kept verbatim. Parts of it
 > (for example the Initiative Tracker, the desktop app, and the "Honest limit" note under
 > Accounts) describe things that have since changed. For current information see the
-> [README](../README.md) and [ARCHITECTURE](../ARCHITECTURE.md).
+> [README](../README.md) and [architecture](architecture.md).
 
 ---
 

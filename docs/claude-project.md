@@ -17,7 +17,7 @@ pushes, deploy from your PC with Claude Code, or ask it there to deploy.
 ## Option 2: a claude.ai Project (chat, planning, bug reports)
 
 1. In claude.ai create a new Project named "Pokémon D&D Companion".
-2. Add the knowledge files: `CLAUDE.md`, `ARCHITECTURE.md`, `README.md`
+2. Add the knowledge files: `CLAUDE.md`, `docs/architecture.md`, `README.md`
    (and `server.py`, `js/app.js`, `css/style.css` if you want it to discuss code).
 3. Paste this into the Project's custom instructions:
 

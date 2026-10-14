@@ -25,7 +25,7 @@ import urllib.error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "sprites" / "trainers"
 INDEX_URL = "https://play.pokemonshowdown.com/sprites/trainers/?view=dir"
 BASE_URL = "https://play.pokemonshowdown.com/sprites/trainers"

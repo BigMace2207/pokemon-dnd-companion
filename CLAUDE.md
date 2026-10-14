@@ -4,7 +4,7 @@ A tabletop companion web app (Pokédex, calculators, trainer sheets, live
 multi-campaign multiplayer with a DM Control Centre). Python standard-library
 server (`server.py`, `auth.py`) + a no-build vanilla-JS front end (ES modules,
 no bundler, no npm). Live at https://pokemon-dnd.duckdns.org. Read
-`ARCHITECTURE.md` for the shell / game-system split and `README.md` for
+`docs/architecture.md` for the shell / game-system split and `README.md` for
 feature docs.
 
 ## Run and test
@@ -29,7 +29,7 @@ a proxy), `PKDND_BACKUP_DIR`, `PKDND_BACKUP_INTERVAL`, `PKDND_GOOGLE_CLIENT_ID`,
 - `auth.py` password hashing and Google/Apple ID-token verification (stdlib RSA).
 - `js/app.js` router + login/campaign gates; `js/network.js` API client;
   `js/storage.js` local save mirrored to the server; `js/views/*` pages;
-  `js/systems/*` per-game manifests (add a game there, see ARCHITECTURE.md).
+  `js/systems/*` per-game manifests (add a game there, see docs/architecture.md).
 - `css/style.css` one stylesheet. `data/` rules JSON. `sprites/` images.
 - `tests/test_server.py` the server test suite (static-file lockdown, backups,
   accounts, authorization, tokens).

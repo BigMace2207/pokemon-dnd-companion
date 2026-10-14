@@ -20,9 +20,11 @@ import http.server
 import json
 import sys
 import threading
+from pathlib import Path
 
 import webview
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # server.py lives one folder up
 import server
 
 # Remembers the window mode (see the Api class below) across launches --

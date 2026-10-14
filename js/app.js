@@ -197,7 +197,7 @@ async function startApp() {
   } catch (err) {
     mainView.replaceChildren(el("div", { class: "card" }, [
       el("strong", {}, "Failed to load data."), el("br"), String(err.message), el("br"), el("br"),
-      "Make sure the app's data files exist (for Pokémon D&D, run ", el("code", {}, "python export_data.py"), " first) and that you're viewing this through the server, not by double-clicking index.html.",
+      "Make sure the app's data files exist (for Pokémon D&D, run ", el("code", {}, "python tools/export_data.py"), " first) and that you're viewing this through the server, not by double-clicking index.html.",
     ]));
     return;
   }

@@ -56,6 +56,8 @@ index.html       app shell
 js/              router, network client, views, per-game systems
 css/style.css    the single stylesheet
 data/            rules data
+tools/           data and sprite download scripts
+desktop/         optional desktop-window build (not used by the live site)
 sprites/         Pokémon art (from PokeAPI, see sprites/README.md)
 tests/           server test suite
 docs/            hosting, security, notes
@@ -67,7 +69,7 @@ The server trusts the signed-in session, never an id sent by the browser. Only a
 
 ## Documentation
 
-- [ARCHITECTURE.md](ARCHITECTURE.md): the shell and game-system split
+- [docs/architecture.md](docs/architecture.md): the shell and game-system split
 - [docs/hosting.md](docs/hosting.md): running and deploying
 - [docs/security.md](docs/security.md): the security model
 - [CLAUDE.md](CLAUDE.md) and [docs/claude-project.md](docs/claude-project.md): working on this with Claude

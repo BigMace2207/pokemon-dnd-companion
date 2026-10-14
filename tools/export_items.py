@@ -29,8 +29,8 @@ from pathlib import Path
 
 import requests
 
-ROOT = Path(__file__).resolve().parent.parent
-OUT = Path(__file__).resolve().parent / "data"
+ROOT = Path(__file__).resolve().parent.parent.parent
+OUT = Path(__file__).resolve().parent.parent / "data"
 CACHE_DIR = ROOT / ".pokeapi_item_cache"
 ATTRIBUTE_URL = "https://pokeapi.co/api/v2/item-attribute/holdable-active"
 

@@ -27,7 +27,7 @@ import urllib.error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 POKEMON_JSON = ROOT / "data" / "pokemon.json"
 FRONT_DIR = ROOT / "sprites" / "front"
 BACK_DIR = ROOT / "sprites" / "back"

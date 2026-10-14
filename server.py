@@ -1649,7 +1649,7 @@ def lan_ip():
 
 def main():
     if not (ROOT / "data" / "pokemon.json").exists():
-        print("No exported data found. Run `python export_data.py` first.\n")
+        print("No exported data found. Run `python tools/export_data.py` first.\n")
 
     load_state_from_disk()
     threading.Thread(target=autosave_loop, daemon=True).start()
