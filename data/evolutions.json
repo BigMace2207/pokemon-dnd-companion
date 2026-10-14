@@ -1,0 +1,1037 @@
+[
+  {
+    "from": "Bulbasaur",
+    "to": "Ivysaur",
+    "method": "Level 16"
+  },
+  {
+    "from": "Ivysaur",
+    "to": "Venusaur",
+    "method": "Level 32"
+  },
+  {
+    "from": "Charmander",
+    "to": "Charmeleon",
+    "method": "Level 16"
+  },
+  {
+    "from": "Charmeleon",
+    "to": "Charizard",
+    "method": "Level 36"
+  },
+  {
+    "from": "Squirtle",
+    "to": "Wartortle",
+    "method": "Level 16"
+  },
+  {
+    "from": "Wartortle",
+    "to": "Blastoise",
+    "method": "Level 36"
+  },
+  {
+    "from": "Caterpie",
+    "to": "Metapod",
+    "method": "Level 7"
+  },
+  {
+    "from": "Metapod",
+    "to": "Butterfree",
+    "method": "Level 10"
+  },
+  {
+    "from": "Weedle",
+    "to": "Kakuna",
+    "method": "Level 7"
+  },
+  {
+    "from": "Kakuna",
+    "to": "Beedrill",
+    "method": "Level 10"
+  },
+  {
+    "from": "Pidgey",
+    "to": "Pidgeotto",
+    "method": "Level 18"
+  },
+  {
+    "from": "Pidgeotto",
+    "to": "Pidgeot",
+    "method": "Level 36"
+  },
+  {
+    "from": "Rattata",
+    "to": "Raticate",
+    "method": "Level 20"
+  },
+  {
+    "from": "Spearow",
+    "to": "Fearow",
+    "method": "Level 20"
+  },
+  {
+    "from": "Ekans",
+    "to": "Arbok",
+    "method": "Level 22"
+  },
+  {
+    "from": "Pichu",
+    "to": "Pikachu",
+    "method": "Friendship"
+  },
+  {
+    "from": "Pikachu",
+    "to": "Raichu",
+    "method": "Use Thunder Stone"
+  },
+  {
+    "from": "Sandshrew",
+    "to": "Sandslash",
+    "method": "Level 22"
+  },
+  {
+    "from": "Nidoran (Female)",
+    "to": "Nidorina",
+    "method": "Level 16"
+  },
+  {
+    "from": "Nidorina",
+    "to": "Nidoqueen",
+    "method": "Use Moon Stone"
+  },
+  {
+    "from": "Nidoran (Male)",
+    "to": "Nidorino",
+    "method": "Level 16"
+  },
+  {
+    "from": "Nidorino",
+    "to": "Nidoking",
+    "method": "Use Moon Stone"
+  },
+  {
+    "from": "Cleffa",
+    "to": "Clefairy",
+    "method": "Friendship"
+  },
+  {
+    "from": "Clefairy",
+    "to": "Clefable",
+    "method": "Use Moon Stone"
+  },
+  {
+    "from": "Vulpix",
+    "to": "Ninetales",
+    "method": "Use Fire Stone"
+  },
+  {
+    "from": "Igglybuff",
+    "to": "Jigglypuff",
+    "method": "Friendship"
+  },
+  {
+    "from": "Jigglypuff",
+    "to": "Wigglytuff",
+    "method": "Use Moon Stone"
+  },
+  {
+    "from": "Zubat",
+    "to": "Golbat",
+    "method": "Level 22"
+  },
+  {
+    "from": "Golbat",
+    "to": "Crobat",
+    "method": "Friendship"
+  },
+  {
+    "from": "Oddish",
+    "to": "Gloom",
+    "method": "Level 21"
+  },
+  {
+    "from": "Gloom",
+    "to": "Vileplume",
+    "method": "Use Leaf Stone"
+  },
+  {
+    "from": "Gloom",
+    "to": "Bellossom",
+    "method": "Use Sun Stone"
+  },
+  {
+    "from": "Paras",
+    "to": "Parasect",
+    "method": "Level 24"
+  },
+  {
+    "from": "Venonat",
+    "to": "Venomoth",
+    "method": "Level 31"
+  },
+  {
+    "from": "Diglett",
+    "to": "Dugtrio",
+    "method": "Level 26"
+  },
+  {
+    "from": "Meowth",
+    "to": "Persian",
+    "method": "Level 28"
+  },
+  {
+    "from": "Psyduck",
+    "to": "Golduck",
+    "method": "Level 33"
+  },
+  {
+    "from": "Mankey",
+    "to": "Primeape",
+    "method": "Level 28"
+  },
+  {
+    "from": "Primeape",
+    "to": "Annihilape",
+    "method": "Use Rage Fist 20 times"
+  },
+  {
+    "from": "Growlithe",
+    "to": "Arcanine",
+    "method": "Use Fire Stone"
+  },
+  {
+    "from": "Poliwag",
+    "to": "Poliwhirl",
+    "method": "Level 25"
+  },
+  {
+    "from": "Poliwhirl",
+    "to": "Poliwrath",
+    "method": "Use Water Stone"
+  },
+  {
+    "from": "Poliwhirl",
+    "to": "Politoed",
+    "method": "Trade holding King's Rock"
+  },
+  {
+    "from": "Abra",
+    "to": "Kadabra",
+    "method": "Level 16"
+  },
+  {
+    "from": "Kadabra",
+    "to": "Alakazam",
+    "method": "Trade"
+  },
+  {
+    "from": "Machop",
+    "to": "Machoke",
+    "method": "Level 28"
+  },
+  {
+    "from": "Machoke",
+    "to": "Machamp",
+    "method": "Trade"
+  },
+  {
+    "from": "Bellsprout",
+    "to": "Weepinbell",
+    "method": "Level 21"
+  },
+  {
+    "from": "Weepinbell",
+    "to": "Victreebel",
+    "method": "Use Leaf Stone"
+  },
+  {
+    "from": "Tentacool",
+    "to": "Tentacruel",
+    "method": "Level 30"
+  },
+  {
+    "from": "Geodude",
+    "to": "Graveler",
+    "method": "Level 25"
+  },
+  {
+    "from": "Graveler",
+    "to": "Golem",
+    "method": "Trade"
+  },
+  {
+    "from": "Ponyta",
+    "to": "Rapidash",
+    "method": "Level 40"
+  },
+  {
+    "from": "Slowpoke",
+    "to": "Slowbro",
+    "method": "Level 37"
+  },
+  {
+    "from": "Slowpoke",
+    "to": "Slowking",
+    "method": "Trade holding King's Rock"
+  },
+  {
+    "from": "Magnemite",
+    "to": "Magneton",
+    "method": "Level 30"
+  },
+  {
+    "from": "Magneton",
+    "to": "Magnezone",
+    "method": "Level up in a special magnetic field"
+  },
+  {
+    "from": "Doduo",
+    "to": "Dodrio",
+    "method": "Level 31"
+  },
+  {
+    "from": "Seel",
+    "to": "Dewgong",
+    "method": "Level 34"
+  },
+  {
+    "from": "Grimer",
+    "to": "Muk",
+    "method": "Level 38"
+  },
+  {
+    "from": "Shellder",
+    "to": "Cloyster",
+    "method": "Use Water Stone"
+  },
+  {
+    "from": "Gastly",
+    "to": "Haunter",
+    "method": "Level 25"
+  },
+  {
+    "from": "Haunter",
+    "to": "Gengar",
+    "method": "Trade"
+  },
+  {
+    "from": "Onix",
+    "to": "Steelix",
+    "method": "Trade holding Metal Coat"
+  },
+  {
+    "from": "Drowzee",
+    "to": "Hypno",
+    "method": "Level 26"
+  },
+  {
+    "from": "Krabby",
+    "to": "Kingler",
+    "method": "Level 28"
+  },
+  {
+    "from": "Voltorb",
+    "to": "Electrode",
+    "method": "Level 30"
+  },
+  {
+    "from": "Exeggcute",
+    "to": "Exeggutor",
+    "method": "Use Leaf Stone"
+  },
+  {
+    "from": "Cubone",
+    "to": "Marowak",
+    "method": "Level 28"
+  },
+  {
+    "from": "Tyrogue",
+    "to": "Hitmonlee",
+    "method": "Level 20 (Attack > Defense)"
+  },
+  {
+    "from": "Tyrogue",
+    "to": "Hitmonchan",
+    "method": "Level 20 (Defense > Attack)"
+  },
+  {
+    "from": "Tyrogue",
+    "to": "Hitmontop",
+    "method": "Level 20 (Attack = Defense)"
+  },
+  {
+    "from": "Koffing",
+    "to": "Weezing",
+    "method": "Level 35"
+  },
+  {
+    "from": "Rhyhorn",
+    "to": "Rhydon",
+    "method": "Level 42"
+  },
+  {
+    "from": "Rhydon",
+    "to": "Rhyperior",
+    "method": "Trade holding Protector"
+  },
+  {
+    "from": "Happiny",
+    "to": "Chansey",
+    "method": "Friendship"
+  },
+  {
+    "from": "Chansey",
+    "to": "Blissey",
+    "method": "Friendship"
+  },
+  {
+    "from": "Horsea",
+    "to": "Seadra",
+    "method": "Level 32"
+  },
+  {
+    "from": "Seadra",
+    "to": "Kingdra",
+    "method": "Trade holding Dragon Scale"
+  },
+  {
+    "from": "Goldeen",
+    "to": "Seaking",
+    "method": "Level 33"
+  },
+  {
+    "from": "Staryu",
+    "to": "Starmie",
+    "method": "Use Water Stone"
+  },
+  {
+    "from": "Magikarp",
+    "to": "Gyarados",
+    "method": "Level 20"
+  },
+  {
+    "from": "Eevee",
+    "to": "Vaporeon",
+    "method": "Use Water Stone"
+  },
+  {
+    "from": "Eevee",
+    "to": "Jolteon",
+    "method": "Use Thunder Stone"
+  },
+  {
+    "from": "Eevee",
+    "to": "Flareon",
+    "method": "Use Fire Stone"
+  },
+  {
+    "from": "Eevee",
+    "to": "Espeon",
+    "method": "Friendship (day)"
+  },
+  {
+    "from": "Eevee",
+    "to": "Umbreon",
+    "method": "Friendship (night)"
+  },
+  {
+    "from": "Eevee",
+    "to": "Leafeon",
+    "method": "Level up near a Moss Rock"
+  },
+  {
+    "from": "Eevee",
+    "to": "Glaceon",
+    "method": "Level up near an Ice Rock"
+  },
+  {
+    "from": "Eevee",
+    "to": "Sylveon",
+    "method": "Friendship, knows a Fairy move"
+  },
+  {
+    "from": "Porygon",
+    "to": "Porygon2",
+    "method": "Trade holding Up-Grade"
+  },
+  {
+    "from": "Porygon2",
+    "to": "Porygon-Z",
+    "method": "Trade holding Dubious Disc"
+  },
+  {
+    "from": "Omanyte",
+    "to": "Omastar",
+    "method": "Level 40"
+  },
+  {
+    "from": "Kabuto",
+    "to": "Kabutops",
+    "method": "Level 40"
+  },
+  {
+    "from": "Dratini",
+    "to": "Dragonair",
+    "method": "Level 30"
+  },
+  {
+    "from": "Dragonair",
+    "to": "Dragonite",
+    "method": "Level 55"
+  },
+  {
+    "from": "Chikorita",
+    "to": "Bayleef",
+    "method": "Level 16"
+  },
+  {
+    "from": "Bayleef",
+    "to": "Meganium",
+    "method": "Level 32"
+  },
+  {
+    "from": "Cyndaquil",
+    "to": "Quilava",
+    "method": "Level 14"
+  },
+  {
+    "from": "Quilava",
+    "to": "Typhlosion",
+    "method": "Level 36"
+  },
+  {
+    "from": "Totodile",
+    "to": "Croconaw",
+    "method": "Level 18"
+  },
+  {
+    "from": "Croconaw",
+    "to": "Feraligatr",
+    "method": "Level 30"
+  },
+  {
+    "from": "Sentret",
+    "to": "Furret",
+    "method": "Level 15"
+  },
+  {
+    "from": "Hoothoot",
+    "to": "Noctowl",
+    "method": "Level 20"
+  },
+  {
+    "from": "Ledyba",
+    "to": "Ledian",
+    "method": "Level 18"
+  },
+  {
+    "from": "Spinarak",
+    "to": "Ariados",
+    "method": "Level 22"
+  },
+  {
+    "from": "Chinchou",
+    "to": "Lanturn",
+    "method": "Level 27"
+  },
+  {
+    "from": "Togepi",
+    "to": "Togetic",
+    "method": "Friendship"
+  },
+  {
+    "from": "Togetic",
+    "to": "Togekiss",
+    "method": "Use Shiny Stone"
+  },
+  {
+    "from": "Natu",
+    "to": "Xatu",
+    "method": "Level 25"
+  },
+  {
+    "from": "Mareep",
+    "to": "Flaaffy",
+    "method": "Level 15"
+  },
+  {
+    "from": "Flaaffy",
+    "to": "Ampharos",
+    "method": "Level 30"
+  },
+  {
+    "from": "Marill",
+    "to": "Azumarill",
+    "method": "Level 18"
+  },
+  {
+    "from": "Hoppip",
+    "to": "Skiploom",
+    "method": "Level 18"
+  },
+  {
+    "from": "Skiploom",
+    "to": "Jumpluff",
+    "method": "Level 27"
+  },
+  {
+    "from": "Aipom",
+    "to": "Ambipom",
+    "method": "Use Double Hit in the same turn twice (trade-like)"
+  },
+  {
+    "from": "Sunkern",
+    "to": "Sunflora",
+    "method": "Use Sun Stone"
+  },
+  {
+    "from": "Yanma",
+    "to": "Yanmega",
+    "method": "Level up knowing Ancient Power"
+  },
+  {
+    "from": "Wooper",
+    "to": "Quagsire",
+    "method": "Level 20"
+  },
+  {
+    "from": "Murkrow",
+    "to": "Honchkrow",
+    "method": "Level up holding Dusk Stone"
+  },
+  {
+    "from": "Misdreavus",
+    "to": "Mismagius",
+    "method": "Use Dusk Stone"
+  },
+  {
+    "from": "Girafarig",
+    "to": "Farigiraf",
+    "method": "Level up knowing Twin Beam"
+  },
+  {
+    "from": "Pineco",
+    "to": "Forretress",
+    "method": "Level 31"
+  },
+  {
+    "from": "Snubbull",
+    "to": "Granbull",
+    "method": "Level 23"
+  },
+  {
+    "from": "Qwilfish",
+    "to": "Overqwil",
+    "method": "Use Barb Barrage 20 times (Strong Style)"
+  },
+  {
+    "from": "Sneasel",
+    "to": "Weavile",
+    "method": "Level up holding Razor Claw (night)"
+  },
+  {
+    "from": "Teddiursa",
+    "to": "Ursaring",
+    "method": "Level 30"
+  },
+  {
+    "from": "Ursaring",
+    "to": "Ursaluna",
+    "method": "Use Peat Block (full moon)"
+  },
+  {
+    "from": "Slugma",
+    "to": "Magcargo",
+    "method": "Level 38"
+  },
+  {
+    "from": "Swinub",
+    "to": "Piloswine",
+    "method": "Level 33"
+  },
+  {
+    "from": "Piloswine",
+    "to": "Mamoswine",
+    "method": "Level up knowing Ancient Power"
+  },
+  {
+    "from": "Remoraid",
+    "to": "Octillery",
+    "method": "Level 25"
+  },
+  {
+    "from": "Mantyke",
+    "to": "Mantine",
+    "method": "Level up with Remoraid in party"
+  },
+  {
+    "from": "Houndour",
+    "to": "Houndoom",
+    "method": "Level 24"
+  },
+  {
+    "from": "Phanpy",
+    "to": "Donphan",
+    "method": "Level 25"
+  },
+  {
+    "from": "Stantler",
+    "to": "Wyrdeer",
+    "method": "Use Psyshield Bash 20 times (Agile Style)"
+  },
+  {
+    "from": "Larvitar",
+    "to": "Pupitar",
+    "method": "Level 30"
+  },
+  {
+    "from": "Pupitar",
+    "to": "Tyranitar",
+    "method": "Level 55"
+  },
+  {
+    "from": "Treecko",
+    "to": "Grovyle",
+    "method": "Level 16"
+  },
+  {
+    "from": "Grovyle",
+    "to": "Sceptile",
+    "method": "Level 36"
+  },
+  {
+    "from": "Torchic",
+    "to": "Combusken",
+    "method": "Level 16"
+  },
+  {
+    "from": "Combusken",
+    "to": "Blaziken",
+    "method": "Level 36"
+  },
+  {
+    "from": "Mudkip",
+    "to": "Marshtomp",
+    "method": "Level 16"
+  },
+  {
+    "from": "Marshtomp",
+    "to": "Swampert",
+    "method": "Level 36"
+  },
+  {
+    "from": "Poochyena",
+    "to": "Mightyena",
+    "method": "Level 18"
+  },
+  {
+    "from": "Zigzagoon",
+    "to": "Linoone",
+    "method": "Level 20"
+  },
+  {
+    "from": "Linoone",
+    "to": "Obstagoon",
+    "method": "Level up at night"
+  },
+  {
+    "from": "Wurmple",
+    "to": "Silcoon",
+    "method": "Level 7 (personality-based)"
+  },
+  {
+    "from": "Silcoon",
+    "to": "Beautifly",
+    "method": "Level 10"
+  },
+  {
+    "from": "Wurmple",
+    "to": "Cascoon",
+    "method": "Level 7 (personality-based)"
+  },
+  {
+    "from": "Cascoon",
+    "to": "Dustox",
+    "method": "Level 10"
+  },
+  {
+    "from": "Lotad",
+    "to": "Lombre",
+    "method": "Level 14"
+  },
+  {
+    "from": "Lombre",
+    "to": "Ludicolo",
+    "method": "Use Water Stone"
+  },
+  {
+    "from": "Seedot",
+    "to": "Nuzleaf",
+    "method": "Level 14"
+  },
+  {
+    "from": "Nuzleaf",
+    "to": "Shiftry",
+    "method": "Use Leaf Stone"
+  },
+  {
+    "from": "Taillow",
+    "to": "Swellow",
+    "method": "Level 22"
+  },
+  {
+    "from": "Wingull",
+    "to": "Pelipper",
+    "method": "Level 25"
+  },
+  {
+    "from": "Ralts",
+    "to": "Kirlia",
+    "method": "Level 20"
+  },
+  {
+    "from": "Kirlia",
+    "to": "Gardevoir",
+    "method": "Level 30"
+  },
+  {
+    "from": "Kirlia",
+    "to": "Gallade",
+    "method": "Trade holding Dawn Stone (male)"
+  },
+  {
+    "from": "Surskit",
+    "to": "Masquerain",
+    "method": "Level 22"
+  },
+  {
+    "from": "Shroomish",
+    "to": "Breloom",
+    "method": "Level 23"
+  },
+  {
+    "from": "Slakoth",
+    "to": "Vigoroth",
+    "method": "Level 18"
+  },
+  {
+    "from": "Vigoroth",
+    "to": "Slaking",
+    "method": "Level 36"
+  },
+  {
+    "from": "Nincada",
+    "to": "Ninjask",
+    "method": "Level 20"
+  },
+  {
+    "from": "Nincada",
+    "to": "Shedinja",
+    "method": "Level 20 (with a spare Poké Ball)"
+  },
+  {
+    "from": "Whismur",
+    "to": "Loudred",
+    "method": "Level 20"
+  },
+  {
+    "from": "Loudred",
+    "to": "Exploud",
+    "method": "Level 40"
+  },
+  {
+    "from": "Makuhita",
+    "to": "Hariyama",
+    "method": "Level 24"
+  },
+  {
+    "from": "Azurill",
+    "to": "Marill",
+    "method": "Friendship"
+  },
+  {
+    "from": "Nosepass",
+    "to": "Probopass",
+    "method": "Level up in a special magnetic field"
+  },
+  {
+    "from": "Skitty",
+    "to": "Delcatty",
+    "method": "Use Moon Stone"
+  },
+  {
+    "from": "Aron",
+    "to": "Lairon",
+    "method": "Level 32"
+  },
+  {
+    "from": "Lairon",
+    "to": "Aggron",
+    "method": "Level 42"
+  },
+  {
+    "from": "Meditite",
+    "to": "Medicham",
+    "method": "Level 37"
+  },
+  {
+    "from": "Electrike",
+    "to": "Manectric",
+    "method": "Level 26"
+  },
+  {
+    "from": "Budew",
+    "to": "Roselia",
+    "method": "Friendship (day)"
+  },
+  {
+    "from": "Roselia",
+    "to": "Roserade",
+    "method": "Use Shiny Stone"
+  },
+  {
+    "from": "Gulpin",
+    "to": "Swalot",
+    "method": "Level 26"
+  },
+  {
+    "from": "Carvanha",
+    "to": "Sharpedo",
+    "method": "Level 30"
+  },
+  {
+    "from": "Wailmer",
+    "to": "Wailord",
+    "method": "Level 40"
+  },
+  {
+    "from": "Numel",
+    "to": "Camerupt",
+    "method": "Level 33"
+  },
+  {
+    "from": "Slakoth",
+    "to": "Vigoroth",
+    "method": "Level 18"
+  },
+  {
+    "from": "Spoink",
+    "to": "Grumpig",
+    "method": "Level 32"
+  },
+  {
+    "from": "Trapinch",
+    "to": "Vibrava",
+    "method": "Level 35"
+  },
+  {
+    "from": "Vibrava",
+    "to": "Flygon",
+    "method": "Level 45"
+  },
+  {
+    "from": "Cacnea",
+    "to": "Cacturne",
+    "method": "Level 32"
+  },
+  {
+    "from": "Swablu",
+    "to": "Altaria",
+    "method": "Level 35"
+  },
+  {
+    "from": "Barboach",
+    "to": "Whiscash",
+    "method": "Level 30"
+  },
+  {
+    "from": "Corphish",
+    "to": "Crawdaunt",
+    "method": "Level 30"
+  },
+  {
+    "from": "Baltoy",
+    "to": "Claydol",
+    "method": "Level 36"
+  },
+  {
+    "from": "Lileep",
+    "to": "Cradily",
+    "method": "Level 40"
+  },
+  {
+    "from": "Anorith",
+    "to": "Armaldo",
+    "method": "Level 40"
+  },
+  {
+    "from": "Feebas",
+    "to": "Milotic",
+    "method": "Trade holding Prism Scale"
+  },
+  {
+    "from": "Shuppet",
+    "to": "Banette",
+    "method": "Level 37"
+  },
+  {
+    "from": "Duskull",
+    "to": "Dusclops",
+    "method": "Level 37"
+  },
+  {
+    "from": "Dusclops",
+    "to": "Dusknoir",
+    "method": "Trade holding Reaper Cloth"
+  },
+  {
+    "from": "Snorunt",
+    "to": "Glalie",
+    "method": "Level 42"
+  },
+  {
+    "from": "Snorunt",
+    "to": "Froslass",
+    "method": "Use Dawn Stone (female)"
+  },
+  {
+    "from": "Spheal",
+    "to": "Sealeo",
+    "method": "Level 32"
+  },
+  {
+    "from": "Sealeo",
+    "to": "Walrein",
+    "method": "Level 44"
+  },
+  {
+    "from": "Clamperl",
+    "to": "Huntail",
+    "method": "Trade holding Deep Sea Tooth"
+  },
+  {
+    "from": "Clamperl",
+    "to": "Gorebyss",
+    "method": "Trade holding Deep Sea Scale"
+  },
+  {
+    "from": "Bagon",
+    "to": "Shelgon",
+    "method": "Level 30"
+  },
+  {
+    "from": "Shelgon",
+    "to": "Salamence",
+    "method": "Level 50"
+  },
+  {
+    "from": "Beldum",
+    "to": "Metang",
+    "method": "Level 20"
+  },
+  {
+    "from": "Metang",
+    "to": "Metagross",
+    "method": "Level 45"
+  }
+]

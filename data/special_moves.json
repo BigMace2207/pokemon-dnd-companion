@@ -1,0 +1,366 @@
+{
+ "_note": "Rules for damaging moves that have no fixed dice in the spreadsheet. kind: tier = use that tier's dice; fixed/level/levelRange/fractionCurrentHp/ohko/endeavor/finalGambit = direct damage (ignores stats, STAB and items, like the games); dm = the DM decides. These are defaults - edit freely.",
+ "moves": {
+  "Breakneck Blitz  Physical": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Breakneck Blitz  Special": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "All Out Pummeling  Physical": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "All Out Pummeling  Special": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Supersonic Skystrike  Physical": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Supersonic Skystrike  Special": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Acid Downpour  Physical": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Acid Downpour  Special": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Tectonic Rage  Physical": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Tectonic Rage  Special": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Continental Crush  Physical": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Continental Crush  Special": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Savage Spin Out  Physical": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Savage Spin Out  Special": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Never Ending Nightmare  Physical": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Never Ending Nightmare  Special": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Corkscrew Crash  Physical": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Corkscrew Crash  Special": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Inferno Overdrive  Physical": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Inferno Overdrive  Special": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Hydro Vortex  Physical": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Hydro Vortex  Special": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Bloom Doom  Physical": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Bloom Doom  Special": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Gigavolt Havoc  Physical": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Gigavolt Havoc  Special": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Shattered Psyche  Physical": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Shattered Psyche  Special": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Subzero Slammer  Physical": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Subzero Slammer  Special": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Devastating Drake  Physical": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Devastating Drake  Special": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Black Hole Eclipse  Physical": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Black Hole Eclipse  Special": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Twinkle Tackle  Physical": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Twinkle Tackle  Special": {
+   "kind": "tier",
+   "tier": "Signature/Ultimate",
+   "why": "Z-move"
+  },
+  "Guillotine": {
+   "kind": "ohko",
+   "why": "one-hit KO; fails if the target's level is higher than the user's"
+  },
+  "Horn Drill": {
+   "kind": "ohko",
+   "why": "one-hit KO; fails if the target's level is higher than the user's"
+  },
+  "Fissure": {
+   "kind": "ohko",
+   "why": "one-hit KO; fails if the target's level is higher than the user's"
+  },
+  "Sheer Cold": {
+   "kind": "ohko",
+   "why": "one-hit KO; fails if the target's level is higher than the user's"
+  },
+  "Sonic Boom": {
+   "kind": "fixed",
+   "amount": 20
+  },
+  "Dragon Rage": {
+   "kind": "fixed",
+   "amount": 40
+  },
+  "Seismic Toss": {
+   "kind": "level",
+   "mult": 1
+  },
+  "Night Shade": {
+   "kind": "level",
+   "mult": 1
+  },
+  "Psywave": {
+   "kind": "levelRange",
+   "min": 0.5,
+   "max": 1.5
+  },
+  "Super Fang": {
+   "kind": "fractionCurrentHp",
+   "fraction": 0.5
+  },
+  "Natures Madness": {
+   "kind": "fractionCurrentHp",
+   "fraction": 0.5
+  },
+  "Guardian Of Alola": {
+   "kind": "fractionCurrentHp",
+   "fraction": 0.75
+  },
+  "Endeavor": {
+   "kind": "endeavor"
+  },
+  "Final Gambit": {
+   "kind": "finalGambit"
+  },
+  "Counter": {
+   "kind": "dm",
+   "why": "depends on damage the user took; DM decides"
+  },
+  "Mirror Coat": {
+   "kind": "dm",
+   "why": "depends on damage the user took; DM decides"
+  },
+  "Metal Burst": {
+   "kind": "dm",
+   "why": "depends on damage the user took; DM decides"
+  },
+  "Bide": {
+   "kind": "dm",
+   "why": "depends on damage the user took; DM decides"
+  },
+  "Beat Up": {
+   "kind": "tier",
+   "tier": "Light",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Pika Papow": {
+   "kind": "tier",
+   "tier": "Heavy",
+   "why": "signature friendship move"
+  },
+  "Veevee Volley": {
+   "kind": "tier",
+   "tier": "Heavy",
+   "why": "signature friendship move"
+  },
+  "Low Kick": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Flail": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Reversal": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Return": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Frustration": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Present": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Magnitude": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Spit Up": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Natural Gift": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Fling": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Trump Card": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Wring Out": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Punishment": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Grass Knot": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Crush Grip": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Heavy Slam": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Electro Ball": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Heat Crash": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  },
+  "Gyro Ball": {
+   "kind": "tier",
+   "tier": "Moderate",
+   "why": "variable-power move in the games; flat tier here"
+  }
+ }
+}

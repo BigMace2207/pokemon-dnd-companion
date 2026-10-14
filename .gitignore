@@ -1,0 +1,20 @@
+__pycache__/
+.server_state.dat
+.server_state.tmp
+.desktop_prefs.json
+server.log
+f11_debug.log
+webview_storage/
+*.pyc
+
+# build_desktop.py output (see requirements-desktop.txt)
+build/
+dist/
+*.spec
+assets/app.ico
+assets/app.icns
+backups/
+
+# Sound effects are private per campaign (sfx/<campaign id>/), never committed
+sfx/*
+!sfx/README.txt

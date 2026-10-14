@@ -1,0 +1,15 @@
+{
+  "name": "Pokémon D&D Companion",
+  "short_name": "Pokédex",
+  "description": "Pokédex, calculators, and character sheet for the Pokémon D&D tabletop campaign.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#14161b",
+  "theme_color": "#14161b",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

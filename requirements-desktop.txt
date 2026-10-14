@@ -1,0 +1,6 @@
+# Needed to run the desktop window (desktop.py) -- not to build a
+# standalone .exe/.app, that's requirements-build.txt. server.py itself
+# stays stdlib-only, so this is separate from a regular server-only setup;
+# nothing here is required to just run `python server.py` and open it in
+# a browser instead.
+pywebview

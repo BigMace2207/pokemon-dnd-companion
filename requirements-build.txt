@@ -1,0 +1,4 @@
+# Only needed to package the desktop app into a standalone .exe/.app with
+# build_desktop.py -- not needed to just run it from source (that's
+# requirements-desktop.txt).
+pyinstaller
