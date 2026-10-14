@@ -74,6 +74,11 @@ def _data_dir():
     PyInstaller build's "next to this script" can be a temp extraction
     directory that's wiped on every launch, which would silently erase a
     DM's whole campaign save each time they reopened the app."""
+    override = os.environ.get("PKDND_DATA_DIR")  # lets a test copy keep its saves apart from real ones
+    if override:
+        d = Path(override).expanduser()
+        d.mkdir(parents=True, exist_ok=True)
+        return d
     if not getattr(sys, "frozen", False):
         return ROOT
     if sys.platform == "darwin":

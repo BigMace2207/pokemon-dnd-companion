@@ -16,6 +16,7 @@ For a public server, bind to loopback and put an HTTPS proxy (Caddy, nginx) in f
 | `PKDND_BACKUP_INTERVAL` | Seconds between backups (default one hour). |
 | `PKDND_GOOGLE_CLIENT_ID` | Enables Google sign-in (a free OAuth Web client ID; add your site under Authorized JavaScript origins). |
 | `PKDND_APPLE_CLIENT_ID` | Enables Apple sign-in (a Services ID; needs a paid Apple Developer account). |
+| `PKDND_DATA_DIR` | Folder for the save file and default backups (default: next to `server.py`). Used by `tools/test_server.py`. |
 | `PKDND_LEGACY_DM_PASSWORD` | Migration aid for campaigns created before DM passwords were per-campaign. |
 
 The Google and Apple buttons only appear when the matching variable is set.

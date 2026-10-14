@@ -41,6 +41,8 @@ python server.py            # then open http://localhost:8850
 python -m unittest discover -s tests -v
 ```
 
+To try a branch or fork without touching real saves: `python tools/test_server.py [folder]` runs it on port 8860 with its own empty data (`--lan` for your phone, `--reset` to start fresh).
+
 No packages to install and no build step: the server is standard-library Python and the front end is plain ES modules.
 
 ## Hosting
