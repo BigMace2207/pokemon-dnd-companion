@@ -18,3 +18,4 @@ backups/
 # Sound effects are private per campaign (sfx/<campaign id>/), never committed
 sfx/*
 !sfx/README.txt
+.dnd5e_cache/

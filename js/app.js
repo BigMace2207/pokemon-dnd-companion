@@ -1,4 +1,5 @@
 import { renderSettings } from "./views/settings.js";
+import { renderLibrary } from "./views/library.js";
 import { el } from "./components.js";
 import "./systems/index.js"; // registers every game system
 import { setActiveSystem, activeSystem, viewsOf } from "./systems/registry.js";
@@ -14,8 +15,9 @@ import { mountDiceWidget } from "./diceWidget.js";
 import { startTrainerPresenceWatcher } from "./trainerPresence.js";
 import { mountShortcuts } from "./shortcuts.js";
 import { NAV_ICONS } from "./navIcons.js";
+import { mountLavaToggle, goToFloor } from "./lavaTheme.js";
 import {
-  applyTheme, getHiddenViews, onHiddenViewsChanged,
+  applyTheme, getTheme, setTheme, getHiddenViews, onHiddenViewsChanged,
   getSelectedCampaignId, setSelectedCampaignId, clearSelectedCampaignId,
 } from "./deviceSettings.js";
 
@@ -32,10 +34,13 @@ const navToggle = document.getElementById("navToggle");
 let state = null;
 let current = null;
 
-function setView(name) {
+function setView(name, { initial = false } = {}) {
   if (!VIEWS[name] || !state) return;
   clearAllIntervals();
   current = name;
+  // every page is a floor of the Lava Tower, in menu order: the first page is the roof
+  const floorBtn = sideNav.querySelector(`.nav-item[data-view="${name}"]`);
+  if (floorBtn) goToFloor(Number(floorBtn.dataset.floor) || 0, sideNav.querySelectorAll(".nav-item").length, initial);
   document.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
   sideNav.classList.remove("open");
   mainView.dataset.view = name; // lets the stylesheet lay each page out for wide screens
@@ -63,9 +68,10 @@ function playViewEnter() {
 // Settings page), so a different game system gets its own pages.
 function buildNav(system) {
   sideNav.innerHTML = "";
-  const groups = [...system.nav, { label: "App", views: [{ id: "settings", label: "Settings", render: renderSettings }] }];
+  const groups = [...system.nav, { label: "App", views: [{ id: "library", label: "Library", render: renderLibrary }, { id: "settings", label: "Settings", render: renderSettings }] }];
   VIEWS = viewsOf({ nav: groups });
   DIRECTIVE_SENSITIVE_VIEWS = new Set(system.directiveViews || []);
+  let floor = 0;
   for (const group of groups) {
     if (group.label) {
       const sep = document.createElement("div");
@@ -77,6 +83,7 @@ function buildNav(system) {
       const btn = document.createElement("button");
       btn.className = "nav-item";
       btn.dataset.view = v.id;
+      btn.dataset.floor = String(floor++);
       btn.textContent = v.label;
       btn.addEventListener("click", () => setView(v.id));
       const icon = NAV_ICONS[v.id];
@@ -94,13 +101,21 @@ function buildNav(system) {
   const brandLogo = document.querySelector(".brand-logo");
   if (brandLogo && system.brand?.logo) brandLogo.src = system.brand.logo;
   if (system.brand?.title) document.title = system.brand.title;
+  // each game can have its own tab icon (the page ships with the Pokéball)
+  const icon = document.querySelector('link[rel="icon"]');
+  if (icon) {
+    if (!icon.dataset.original) icon.dataset.original = icon.getAttribute("href");
+    icon.setAttribute("href", system.brand?.favicon || icon.dataset.original);
+    icon.setAttribute("type", system.brand?.favicon ? "image/svg+xml" : "");
+  }
   updateNavVisibility();
 }
 navToggle.addEventListener("click", () => sideNav.classList.toggle("open"));
 
 window.addEventListener("hashchange", () => {
   const name = location.hash.replace("#", "");
-  if (VIEWS[name]) setView(name);
+  // setView() itself sets the hash, which lands here again: only react to a genuine change (back/forward, a typed URL)
+  if (VIEWS[name] && name !== current) setView(name);
 });
 
 // Per-device sidebar page visibility (Settings → Sidebar Pages). "settings"
@@ -129,6 +144,7 @@ function updateNavVisibility() {
 }
 onHiddenViewsChanged(updateNavVisibility);
 applyTheme();
+mountLavaToggle({ get: getTheme, set: setTheme });
 
 // Every trainer/battle/NPC/etc. endpoint is scoped to one campaign now (see
 // server.py) -- nothing past this point can run until one is selected.
@@ -202,7 +218,7 @@ async function startApp() {
     return;
   }
   const startView = location.hash.replace("#", "");
-  setView(VIEWS[startView] ? startView : system.defaultView);
+  setView(VIEWS[startView] ? startView : system.defaultView, { initial: true });
   mountAccountChip(signedInAccount, { onOpenSettings: () => setView("settings") });
 
   // The floating Quick Console (Bag/Level Up/Heal), the log drawer (My

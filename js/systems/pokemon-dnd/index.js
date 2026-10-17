@@ -9,6 +9,7 @@ import { renderStatCalc } from "../../views/statcalc.js";
 import { renderDamageCalc } from "../../views/damagecalc.js";
 import { renderTypeChart } from "../../views/typechart.js";
 import { renderTierGuide } from "../../views/tierguide.js";
+import { renderRulebook } from "../../views/rulebook.js";
 import { renderBattleView } from "../../views/battleview.js";
 import { renderTeam } from "../../views/team.js";
 import { renderBag } from "../../views/bag.js";
@@ -45,6 +46,7 @@ export default {
       { id: "controlcentre", label: "Control Centre", render: renderControlCentre },
     ] },
     { label: "Reference", views: [
+      { id: "rulebook", label: "Rulebook", render: renderRulebook },
       { id: "typechart", label: "Type Chart", render: renderTypeChart },
       { id: "tierguide", label: "Move Tier Guide", render: renderTierGuide },
     ] },

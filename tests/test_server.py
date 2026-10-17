@@ -101,8 +101,9 @@ class StaticFileProtection(ServerCase):
             self.assertEqual(status, 200, path)
 
     def test_static_path_allowed_rules(self):
-        ok = ["/", "/index.html", "/css/style.css", "/sprites/front/1.png", "/assets/logo.png"]
-        bad = ["/sfx/a.mp3", "/server.py", "/.x", "/js/.x", "/js/a.py", "/data/x.dat", "/backups/a", "/unknown/a.js", "/js/../a"]
+        ok = ["/", "/index.html", "/css/style.css", "/css/lava.css", "/sprites/front/1.png", "/assets/logo.png",
+              "/js/vendor/pdfjs/pdf.worker.min.js", "/data/dnd5e/2014/spells.json", "/data/pokemon-dnd/rulebook.json"]
+        bad = ["/sfx/a.mp3", "/Rulebook/01.md", "/data/pokemon-dnd/notes.md", "/data/dnd5e/readme.txt", "/server.py", "/.x", "/js/.x", "/js/a.py", "/data/x.dat", "/backups/a", "/unknown/a.js", "/js/../a"]
         for p in ok:
             self.assertTrue(server.static_path_allowed(p), p)
         for p in bad:

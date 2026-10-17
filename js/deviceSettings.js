@@ -3,7 +3,11 @@
 // is currently in use (there's no real "login" here, just a save file per
 // device), and survive across relaunches until explicitly changed again.
 
+import { syncLavaFx } from "./lavaTheme.js";
+
 const THEME_KEY = "pokemon-dnd-theme";
+const THEME_PREV_KEY = "pokemon-dnd-theme-prev"; // what to go back to when the lava theme is switched off
+const LAVA_FX_KEY = "pokemon-dnd-lava-fx";        // "full" (default) or "calm" (no particles or motion)
 const HIDDEN_VIEWS_KEY = "pokemon-dnd-hidden-views";
 const HIDDEN_VIEWS_CHANGED_EVENT = "pokemon-dnd-hidden-views-changed";
 const CAMPAIGN_KEY = "pokemon-dnd-campaign-id";
@@ -20,25 +24,46 @@ const DEFAULT_HIDDEN_VIEWS = ["statcalc", "damagecalc", "tierguide", "controlcen
 export function getTheme() {
   try {
     const v = localStorage.getItem(THEME_KEY);
-    return v === "light" || v === "dark" ? v : "system";
+    return v === "light" || v === "dark" || v === "lava" ? v : "system";
   } catch {
     return "system";
   }
 }
 
+// "previous" (used by the top-bar toggle) means: leave the lava theme for whatever was set before it.
 export function setTheme(theme) {
-  try { localStorage.setItem(THEME_KEY, theme); } catch { /* ignore */ }
+  try {
+    const cur = getTheme();
+    if (theme === "previous") {
+      theme = localStorage.getItem(THEME_PREV_KEY) || "system";
+      if (theme === "lava") theme = "system";
+    } else if (theme === "lava" && cur !== "lava") {
+      localStorage.setItem(THEME_PREV_KEY, cur);
+    }
+    localStorage.setItem(THEME_KEY, theme);
+  } catch { /* ignore */ }
+  applyTheme();
+}
+
+export function getLavaFx() {
+  try { return localStorage.getItem(LAVA_FX_KEY) === "calm" ? "calm" : "full"; } catch { return "full"; }
+}
+export function setLavaFx(mode) {
+  try { localStorage.setItem(LAVA_FX_KEY, mode === "calm" ? "calm" : "full"); } catch { /* ignore */ }
   applyTheme();
 }
 
 // Sets the data-theme attribute style.css's dark/light variable blocks key
-// off of. "system" removes the attribute entirely, falling back to the
-// existing prefers-color-scheme media query.
+// off of ("lava" is styled by css/lava.css). "system" removes the attribute
+// entirely, falling back to the existing prefers-color-scheme media query.
 export function applyTheme() {
   const theme = getTheme();
   const root = document.documentElement;
-  if (theme === "light" || theme === "dark") root.setAttribute("data-theme", theme);
+  if (theme === "light" || theme === "dark" || theme === "lava") root.setAttribute("data-theme", theme);
   else root.removeAttribute("data-theme");
+  if (getLavaFx() === "calm") root.setAttribute("data-lava-fx", "calm");
+  else root.removeAttribute("data-lava-fx");
+  syncLavaFx();
 }
 
 // ---------------- Sidebar page visibility ----------------

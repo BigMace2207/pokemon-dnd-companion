@@ -1,0 +1,4 @@
+PDF.js (pdfjs-dist 4.10.38), Apache License 2.0 -- see LICENSE. Mozilla and contributors.
+Vendored unmodified (the .mjs build files renamed to .js) so the Library's PDF reader works offline
+and under the site's Content-Security-Policy (script-src 'self'). Used by js/library/pdfReader.js.
+Standard (non-embedded) PDF fonts: standard_fonts/ (Foxit and Liberation licences inside).

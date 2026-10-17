@@ -1,5 +1,5 @@
 import { el, field } from "../components.js";
-import { getTheme, setTheme, getHiddenViews, setViewHidden, getSelectedCampaignId, clearSelectedCampaignId } from "../deviceSettings.js";
+import { getTheme, setTheme, getLavaFx, setLavaFx, getHiddenViews, setViewHidden, getSelectedCampaignId, clearSelectedCampaignId } from "../deviceSettings.js";
 import {
   getCampaign, renameCampaign, regenerateInviteCode, regenerateDmPassword,
   removeCampaignMember, transferCampaignOwnership, deleteCampaign, listTrainers,
@@ -103,11 +103,16 @@ export function renderSettings(container) {
   // ---------------- Appearance & display ----------------
   function appearanceCard() {
     const group = pillGroup(
-      [["system", "System"], ["light", "Light"], ["dark", "Dark"]],
+      [["system", "System"], ["light", "Light"], ["dark", "Dark"], ["lava", "Lava Tower"]],
       getTheme(),
       (theme) => setTheme(theme),
     );
-    return el("div", { class: "card" }, [el("h4", {}, "Appearance"), group]);
+    const fx = pillGroup([["full", "Full effects"], ["calm", "Calm (no motion)"]], getLavaFx(), (mode) => setLavaFx(mode));
+    return el("div", { class: "card" }, [
+      el("h4", {}, "Appearance"), group,
+      el("p", { class: "view-sub", style: "margin-top:12px" }, "Lava Tower: a grey-brick tower wall with lava, cracks of light and crumbling stone. The flame button in the top bar toggles it too."),
+      el("h4", {}, "Lava effects"), fx,
+    ]);
   }
 
   // ---------------- Campaign ----------------

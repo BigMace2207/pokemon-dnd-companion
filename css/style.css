@@ -29,8 +29,12 @@
   --content-max: 2400px; /* widest the page content grows on ultrawides */
   --col-min: 640px;      /* narrowest a card column gets (so 1080p = 2 columns, 3440 = 3) */
   --font-display: "Cinzel", Georgia, "Segoe UI", serif;
-  --font-body: "Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-body: "Alegreya Sans", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-lore: "Alegreya", "EB Garamond", "Palatino Linotype", Palatino, Georgia, serif;   /* long reading text: rules, spells, notes */
+  --font-title: "Cinzel", Georgia, serif;                                                 /* page and creature titles */
   font-family: var(--font-body);
+  font-size-adjust: .5;
+  font-variant-numeric: lining-nums;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -103,7 +107,7 @@ body {
 
 #app {
   display: grid;
-  grid-template-columns: var(--sidenav-w) 1fr;
+  grid-template-columns: var(--sidenav-w) minmax(0, 1fr);
   grid-template-rows: var(--topbar-h) 1fr;
   grid-template-areas: "top top" "nav main";
   height: 100vh;
@@ -113,7 +117,7 @@ body {
    sidebar/nav mean anything, since every page needs a campaign selected
    first. */
 #app.gate-mode {
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-areas: "top" "main";
 }
 #app.gate-mode .sidenav, #app.gate-mode .nav-toggle { display: none; }
@@ -129,6 +133,7 @@ body {
   border-bottom: 2px solid var(--gold-dim);
   position: relative;
   z-index: 5;
+  min-width: 0;
 }
 .brand { font-weight: 700; display: flex; align-items: center; gap: calc(10px * var(--s)); }
 .brand-logo { height: 34px; width: auto; display: block; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--gold) 45%, transparent)); }
@@ -808,7 +813,7 @@ table.data-table tr.hi td { background: var(--accent-dim); font-weight: 700; }
      content instead of the full viewport -- shows up as .main getting
      shoved right with a dead gap on the left on pages whose content
      doesn't happen to be wide enough to fill that phantom column. */
-  #app { grid-template-columns: 1fr; grid-template-areas: "top" "main"; }
+  #app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "main"; }
   .sidenav {
     position: fixed; top: var(--topbar-h); left: 0; bottom: 0; width: var(--sidenav-w);
     transform: translateX(-100%); transition: transform .18s ease; z-index: 15;

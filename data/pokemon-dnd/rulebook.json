@@ -1,0 +1,116 @@
+{
+ "title": "Pokémon D&D Rulebook",
+ "exported": "2026-10-17",
+ "pages": [
+  {
+   "id": "contents",
+   "file": "00 Contents",
+   "order": 0,
+   "title": "Contents",
+   "icon": "📚",
+   "tags": [
+    "rulebook"
+   ],
+   "md": "# 📚 Contents\n\n::contents::\n\n[[00 Home|← Back to Home]]\n"
+  },
+  {
+   "id": "before-you-start",
+   "file": "01 Before You Start",
+   "order": 1,
+   "title": "Before You Start",
+   "icon": "🌱",
+   "tags": [
+    "rulebook/basics"
+   ],
+   "md": "# 🌱 Before You Start\n\nIf you have never played this game before, here is what you need to know.\n\nPokémon D&D is an abridged version of the Tabletop RPG (TTRPG) Dungeons and Dragons (D&D), essentially taking a simplified structure of D&D and combining it with basic Pokémon mechanics.\n\nEach player in this game has their own role they have to play, decided both by their chosen character and current situation. You must adventure with your team through a series of routes, caves and other locations to complete the gym challenge.\n\nTo complete the gym challenge, players must catch and train strong Pokémon, to take on each of the **8 gym leaders**, which get more powerful depending on how many you have previously fought. Players can have **6** Pokémon at a time, with more stored in a PC.\n\n## What you need for playing\n\n- A Character Sheet, including 4 double sided pages\n- A standard set of D&D Dice\n- Pencil and Eraser (or an online copy of each document)\n- A notepad is recommended\n- Friends\n\n## Useful Pokémon Key Vocabulary\n\n*(see also: [[08 Glossary|Glossary]])*\n\n- **Catching** — Adding Pokémon to your team.\n- **PC** — The space Pokémon are stored when not part of your team.\n- **Evolution** — Changing the Pokémon's form when the right conditions are met.\n- **Levelling** — Each Pokémon has a level, which can increase to make them stronger.\n- **Fainting** — The Pokémon dies in battle.\n- **Type** — The elemental category a Pokémon falls into.\n- **STAB (Same-Type Attack Bonus)** — A move deals bonus damage if the user is the same type.\n\n## Useful D&D Key Vocabulary\n\n- **d20** — A dice with this many sides.\n- **3d6** — 3 six-sided dice, added together (a possible dice used in a battle).\n- **Checks** — Dice rolls prompted by the DM to start or stop an event.\n- **NPC** — Non-Player Character, usually controlled by the DM.\n- **DM** — Dungeon Master (the person controlling the story).\n- **Modifier** — A bonus or penalty added to a dice roll.\n- **Turn** — Combat happens in turns. Each person acts once per turn.\n- **HP (Hit Points)** — How much damage a Pokémon can take before fainting.\n- **Initiative** — A roll deciding turn order at the start of a battle.\n- **Session** — an individual sitting of play.\n- **Campaign** — The full ongoing story across many sessions.\n\n---\n[[00 Contents|↑ Contents]]  |  [[02 How a Turn Works|How a Turn Works →]]\n"
+  },
+  {
+   "id": "how-a-turn-works",
+   "file": "02 How a Turn Works",
+   "order": 2,
+   "title": "How a Turn Works",
+   "icon": "⚔️",
+   "tags": [
+    "rulebook/combat"
+   ],
+   "md": "# ⚔️ How a Turn Works\n\nBefore explaining any rules, here is what an actual turn looks like. Read this first, and what comes next will explain what just happened.\n\n## Example: Miles' turn\n\nMiles' Charmander is facing a wild Bulbasaur. It's Miles' turn to act.\n\n> [!example] Miles' turn\n> **DM:** \"The Bulbasaur is a few feet away, glaring at your Charmander. What will you do?\"\n> **Miles:** \"I'll have Charmander use Scratch!\"\n> **DM:** \"Roll a d20 to see if Scratch hits — multiply the result by 5 and compare it to the move's accuracy, which is 100.\"\n> Miles rolls a 12 → x5 = 60. Since 60 ≤ 100, it hits.\n> **DM:** \"Now, roll your damage dice, 1d6, since it is a Basic move. Now add this to Charmander's Attack Stat (10), minus Bulbasaur's Defense Stat (10). Since this is a Normal type move, and Charmander is a Fire type, STAB is x1. Bulbasaur is a Grass type, which has x1 effectiveness from Normal type moves.\"\n\n*This is [[Miles - Trainer Info|Miles]] and his [[Miles - Charmander|Charmander]] — see them fully written up in the example [[Trainers/Example - Miles/Miles - Trainer Info|trainer folder]].*\n\n## This is a full turn\n\n1. **Declare your action.** Miles said Charmander was using the move Scratch.\n2. **Roll to see if it hits.** Roll a d20, multiply by 5, and compare it to the move's accuracy. If the move's accuracy is higher than the roll, you hit.\n3. **Roll the move's damage dice.** Every move has a power tier (**Basic**, **Light**, **Moderate**, etc.), and each tier has its own dice. Scratch is a **Basic** move, so Miles rolled **1d6**.\n4. **Add your Pokémon's Attack Stat, subtract the enemy's Defense Stat.**\n5. **Apply STAB.** If the Pokémon's type is the same as the move's, it deals **1.5x** damage. Otherwise, it deals **1x**, like how Charmander used Scratch, a Normal type move.\n6. **Apply Type Effectiveness.** Check the move's type against the target's on the type chart. Super effective is **x2**, not very effective is **x0.5**, immune is **x0**, and neutral is **x1**. In this example, the Normal type move is neutral against the Grass type Pokémon.\n7. **Multiply it all together.**\n\n> [!formula] Damage Formula\n> Damage = (Move Dice + Attack Stat − Defense Stat) x STAB x Type Effectiveness\n>\n> In this example: (3 + 10 − 10) x 1 x 1 = **3 Damage**.\n\nSee also: [[07 Formulas|Formulas]] and [[03 Types and Stats|Types and Stats]].\n\n---\n[[00 Contents|↑ Contents]]  |  [[01 Before You Start|← Before You Start]]  |  [[03 Types and Stats|Types and Stats →]]\n"
+  },
+  {
+   "id": "types-and-stats",
+   "file": "03 Types and Stats",
+   "order": 3,
+   "title": "Types and Stats",
+   "icon": "🔵",
+   "tags": [
+    "rulebook/combat"
+   ],
+   "md": "# 🔵 Types and Stats\n\nEvery Pokémon has a type, with many having two. This gives them strengths and weaknesses to exploit, creating more entertaining battles that don't always end in the stronger Pokémon winning.\n\nThere are **18** Elemental types in total, each move having **one** type. Moves are also categorised by their usage, being **Physical** or **Special**. Physical moves rely on the Pokémon's Attack and Defense stats, whilst Special moves focus on the Special Attack and Special Defense stats.\n\nWhen attacking, the move used determines the type of the Attack, and the enemy Pokémon's type determines the match-up.\n\n- **Super Effective** moves deal x2 damage.\n- **Not very Effective** moves deal x0.5 damage.\n- **Immune** moves deal x0 damage.\n- **Neutral** moves deal x1 damage.\n\n> [!note] Stacking\n> Super Effective deals **x4** if both of the Pokémon's types are weak to the move.\n\nSee the full grid: **[[09 Type Chart|Type Chart →]]**\n\n---\n[[00 Contents|↑ Contents]]  |  [[02 How a Turn Works|← How a Turn Works]]  |  [[04 Types and Stats - Continued|Types and Stats — Continued →]]\n"
+  },
+  {
+   "id": "types-and-stats-continued",
+   "file": "04 Types and Stats - Continued",
+   "order": 4,
+   "title": "Types and Stats — Continued",
+   "icon": "🟡",
+   "tags": [
+    "rulebook/combat"
+   ],
+   "md": "# 🟡 Types and Stats — Continued\n\nEach Pokémon has 6 stats which increase with their level. These stats include:\n\n**HP — Attack — Defense — Special Attack — Special Defense — Speed**\n\n- **HP** or **Hit Points** are the Pokémon's Health. Being attacked will lower this number, and the Pokémon will faint at 0.\n- **Attack** and **Defense** are the Attack Stat and Defense Stat modifier of each Pokémon when a **Physical** move is used.\n- **Special Attack** and **Special Defense** are the Attack Stat and Defense Stat modifier of each Pokémon when a **Special** move is used.\n- **Speed** determines which Pokémon attacks first. Some moves, such as Quick Attack, have priority that bypasses this.\n\n**When Pokémon level up, their stats increase too.** Each Pokémon has **base stats**, which are put through a function to determine their stats every level.\n\n> [!note] Team balance\n> Some types are more attack oriented or defense oriented. This can help balance a team.\n\nWhen a Pokémon evolves, their **base stats** can increase dramatically, making even the same levelled evolution much stronger than the unevolved Pokémon.\n\nA Pokémon can learn new moves through levelling up or **TMs / HMs**, which can teach moves to compatible Pokémon at any level. Most moves learnt by levelling up will be the same type as their wielder, allowing for the usage of STAB moves.\n\n## Useful Links for Types and Stats\n\n- **Type Calculator** — https://www.pkmn.help/defense/solo/\n- **Type Information** — https://pokemondb.net/type\n- **Dual Type Charts** — https://pokemondb.net/type/dual\n- **Pokédex** — https://bulbapedia.bulbagarden.net/wiki/Browse:Pok%C3%A9dex\n\nA Pokédex is a collection of all Pokémon across every game. This shows their stats, types, learnable TMs / HMs, and moves learned from levelling up.\n\n---\n[[00 Contents|↑ Contents]]  |  [[03 Types and Stats|← Types and Stats]]  |  [[05 Make Your Trainer|Make Your Trainer →]]\n"
+  },
+  {
+   "id": "make-your-trainer",
+   "file": "05 Make Your Trainer",
+   "order": 5,
+   "title": "Make Your Trainer",
+   "icon": "🌸",
+   "tags": [
+    "rulebook/character-creation"
+   ],
+   "md": "# 🌸 Make Your Trainer\n\nBefore we start the campaign, let's fill out your Character Sheet. A character sheet helps keep track of your trainer's skills, identity and background.\n\n**Turn to page 2 of the Character Sheet.** Let's determine your stats.\n\nIn D&D 5th Edition, your character normally has 6 abilities. As this ruleset focuses on the Pokémon, our trainers have 4 abilities. These include **Strength**, **Charisma**, **Intelligence** and **Pokémon**.\n\nFor each of the 4 abilities, roll **4d6** and drop the lowest roll. If the total is lower than 8, set it to 12. When used in gameplay, the ability score is converted into a modifier using the following formula:\n\n> [!formula] Ability Modifier\n> Modifier = (Score − 10) / 2, rounded down\n\nHere is a handy table for working out Modifiers. It is recommended to write them in the \"Mod\" section next to each ability.\n\n## Ability Scores and Modifiers\n\n| Score | Modifier |\n|---|---|\n| 1 | −5 |\n| 2−3 | −4 |\n| 4−5 | −3 |\n| 6−7 | −2 |\n| 8−9 | −1 |\n| 10−11 | +0 |\n| 12−13 | +1 |\n| 14−15 | +2 |\n| 16−17 | +3 |\n| 18−19 | +4 |\n| 20−21 | +5 |\n\nUse **[[Templates/New Trainer|New Trainer]]** to generate a Trainer Info page with this table already wired up.\n\n---\n[[00 Contents|↑ Contents]]  |  [[04 Types and Stats - Continued|← Types and Stats — Continued]]  |  [[06 Make Your Trainer - Continued|Make Your Trainer — Continued →]]\n"
+  },
+  {
+   "id": "make-your-trainer-continued",
+   "file": "06 Make Your Trainer - Continued",
+   "order": 6,
+   "title": "Make Your Trainer — Continued",
+   "icon": "🌿",
+   "tags": [
+    "rulebook/character-creation"
+   ],
+   "md": "# 🌿 Make Your Trainer — Continued\n\n## Now, let's go over Skills.\n\nEach Ability has 3 associated skills. These tie to different actions the player can perform during their turn.\n\nHere is a quick rundown of each skill:\n\n**Strength**\n- **Acrobatics** — Balance, falling and moving your body through tricky terrain.\n- **Physicality** — Raw physical force, used for feats of strength.\n- **Athletics** — Running, climbing, swimming, and general physical endurance.\n\n**Charisma**\n- **Deception** — Lying, bluffing and hiding your true intentions.\n- **Persuasion** — Convincing someone to see things your way through reason.\n- **Intimidation** — Coercing or unsettling someone through threats, presence, or force of will.\n\n**Intelligence**\n- **Perception** — Noticing details in your surroundings, such as a hidden item or an approaching threat.\n- **Medicine** — Treating injuries, recognising symptoms and stabilizing heavily injured allies.\n- **Stealth** — Moving quietly, staying unseen, and sneaking past friends or foes undetected.\n\n**Pokémon**\n- **Communication** — Understanding a Pokémon's body language, sounds, and moods well enough to build trust.\n- **Training** — Coaching a Pokémon's growth, helping it prepare for battles or challenges.\n- **Catching** — Reading a wild Pokémon's behaviour and timing your approach to successfully capture it.\n\n---\n[[00 Contents|↑ Contents]]  |  [[05 Make Your Trainer|← Make Your Trainer]]  |  [[07 Formulas|Formulas →]]\n"
+  },
+  {
+   "id": "formulas",
+   "file": "07 Formulas",
+   "order": 7,
+   "title": "Formulas",
+   "icon": "🧮",
+   "tags": [
+    "rulebook/reference"
+   ],
+   "md": "# 🧮 Formulas\n\n> [!formula] Damage\n> Damage = (Move Dice + Attack Stat − Defense Stat) x STAB x Type Effectiveness\n>\n> 3 = (1d6(3) + 10 − 10) x 1 x 1\n>\n> *Above is an example of Charmander using Scratch on Bulbasaur.*\n\n> [!formula] Hit Check\n> Hit Check = (d20 roll x 5) ≤ Move Accuracy\n\n> [!formula] Ability Modifier\n> Ability Modifier = (Score − 10) / 2, rounded down\n\nSee also: [[02 How a Turn Works|How a Turn Works]] for the full worked example, and [[05 Make Your Trainer|Make Your Trainer]] for the ability modifier table.\n\n---\n[[00 Contents|↑ Contents]]  |  [[06 Make Your Trainer - Continued|← Make Your Trainer — Continued]]  |  [[08 Glossary|Glossary →]]\n"
+  },
+  {
+   "id": "glossary",
+   "file": "08 Glossary",
+   "order": 8,
+   "title": "Glossary",
+   "icon": "📗",
+   "tags": [
+    "rulebook/reference"
+   ],
+   "md": "# 📗 Glossary\n\n## Pokémon Terms\n\n- **Catching** — Adding Pokémon to your team.\n- **PC** — The space Pokémon are stored when not part of your team.\n- **Evolution** — Changing the Pokémon's form when the right conditions are met.\n- **Levelling** — Each Pokémon has a level, which can increase to make them stronger.\n- **Fainting** — The Pokémon dies in battle.\n- **Type** — The elemental category a Pokémon falls into.\n- **STAB (Same-Type Attack Bonus)** — A move deals bonus damage if the user is the same type.\n\n## D&D Terms\n\n- **d20** — A dice with this many sides.\n- **3d6** — 3 six-sided dice, added together (a possible dice used in a battle).\n- **Checks** — Dice rolls prompted by the DM to start or stop an event.\n- **NPC** — Non-Player Character, usually controlled by the DM.\n- **DM** — Dungeon Master (the person controlling the story).\n- **Modifier** — A bonus or penalty added to a dice roll.\n- **Turn** — Combat happens in turns. Each person acts once per turn.\n- **HP (Hit Points)** — How much damage a Pokémon can take before fainting.\n- **Initiative** — A roll deciding turn order at the start of a battle.\n- **Session** — An individual sitting of play.\n- **Campaign** — The full ongoing story across many sessions.\n\n---\n[[00 Contents|↑ Contents]]  |  [[07 Formulas|← Formulas]]  |  [[09 Type Chart|Type Chart →]]\n"
+  },
+  {
+   "id": "type-chart",
+   "file": "09 Type Chart",
+   "order": 9,
+   "title": "Type Chart",
+   "icon": "🎯",
+   "tags": [
+    "rulebook/reference"
+   ],
+   "md": "# 🎯 Type Chart\n\nA useful type chart for single-type battles. Find the **attacking** move's type below to see how it fares against each **defending** type.\n\n- x2 = Super Effective · x0.5 = Not Very Effective · x0 = Immune · unlisted = x1 Neutral\n- If a Pokémon has **two** types and both are weak to the move, effectiveness stacks to **x4**. If both resist, it stacks down to **x0.25**.\n\n> [!info] Full calculator\n> The full 18×18 calculator grid (plus damage/hit/catch calculators) lives in `pokemon_full_dex.xlsx` — ask to have it imported here once that spreadsheet is finished.\n\n| Attacking Type | Super Effective (x2) vs | Not Very Effective (x0.5) vs | No Effect (x0) vs |\n|---|---|---|---|\n| ⚪ Normal | — | Rock, Steel | Ghost |\n| 🔥 Fire | Grass, Ice, Bug, Steel | Fire, Water, Rock, Dragon | — |\n| 💧 Water | Fire, Ground, Rock | Water, Grass, Dragon | — |\n| ⚡ Electric | Water, Flying | Electric, Grass, Dragon | Ground |\n| 🌿 Grass | Water, Ground, Rock | Fire, Grass, Poison, Flying, Bug, Dragon, Steel | — |\n| ❄️ Ice | Grass, Ground, Flying, Dragon | Fire, Water, Ice, Steel | — |\n| 🥊 Fighting | Normal, Ice, Rock, Dark, Steel | Poison, Flying, Psychic, Bug, Fairy | Ghost |\n| ☠️ Poison | Grass, Fairy | Poison, Ground, Rock, Ghost | Steel |\n| 🗻 Ground | Fire, Electric, Poison, Rock, Steel | Grass, Bug | Flying |\n| 🕊️ Flying | Grass, Fighting, Bug | Electric, Rock, Steel | — |\n| 🔮 Psychic | Fighting, Poison | Psychic, Steel | Dark |\n| 🐛 Bug | Grass, Psychic, Dark | Fire, Fighting, Poison, Flying, Ghost, Steel, Fairy | — |\n| 🪨 Rock | Fire, Ice, Flying, Bug | Fighting, Ground, Steel | — |\n| 👻 Ghost | Psychic, Ghost | Dark | Normal |\n| 🐉 Dragon | Dragon | Steel | Fairy |\n| 🌑 Dark | Psychic, Ghost | Fighting, Dark, Fairy | — |\n| ⚙️ Steel | Ice, Rock, Fairy | Fire, Water, Electric, Steel | — |\n| ✨ Fairy | Fighting, Dragon, Dark | Fire, Poison, Steel | — |\n\n---\n[[00 Contents|↑ Contents]]  |  [[03 Types and Stats|← Types and Stats]]\n"
+  }
+ ]
+}

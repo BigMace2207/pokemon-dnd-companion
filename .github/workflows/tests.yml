@@ -11,3 +11,12 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m unittest discover -s tests -v
+  rules-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # the D&D 5e rules engine is plain ES modules with no DOM, so Node runs it directly
+      - run: node --test tests/js/*.test.mjs
