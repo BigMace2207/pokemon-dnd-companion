@@ -2,11 +2,14 @@
 // recurring villains and places tied together with connections, a story arc for each of the seven players, a scenario per
 // session, and notes / NPCs / quests / locations in the planner's notebook. Prints { dm, players } as JSON for
 // tools/seed_test_campaign.py.
-//   node tools/seed_plan.mjs
+// --showcase (tools/seed_showcase.py): the same story run long, twenty-four sessions with the first twelve played, an eighth
+// player, and a second act that grows out of the first.
+//   node tools/seed_plan.mjs [--showcase]
 
 import { addSession, addLink, normalizeBoard, syncSessions } from "../js/planner/board.js";
 import { genDungeon } from "../js/systems/dnd5e/engine/generators.js";
 
+const SHOWCASE = process.argv.includes("--showcase");
 let n = 0;
 const id = (p = "n") => `${p}${(++n).toString(36)}${Math.floor(Math.random() * 1e5).toString(36)}`;
 const now = Date.now();
@@ -17,15 +20,29 @@ const scene = (title, kind, f = {}) => ({ id: id("c"), title, kind, location: ""
 
 // ---- the board: 12 session boxes in a 4 x 3 grid, the seven players' arcs in a band above -----------------------------
 // roomy on purpose: wide gaps between sessions and between nodes, so the connection lines and labels have space to read
-const PX = 1500, PY = 1000, BW = 1300, BH = 800, X0 = -2900, ARC_Y = -1900, GRID_Y = -1200;
-const boxes = Array.from({ length: 12 }, (_, i) => ({ kind: "box", x: X0 + (i % 4) * PX, y: GRID_Y + Math.floor(i / 4) * PY, w: BW, h: BH }));
+const SESSIONS = SHOWCASE ? 24 : 12, COLS = SHOWCASE ? 6 : 4;
+const PX = 1500, PY = 1000, BW = 1300, BH = 800, X0 = SHOWCASE ? -4400 : -2900, ARC_Y = -1900, GRID_Y = -1200;
+const boxes = Array.from({ length: SESSIONS }, (_, i) => ({ kind: "box", x: X0 + (i % COLS) * PX, y: GRID_Y + Math.floor(i / COLS) * PY, w: BW, h: BH }));
 const nodes = [];
 const add = (o) => { const x = { id: id(), w: 300, h: 230, ...o }; nodes.push(x); return x; };
 
 // spec: [kind, title, text or lines, extra]. kinds: gen kinds (npc, tavern, shop, hook, rumour, loot, room, encounter), "note", "sticky", "list", "dungeon"
+// In the showcase every one of the first twelve sessions has been played: its prep checklist becomes the recap.
+const PLAYED_RECAPS = {
+  3: "PLAYED. The gala heist went sideways when Korg 'distracted' the guards with a toast. Sera lifted the ledger; it names Lord Caedran Vale.",
+  4: "PLAYED. Solved the four-book puzzle on the third try. Elowen heard Ashvane's echo. The Dawn Half is ours, for now.",
+  5: "PLAYED. Nyx struck at the festival; Lyra kept singing through it. The Dawn Half was lost. The temple in Harrowgate burned.",
+  6: "PLAYED. Brannoch found Mother Hesper alive in Ironvale. Uncle Brogan gave up the Dusk Half after the duergar raid.",
+  7: "PLAYED. The guild judged Sera's debt paid, then Vesk's betrayal came out. Rooftop chase: nobody fell, barely.",
+  8: "PLAYED. Thalric spared Ruck. Ruck named the Dreaming Spire and died at peace. Maddox carries the banner again.",
+  9: "PLAYED. Elowen woke Ashvane. He is weak but free, and the cult has lost its key.",
+  10: "PLAYED. Korg won the Ashfang to the cause. Vaelor drew Dawnbreaker in the Dragon Guard tomb. The legion broke at the gates.",
+  11: "PLAYED. Caedran fell, the crown shattered, and the Hollow King rose from the pieces. Mirelle arrived with a bargain. Party level 7.",
+};
 function fill(sessionIndex, specs) {
   const b = boxes[sessionIndex];
   specs.forEach((spec, i) => {
+    if (SHOWCASE && PLAYED_RECAPS[sessionIndex] && (spec[0] === "list" || (sessionIndex === 10 && spec[0] === "note"))) spec = ["sticky", "Recap", PLAYED_RECAPS[sessionIndex], RECAP];
     const [kind, title, content, extra] = spec;
     const pos = { x: b.x + 60 + (i % 3) * 400, y: b.y + 100 + Math.floor(i / 3) * 340 };
     if (kind === "note") add({ type: "note", title, body: content, ...pos });
@@ -145,6 +162,86 @@ fill(11, [
   ["list", "Prep: Session 12", [["Boss stat block with lair actions"], ["Epilogue for each character"], ["Level up to 8 at the end"]]],
 ]);
 
+if (SHOWCASE) {
+  // ---- act two: the Hollow King (sessions 13 to 24, three ready and nine drafted) ----
+  fill(12, [
+    ["npc", "The Hollow King", ["The first king to wear the crown, dead three hundred years.", "Woke when the crown shattered. Wants the shards, and a body.", "Speaks to Elowen in her dreams. Knows her name."]],
+    ["room", "The Crypt Court", ["Under Harrowgate's cathedral: a throne of bones and a court of the dead.", "Lair: candles relight every round; the dead kneel when he speaks."]],
+    ["encounter", "The Hollow Court", ["Sister Nyx (homebrew), 2 wights, 6 skeletons.", "Nyx flees at half HP through the ossuary."]],
+    ["npc", "Sister Nyx, the Herald", ["Survived the festival. Now the Hollow King's herald.", "Offers Lyra the name of the fire-setter for a shard."]],
+    ["hook", "Shards of the Crown", ["Seven shards scattered when the crown broke.", "The Hollow King needs all seven; the party needs one to bind him."]],
+    ["list", "Prep: Session 13", [["Crypt Court map", 1], ["Nyx's homebrew stat block", 1], ["Hollow King's dream speech"]]],
+  ]);
+  fill(13, [
+    ["encounter", "The Barrow Road", ["4 ghouls, 2 ghasts in the fog.", "The dead walk toward Harrowgate; the road is a river of them."]],
+    ["npc", "Warden Elsabet", ["Keeper of the Barrowlands, half-blind, carries a bell.", "Knows which barrows hold shards."]],
+    ["tavern", "The Last Lantern", ["A crossroads inn that never lets its fire go out.", "The landlord is an imp in disguise (the Ember Duke's)."]],
+    ["rumour", "Ghost Lights", ["Lights move over the barrows on moonless nights. Something is digging."]],
+    ["loot", "Barrow Shard", ["Shard of the crown (1 of 7)", "Elsabet's bell: undead within 30 ft must save or flee"]],
+    ["list", "Prep: Session 14", [["Fog travel table", 1], ["Elsabet's barrow map"], ["Imp landlord's tells"]]],
+  ]);
+  fill(14, [
+    ["npc", "The Ember Duke", ["Mirelle's patron, a fiend of courtly manners.", "Wants the Hollow King destroyed: a rival in the hells.", "Will free Mirelle's name for the Hollow King's heart."]],
+    ["hook", "Mirelle's Bargain", ["The Duke's envoy offers the party power against the dead, at Mirelle's expense."]],
+    ["encounter", "Contract Hellhounds", ["2 hell hounds and the imp landlord, if the bargain is refused."]],
+    ["note", "The fine print", "The contract has a clause no one has read: whoever lands the killing blow on the Hollow King owes the Duke a favour. Let Sera find it with a DC 18 Investigation."],
+    ["shop", "The Duke's Wares", ["Infernal goods for souls or secrets.", "Potion of fire breath, a +1 rod, a whispering map to a shard."]],
+    ["list", "Prep: Session 15", [["The Duke's voice"], ["Contract handout"], ["Who signs?"]]],
+  ]);
+  fill(15, [
+    ["dungeon", "The Ironvale Deeps", 10, { 2: "Collapsed mine: shard hums behind the rubble.", 7: "Duergar war-chapel." }],
+    ["npc", "Thane Brogan Ironvale (again)", ["Now an ally, but his hold is split: half want to hide the shard forever."]],
+    ["encounter", "Deep Dwellers", ["Duergar remnants and a hungry earth elemental."]],
+    ["loot", "Forge Shard", ["Shard of the crown (2 of 7)", "Ironvale masterwork plate (for whoever needs it)"]],
+  ]);
+  fill(16, [
+    ["npc", "Mayor Odalys Venn (redeemed?)", ["Confesses she signed the cult's lease to save the town from debt.", "Wants to make it right; Lyra decides if she gets the chance."]],
+    ["encounter", "Brindlemoor Under Siege", ["The dead at the walls; mass combat in units of 20.", "Lyra's ballad (Performance DC 17) gives everyone advantage on fear saves."]],
+    ["room", "Lantern Square, Again", ["The festival stage, now a barricade."]],
+    ["hook", "The Ballad", ["Lyra performs the whole truth: the fire, Venn's lease, Nyx's test."]],
+  ]);
+  fill(17, [
+    ["npc", "Madame Vesk (returned)", ["Back from the cult, broke and hunted.", "Offers Sera the guild in exchange for protection."]],
+    ["hook", "The Gray Cloaks' Gambit", ["Guildmother Sable is dying. The guild will be Sera's, Vesk's, or nobody's."]],
+    ["room", "The Vault of Names", ["Where the guild keeps every debt ever owed.", "A shard is hidden among the ledgers."]],
+    ["loot", "Ledger Shard", ["Shard of the crown (3 of 7)", "Sera's own debt slip, to burn or keep"]],
+  ]);
+  fill(18, [
+    ["npc", "Old Sergeant Maddox (again)", ["Rides with twenty volunteers under the Ninth's banner."]],
+    ["hook", "The Lancer Reborn", ["Thalric is offered the captaincy of a new Ninth."]],
+    ["encounter", "Riders of the Barrow", ["Dead cavalry: 6 wights on skeletal horses."]],
+    ["loot", "Lancer Shard", ["Shard of the crown (4 of 7)"]],
+  ]);
+  fill(19, [
+    ["dungeon", "The Spire Awakened", 8, { 1: "The gate of dreams, now open.", 5: "Ashvane's new study." }],
+    ["npc", "Magister Ashvane (recovered)", ["Stronger, but frightened of what the crown taught him."]],
+    ["hook", "A Choice of Spires", ["Elowen can become the Spire's archmage, binding herself to it."]],
+    ["loot", "Spire Shard", ["Shard of the crown (5 of 7)"]],
+  ]);
+  fill(20, [
+    ["npc", "Chief Ragna Ashfang (again)", ["Ready to step down. Korg must win the moot."]],
+    ["encounter", "The Ashfang Moot", ["Trials of strength, wit and mercy; a cult plant tries to poison Korg."]],
+    ["loot", "Clan Shard", ["Shard of the crown (6 of 7)"]],
+  ]);
+  fill(21, [
+    ["npc", "Grandmaster Aurel", ["Head of the Order of the Dawn Shield. Silent for a year.", "He has been wearing a shard. It has been talking to him."]],
+    ["hook", "The Order's Silence", ["Vaelor's order has been the Hollow King's since the crown broke."]],
+    ["encounter", "Fallen Paladins", ["Grandmaster Aurel and 4 knights."]],
+    ["loot", "Order Shard", ["Shard of the crown (7 of 7)"]],
+  ]);
+  fill(22, [
+    ["dungeon", "The Barrow of Kings", 14, { 1: "The kings' road: every statue turns its head.", 9: "The empty tomb: the Hollow King's own." }],
+    ["encounter", "Honour Guard of the Dead", ["2 wraiths and a specter in the ossuary."]],
+    ["hook", "The Seventh Seal", ["The tomb opens only to someone who has worn the crown."]],
+  ]);
+  fill(23, [
+    ["npc", "The Hollow King (finale)", ["Homebrew lich in the bestiary.", "Gains legendary resistance for each shard he holds."]],
+    ["room", "The Throne Without a Crown", ["A hall of mirrors under the barrow; each mirror shows one hero's ending."]],
+    ["encounter", "The Hollow King, at last", ["The Hollow King and 2 wraiths (saved encounter 'Finale: The Hollow King')."]],
+    ["note", "Endings, act two", "Each hero's arc ends here: Brannoch's temple, Sera's guild, Thalric's Ninth, Elowen's Spire, Korg's clan, Lyra's ballad, Vaelor's oath and Mirelle's name."],
+  ]);
+}
+
 // player arcs, in a band above the sessions
 const ARCS = [
   ["Arc: Brannoch", "Find Mother Hesper and rebuild the Dawn Shield temple. Pays off in sessions 6 and 7; his uncle's pride is the obstacle.", "#f6c27a"],
@@ -155,10 +252,16 @@ const ARCS = [
   ["Arc: Lyra", "Learn who burned the Lantern Players, and sing the truth. Sessions 1, 6 and 12.", "#f6a0d8"],
   ["Arc: Vaelor", "Find Dawnbreaker and keep the crown from any hand. Sessions 11 and 12; his order's grandmaster is silent for a reason.", "#b4f6a0"],
 ];
-ARCS.forEach(([title, body, color], i) => add({ type: "text", title, body, color, x: X0 + 60 + (i % 4) * 700, y: ARC_Y + Math.floor(i / 4) * 300, w: 520, h: 200 }));
-add({ type: "text", title: "Campaign status", body: "The Sundered Crown: 7 players, 3 of 12 sessions played, 9 prepared. Party level 3. Next up: Harrowgate Heist. Ending: the crown's fate rests on the players' choices.", color: "#f6e27a", x: X0 + 60 + 3 * 700, y: ARC_Y + 300, w: 520, h: 200 });
+if (SHOWCASE) ARCS.push(["Arc: Mirelle", "Cheat the Ember Duke and win back her name. Sessions 15 and 24; the contract's fine print is the key.", "#f0c0a0"]);
+const ARC_COLS = SHOWCASE ? 5 : 4;
+ARCS.forEach(([title, body, color], i) => add({ type: "text", title, body, color, x: X0 + 60 + (i % ARC_COLS) * 700, y: ARC_Y + Math.floor(i / ARC_COLS) * 300, w: 520, h: 200 }));
+add({ type: "text", title: "Campaign status", body: SHOWCASE
+  ? "The Sundered Crown: 8 players, 12 of 24 sessions played, the second act prepared. Party level 7. The crown is broken and the Hollow King is awake. Next up: The Hollow Court."
+  : "The Sundered Crown: 7 players, 3 of 12 sessions played, 9 prepared. Party level 3. Next up: Harrowgate Heist. Ending: the crown's fate rests on the players' choices.",
+color: "#f6e27a", x: X0 + 60 + 3 * 700, y: ARC_Y + 300, w: 520, h: 200 });
 
-const bd = normalizeBoard({ id: id("b"), name: "The Sundered Crown", bounds: { x: -3000, y: -2000, w: 6000, h: 3700 }, created: now, nodes, sessions: [], links: [], view: { x: 0, y: 0, z: 0.2 } });
+const bounds = SHOWCASE ? { x: -4500, y: -2000, w: 9200, h: 4900 } : { x: -3000, y: -2000, w: 6000, h: 3700 };
+const bd = normalizeBoard({ id: id("b"), name: "The Sundered Crown", bounds, created: now, nodes, sessions: [], links: [], view: { x: 0, y: 0, z: SHOWCASE ? 0.14 : 0.2 } });
 boxes.forEach((shape) => addSession(bd, shape));
 bd.sessions.sort((a, b) => a.n - b.n);
 for (const node of bd.nodes) syncSessions(bd, node);
@@ -224,9 +327,49 @@ custom("Arc: Elowen", "seeks", "Magister Ashvane"); custom("Arc: Elowen", "hears
 custom("Arc: Korg", "wants the blessing of", "Chief Ragna Ashfang"); custom("Arc: Korg", "is called home by", "Korg's Return");
 custom("Arc: Lyra", "suspects", "Mayor Odalys Venn"); custom("Arc: Lyra", "will sing of", "Cult Strike at the Festival"); custom("Arc: Lyra", "learns the truth from", "Sister Nyx");
 custom("Arc: Vaelor", "sworn to find", "Dawnbreaker, the Oathblade"); custom("Arc: Vaelor", "sworn to stop", "Lord Caedran Vale"); custom("Arc: Vaelor", "keeps watch at", "The Dragon Guard Tomb");
+if (SHOWCASE) {
+  // act two grows out of act one
+  custom("The Whole Crown", "shattered into", "Shards of the Crown");
+  custom("Lord Caedran and his Honour Guard", "his fall wakes", "The Hollow King");
+  custom("Sister Nyx", "survives as", "Sister Nyx, the Herald");
+  custom("Sister Nyx, the Herald", "heralds", "The Hollow King");
+  link("The Hollow King", "lives in", "The Crypt Court");
+  link("The Hollow Court", "guards", "The Crypt Court");
+  link("The Hollow King", "wants", "Shards of the Crown");
+  for (const t of ["Barrow Shard", "Forge Shard", "Ledger Shard", "Lancer Shard", "Spire Shard", "Clan Shard", "Order Shard"]) custom(t, "one of", "Shards of the Crown");
+  link("Barrow Shard", "found in", "The Barrow Road");
+  custom("Warden Elsabet", "knows the barrows of", "The Barrow Road");
+  custom("The Last Lantern", "is a front for", "The Ember Duke");
+  link("The Ember Duke", "wants", "Mirelle's Bargain");
+  custom("The fine print", "hides in", "Mirelle's Bargain");
+  link("Forge Shard", "found in", "The Ironvale Deeps");
+  custom("Thane Brogan Ironvale (again)", "is", "Thane Brogan Ironvale");
+  custom("Mayor Odalys Venn (redeemed?)", "is", "Mayor Odalys Venn");
+  custom("The Ballad", "sung in", "Lantern Square, Again");
+  custom("Madame Vesk (returned)", "is", "Madame Vesk");
+  link("Ledger Shard", "found in", "The Vault of Names");
+  custom("Old Sergeant Maddox (again)", "is", "Old Sergeant Maddox");
+  custom("Magister Ashvane (recovered)", "is", "Magister Ashvane");
+  link("Spire Shard", "found in", "The Spire Awakened");
+  custom("Chief Ragna Ashfang (again)", "is", "Chief Ragna Ashfang");
+  custom("Grandmaster Aurel", "carries", "Order Shard");
+  custom("The Hollow King (finale)", "is", "The Hollow King");
+  link("The Hollow King (finale)", "lives in", "The Throne Without a Crown");
+  custom("The Seventh Seal", "opens", "The Barrow of Kings");
+  custom("Arc: Mirelle", "bound to", "The Ember Duke"); custom("Arc: Mirelle", "must read", "The fine print");
+  custom("Arc: Lyra", "finishes", "The Ballad"); custom("Arc: Sera", "is offered", "The Gray Cloaks' Gambit");
+  custom("Arc: Thalric", "may lead", "The Lancer Reborn"); custom("Arc: Elowen", "chooses", "A Choice of Spires");
+  custom("Arc: Korg", "must win", "The Ashfang Moot"); custom("Arc: Vaelor", "must face", "Grandmaster Aurel");
+  custom("Arc: Brannoch", "returns to", "Thane Brogan Ironvale (again)");
+}
 
 // ---- scenarios, one per session ---------------------------------------------------------------------------------------
-const sc = (title, status, hook, summary, scenes) => ({ id: id("s"), title, status, level: status === "played" ? "3" : "", players: "7", hook, summary, tags: [], scenes, created: now, updated: now });
+const sc = (title, status, hook, summary, scenes) => {
+  const i = Number(title.match(/\d+/)[0]);
+  if (SHOWCASE && i <= 12) { status = "played"; for (const x of scenes) x.done = true; }
+  const level = SHOWCASE ? (status === "played" ? String(Math.min(7, 2 + Math.ceil(i / 2.4))) : "7") : status === "played" ? "3" : "";
+  return { id: id("s"), title, status, level, players: SHOWCASE ? "8" : "7", hook, summary, tags: [], scenes, created: now, updated: now };
+};
 const scenarios = [
   sc("Session 1: The Road to Brindlemoor", "played", "A town asks strangers to find its missing tax-collector.", "Bandit ambush, meet the mayor, learn of the cellars.", [
     scene("Bandits on the road", "combat", { location: "The Old King's Road", foes: "6 bandits, Captain Ruck", rewards: "Cult sigil", done: true }),
@@ -266,6 +409,24 @@ const scenarios = [
     scene("The offer", "social", { npcs: "Lord Caedran" }), scene("The Crown Chamber", "boss", { foes: "Lord Caedran, skeletal guards, wraith (phase 2)" }), scene("Aftermath", "rest", { rewards: "Level 8" })]),
 ];
 
+if (SHOWCASE) scenarios.push(
+  sc("Session 13: The Hollow Court", "ready", "The crown broke and the dead king woke. His court gathers under the cathedral.", "Break up the Hollow Court; Nyx escapes with a shard's location.", [
+    scene("Down into the crypts", "exploration", { location: "Cathedral ossuary" }), scene("The court in session", "social", { npcs: "The Hollow King (a voice), Sister Nyx" }), scene("Court of bones", "combat", { foes: "Sister Nyx, 2 wights, 6 skeletons" })]),
+  sc("Session 14: The Barrow Road", "ready", "Warden Elsabet sends word: something digs in the barrows.", "Travel the fog road and win the first shard.", [
+    scene("Fog and the dead", "travel"), scene("The Last Lantern", "social", { npcs: "Imp landlord" }), scene("Ghouls at the barrow", "combat", { foes: "4 ghouls, 2 ghasts", rewards: "Barrow Shard" })]),
+  sc("Session 15: The Ember Duke's Bargain", "ready", "Mirelle's patron sends an envoy with an offer for the whole party.", "Read the fine print; accept, refuse, or cheat the Duke.", [
+    scene("The envoy", "social", { npcs: "The Ember Duke" }), scene("The contract", "puzzle", { secrets: "Killing-blow clause, DC 18 Investigation" }), scene("Hellhounds", "combat", { foes: "2 hell hounds" })]),
+  sc("Session 16: The Ironvale Deeps", "draft", "Uncle Brogan's miners broke into a humming vault.", "Delve the Deeps for the Forge Shard.", [scene("The collapsed mine", "exploration"), scene("Duergar chapel", "combat")]),
+  sc("Session 17: Brindlemoor Under Siege", "draft", "The dead march on Brindlemoor.", "Hold the town; Lyra sings the ballad.", [scene("Barricades", "combat"), scene("The ballad", "social")]),
+  sc("Session 18: The Gray Cloaks' Gambit", "draft", "Guildmother Sable is dying.", "Win the guild, and the Ledger Shard.", [scene("The Vault of Names", "puzzle"), scene("Vesk's offer", "social")]),
+  sc("Session 19: The Lancer Reborn", "draft", "Maddox rides with twenty volunteers.", "Thalric's Ninth rides again.", [scene("Riders of the Barrow", "combat")]),
+  sc("Session 20: The Spire Awakens", "draft", "Ashvane can open the Spire again.", "Elowen's choice of Spires.", [scene("The gate of dreams", "exploration"), scene("The archmage's seat", "reveal")]),
+  sc("Session 21: The Ashfang Moot", "draft", "Chief Ragna will step down.", "Korg wins the moot, or doesn't.", [scene("Trials", "social"), scene("Poison", "combat")]),
+  sc("Session 22: The Order's Silence", "draft", "Vaelor's order finally answers: come home.", "Face Grandmaster Aurel.", [scene("Fallen paladins", "boss")]),
+  sc("Session 23: The Barrow of Kings", "draft", "Seven shards, one tomb.", "Delve the Barrow of Kings.", [scene("The kings' road", "exploration"), scene("The empty tomb", "reveal")]),
+  sc("Session 24: The Hollow King", "draft", "The dead king waits on a throne without a crown.", "The finale.", [scene("The mirrors", "social"), scene("The Hollow King", "boss", { foes: "The Hollow King (homebrew), 2 wraiths" }), scene("Epilogues", "rest")]),
+);
+
 // ---- the DM's notebook: plain notes plus NPC / quest / location / session records -----------------------------------------
 const rec = (kind, title, body, fields = {}, tags = []) => note(title, body, { kind, fields, tags });
 const dm = {
@@ -289,12 +450,36 @@ const dm = {
     rec("location", "Ironvale", "The dwarven hold under the Grey Teeth; the Deep Forge.", { place: "Hold" }, ["act 2"]),
   ],
   lists: [
+    ...(SHOWCASE ? [list("Act two shards", [["Barrow (s14)"], ["Forge (s16)"], ["Ledger (s18)"], ["Lancer (s19)"], ["Spire (s20)"], ["Clan (s21)"], ["Order (s22)"]])] : []),
     list("Before next session", [["Print party handouts", 1], ["Message players the date", 1], ["Prep the Duke's gala music"], ["Restock potions in the shop"]]),
     list("Plot threads", [["Who is the cult's patron?", 1], ["Where is the second half of the crown?"], ["What did Mayor Venn sign?", 1], ["Why won't the Order answer Vaelor?"], ["Who is the Hollow King?"]]),
     list("Player hooks to pay off", [["Brannoch: Mother Hesper (s6-7)"], ["Sera: Vesk and the debt (s4, s8)"], ["Thalric: Ruck (s9)"], ["Elowen: Ashvane (s10)"], ["Korg: Ashfang blessing (s11)"], ["Lyra: the festival fire (s6)"], ["Vaelor: Dawnbreaker (s11)"]]),
   ],
   scenarios, maps: [], boards: [bd], updated: now, displayName: "", legacyImported: true,
 };
+if (SHOWCASE) {
+  // twelve sessions of records: every recap, the quests resolved since, the people met along the way
+  const dates = (i) => new Date(Date.UTC(2026, 4, 2) + (i - 1) * 14 * 864e5).toISOString().slice(0, 10);
+  dm.notes = dm.notes.filter((x) => x.kind !== "session" && x.kind !== "quest");
+  const recaps = ["Bandits on the road, Brindlemoor, the cellar hook.", "Cleared the cellars, rescued Pell.", "Hags outwitted with a stolen bell.", ...Object.values(PLAYED_RECAPS).map((r) => r.replace(/^PLAYED\. /, ""))];
+  scenarios.slice(0, 12).forEach((x, i) => dm.notes.push(rec("session", x.title, recaps[i], { date: dates(i + 1), level: x.level }, ["recap"])));
+  dm.notes.push(rec("session", "Session 13: The Hollow Court (next)", "Crypt court; Nyx has a shard's location. Run the dream speech first.", { date: "2026-11-07", level: "7" }, ["next"]));
+  for (const [t, b, status, giver, reward, tag] of [
+    ["Find the missing collector", "Pell Ardway, found in the cellars.", "Completed", "Mayor Venn", "200 gp", "main"],
+    ["The two halves of the crown", "Both halves found, joined by Caedran, shattered in session 12.", "Completed", "Old Marrow", "The kingdom", "main"],
+    ["Seven shards", "Gather the shards before the Hollow King does.", "Active", "Warden Elsabet", "The end of the dead", "main"],
+    ["Brannoch's temple", "Hesper found; the temple is being rebuilt.", "Completed", "Brannoch", "A home", "arc"],
+    ["Sera's debt", "Ruled paid by the guild. Vesk sold it anyway.", "Completed", "Madame Vesk", "Freedom", "arc"],
+    ["The Lantern Players' fire", "Nyx admitted it was a test of the ritual. The ballad is half written.", "Active", "Lyra", "The truth", "arc"],
+    ["Ruck's betrayal", "Ruck spared at Fort Lancer; died at peace.", "Completed", "Thalric", "Justice", "arc"],
+    ["Mirelle's name", "Owned by the Ember Duke until the Hollow King's heart is delivered.", "Active", "Mirelle", "Her name", "arc"],
+    ["The Order's silence", "Why has Grandmaster Aurel not written in a year?", "Rumour", "Vaelor", "The truth", "arc"],
+  ]) dm.notes.push(rec("quest", t, b, { status, giver, reward }, [tag]));
+  dm.notes.push(rec("npc", "The Hollow King", "The dead king. Speaks in Elowen's dreams.", { role: "Act two villain", attitude: "Hostile" }, ["villain"]),
+    rec("npc", "The Ember Duke", "Mirelle's patron. Courtly, patient, never lies outright.", { role: "Fiend patron", attitude: "Wary" }, ["infernal"]),
+    rec("npc", "Warden Elsabet", "Keeper of the Barrowlands.", { role: "Warden", attitude: "Friendly" }, ["ally"]),
+    rec("location", "The Barrowlands", "Fog, barrows, the road of the dead.", { place: "Wilds" }, ["act 3"]));
+}
 
 // ---- what each player keeps in their own planner (shared with the DM) -------------------------------------------------------
 const mine = (name, goal, steps, thing) => ({
@@ -309,6 +494,7 @@ const players = {
   dani: mine("Elowen", "Find Magister Ashvane. His last letter says there is a choice only I can make.", [["Reread the letter", 1], ["Find Ashvane's trail in the Archive"], ["Learn what the choice is"]], "Elowen: Ashvane studied this very crown."),
   eli: mine("Korg", "Win back my clan's blessing from my mother, Chief Ragna.", [["Stay out of trouble"], ["Learn who ordered the raid I refused"], ["Return to the Ashfang"]], "Korg: those cultists smelled like Ashfang war-paint."),
   fern: mine("Lyra", "Find out who burned the Lantern Players, and write the ballad that tells it.", [["Question Hobb about the festival", 1], ["Watch Mayor Venn"], ["Finish the ballad"]], "Lyra: the festival is in three weeks, the same as the fire two years ago."),
+  ...(SHOWCASE ? { hana: mine("Mirelle", "Win back my name from the Ember Duke without handing him what he really wants.", [["Read the whole contract"], ["Learn what the Hollow King's heart is"], ["Tell the party the truth (eventually)"]], "Mirelle: the Duke's imp runs the Last Lantern.") } : {}),
   gus: mine("Vaelor", "Find Dawnbreaker and keep the crown from every hand, even mine.", [["Write the Order again", 1], ["Learn where the Dragon Guard lies"], ["Keep the key rune safe"]], "Vaelor: the Order still has not answered."),
 };
 

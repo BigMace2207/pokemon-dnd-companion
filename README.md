@@ -58,7 +58,7 @@ python -m unittest discover -s tests -v    # server tests
 node --test tests/js/*.test.mjs            # D&D rules engine (Node 20+)
 ```
 
-To try a branch or fork without touching real saves: `python tools/test_server.py [folder]` runs it on port 8860 with its own empty data (`--lan` for your phone, `--reset` to start fresh). `python tools/seed_test_campaign.py` then fills that test server with a DM, seven players with 3rd-level characters and personal motives, and a twelve-session planner (three played), and `node tools/keep_table_online.mjs` keeps the seven players showing as online in Party.
+To try a branch or fork without touching real saves: `python tools/test_server.py [folder]` runs it on port 8860 with its own empty data (`--lan` for your phone, `--reset` to start fresh). `python tools/seed_test_campaign.py` then fills that test server with a DM, seven players with 3rd-level characters and personal motives, and a twelve-session planner (three played), and `node tools/keep_table_online.mjs` keeps the seven players showing as online in Party. For demos, `python tools/seed_showcase.py` builds the same campaign run long: eight 7th-level characters, 12 of 24 sessions played, homebrew, saved encounters, a published fight, a party map, battle-log rolls and messages to the DM (`--base <url> --live` to put it on a real server; `keep_table_online.mjs --showcase` keeps those players online). Seed passwords stay outside the repo, in your home folder.
 
 No packages to install and no build step: the server is standard-library Python and the front end is plain ES modules.
 
