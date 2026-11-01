@@ -35,7 +35,7 @@ export function pickOne(options, selected, onChange) {
   function draw(cur) {
     wrap.replaceChildren(...options.map((o) => {
       const on = cur === o.value;
-      const b = el("button", { type: "button", class: `dnd-option${on ? " selected" : ""}`, role: "radio", "aria-checked": String(on) }, [
+      const b = el("button", { type: "button", class: `dnd-option${on ? " selected" : ""}`, role: "radio", "aria-checked": String(on), "data-tip": o.tip || null, "data-tip-title": o.tip ? o.label : null }, [
         el("strong", {}, o.label), o.sub ? el("span", { class: "dnd-muted dnd-small" }, o.sub) : null,
       ].filter(Boolean));
       b.addEventListener("click", () => { onChange(o.value); draw(o.value); });

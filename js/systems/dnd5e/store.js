@@ -66,6 +66,15 @@ export function saveCharacter(char) {
   return char;
 }
 
+// The campaign owner picks the rules version for everyone (Settings > Campaign). Campaigns made before that existed have none,
+// and then each player keeps their own choice.
+let campaignEdition = null;
+export const getCampaignEdition = () => campaignEdition;
+export function applyCampaignEdition(edition) {
+  campaignEdition = edition === "2014" || edition === "2024" ? edition : null;
+  if (campaignEdition && getSettings().edition !== campaignEdition) setSettings({ edition: campaignEdition });
+}
+
 export function createCharacter(edition) {
   const c = newCharacter(edition || getDnd().settings.edition);
   const save = loadSave();
@@ -101,7 +110,10 @@ export function duplicateCharacter(id) {
 
 // ---- settings and the DM slice ----
 
-export function getSettings() { return getDnd().settings; }
+export function getSettings() {
+  const s = getDnd().settings;
+  return campaignEdition && s.edition !== campaignEdition ? { ...s, edition: campaignEdition } : s;
+}
 
 export function setSettings(patch) {
   const save = loadSave();

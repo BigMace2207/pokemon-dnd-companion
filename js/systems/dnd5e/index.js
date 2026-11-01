@@ -1,6 +1,6 @@
 // Dungeons & Dragons (5th edition): a full companion built on the SRD rules.
 // Characters, spells, monsters, items, rules, dice, party and live combat for
-// players; encounter building, generators and campaign notes for the DM.
+// players; encounter building and campaign notes for the DM.
 //
 // Rules data lives in data/dnd5e/<2014|2024>/ (built by tools/export_dnd5e.py);
 // the engine (engine/*.js) is plain functions so it can be unit-tested in Node.
@@ -10,7 +10,7 @@
 
 import { pollAndApplyDirectives } from "./directives.js";
 import { loadCtx, peekCtx } from "./data.js";
-import { activeCharacter, getDnd } from "./store.js";
+import { activeCharacter, getDnd, getSettings, applyCampaignEdition } from "./store.js";
 import { presenceSummary } from "./engine/character.js";
 
 // Pages load on demand: the shell only pays for the ones you open.
@@ -44,7 +44,7 @@ export default {
       { id: "dndBestiary", label: "Bestiary", render: lazy("./views/bestiary.js", "renderBestiary") },
       { id: "dndItems", label: "Equipment & Items", render: lazy("./views/items.js", "renderItems") },
       { id: "dndClasses", label: "Classes", render: lazy("./views/classes.js", "renderClasses") },
-      { id: "dndRaces", label: "Races & Species", render: lazy("./views/races.js", "renderRaces") },
+      { id: "dndRaces", get label() { return getSettings().edition === "2024" ? "Species" : "Races"; }, render: lazy("./views/races.js", "renderRaces") },
       { id: "dndBackgrounds", label: "Backgrounds & Feats", render: lazy("./views/backgrounds.js", "renderBackgrounds") },
       { id: "dndRules", label: "Rules", render: lazy("./views/rules.js", "renderRules") },
       { id: "dndTables", label: "Reference Tables", render: lazy("./views/tables.js", "renderTables") },
@@ -52,19 +52,24 @@ export default {
     { label: "Dungeon Master", views: [
       { id: "dndDmScreen", label: "DM Screen", render: lazy("./views/dmScreen.js", "renderDmScreen") },
       { id: "dndEncounter", label: "Encounter Builder", render: lazy("./views/encounter.js", "renderEncounter") },
-      { id: "dndGenerators", label: "Generators", render: lazy("./views/generators.js", "renderGenerators") },
-      { id: "dndNotes", label: "Campaign Notes", render: lazy("./views/notes.js", "renderNotes") },
     ] },
   ],
   // Pages that show this player's own character: refreshed when a DM change lands.
   directiveViews: ["dndHome", "dndSheet", "dndCharacters"],
   async loadData() { return { system: "dnd5e" }; },
   mount() {
+    // Rule keywords in any rules text become links with a hover card (glossary.js); loaded after first paint.
+    Promise.all([import("./glossary.js"), import("../../markdown.js")]).then(([g, md]) => {
+      md.setKeywordLinker((root, o) => g.linkKeywords(root, o));
+      g.wireKeywordClicks();
+      g.warmGlossary();
+    }).catch(() => {});
     // Warm the rules cache for the active character so presence pings and DM
     // directives can use it before any page has been opened.
     const c = activeCharacter();
     loadCtx(c?.edition || getDnd().settings.edition).catch(() => {});
   },
+  applyCampaign(campaign) { applyCampaignEdition(campaign?.edition); },
   applyDirectives: pollAndApplyDirectives,
   presence(save) {
     const d = getDnd(save);

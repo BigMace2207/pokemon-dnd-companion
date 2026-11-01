@@ -203,12 +203,18 @@ export function renderBlocks(src, opts = {}) {
   return out;
 }
 
+// A game system can register a function that links rule keywords inside rendered text (see systems/dnd5e/glossary.js).
+// opts.keywords: false skips it; "docs" links every mention and makes them bold.
+let keywordLinker = null;
+export const setKeywordLinker = (fn) => { keywordLinker = fn; };
+const withKeywords = (root, opts) => { if (keywordLinker && opts.keywords !== false) keywordLinker(root, { all: opts.keywords === "docs" }); return root; };
+
 // renderMarkdown(src, opts) -> <div class="md"> ... </div>
 export function renderMarkdown(src, opts = {}) {
   const text = stripFrontMatter(String(src ?? ""));
   const root = renderBlocks(text, opts);
   root.className = "md";
-  return root;
+  return withKeywords(root, opts);
 }
 
 export function stripFrontMatter(text) {
@@ -248,7 +254,7 @@ export function joinParagraphs(arr) {
 export function renderDesc(arr, opts = {}) {
   const root = renderBlocks(joinParagraphs(arr), opts);
   root.className = "md";
-  return root;
+  return withKeywords(root, opts);
 }
 
 // Plain text of a markdown string (for search indexes and snippets).

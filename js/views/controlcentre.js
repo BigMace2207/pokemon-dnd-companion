@@ -1,3 +1,4 @@
+import { combatantLabel, ownerName } from "../battleLabels.js";
 import { el, field, makeCombo } from "../components.js";
 import { calcAllStats, checkHit, d20Roll, rollMoveDice, BALL_TYPES } from "../calc.js";
 import { battleMoves } from "../data.js";
@@ -225,7 +226,7 @@ function renderDmTools(body, state, token) {
     const d20 = d20Roll();
     const { hit } = checkHit(move.accuracy, d20);
     if (!hit) {
-      rollOut.textContent = `${atk.sourceLabel}'s ${atk.mon.nickname || atk.mon.name} used ${move.name} — MISSED (d20 rolled ${d20}).`;
+      rollOut.textContent = `${combatantLabel(atk)} used ${move.name} — MISSED (d20 rolled ${d20}).`;
       await postBattleLog("Dungeon Master", rollOut.textContent);
       return;
     }
@@ -244,14 +245,14 @@ function renderDmTools(body, state, token) {
     });
     const dmg = result.status ? 0 : result.damage;
     rollOut.textContent = result.status
-      ? `${atk.sourceLabel}'s ${atk.mon.nickname || atk.mon.name} used ${move.name} (status move — no direct damage).`
-      : `${atk.sourceLabel}'s ${atk.mon.nickname || atk.mon.name} used ${move.name} on ${def.sourceLabel}'s ${def.mon.nickname || def.mon.name} for ${dmg} damage!`
+      ? `${combatantLabel(atk)} used ${move.name} (status move — no direct damage).`
+      : `${combatantLabel(atk)} used ${move.name} on ${combatantLabel(def)} for ${dmg} damage!`
         + (result.special?.note ? ` (${result.special.note})` : "");
     if (dmg > 0) {
       await dmAction(token, "forceMove", {
         targetId: def.sourceId, targetKind: toServerTargetKind(def.sourceKind), monId: def.mon.id, damage: dmg,
-        attackerName: `${atk.sourceLabel}'s ${atk.mon.nickname || atk.mon.name}`,
-        defenderName: `${def.sourceLabel}'s ${def.mon.nickname || def.mon.name}`,
+        attackerName: `${combatantLabel(atk)}`,
+        defenderName: `${combatantLabel(def)}`,
         moveName: move.name,
       });
     } else {
@@ -294,7 +295,7 @@ function renderDmTools(body, state, token) {
     const level = Math.min(100, Math.max(1, Number(newLevel) || giveLevelEntry.mon.level || 1));
     await dmAction(token, "giveLevel", {
       targetId: giveLevelEntry.sourceId, monId: giveLevelEntry.mon.id, level,
-      trainerName: giveLevelEntry.sourceLabel, monName: giveLevelEntry.mon.nickname || giveLevelEntry.mon.name,
+      trainerName: ownerName(giveLevelEntry), monName: giveLevelEntry.mon.nickname || giveLevelEntry.mon.name,
     });
     giveLevelInput.value = level;
     // Levels can't land mid-fight (see js/battleGate.js) — let the DM know
@@ -302,8 +303,8 @@ function renderDmTools(body, state, token) {
     const ft = await getFullTurn();
     const midBattle = monIsLiveCombatant(ft, giveLevelEntry.sourceId, giveLevelEntry.mon.id);
     giveLevelOut.textContent = midBattle
-      ? `Queued — ${giveLevelEntry.sourceLabel}'s ${giveLevelEntry.mon.nickname || giveLevelEntry.mon.name} is mid-battle, so this'll apply once the encounter ends.`
-      : `Queued — ${giveLevelEntry.sourceLabel}'s ${giveLevelEntry.mon.nickname || giveLevelEntry.mon.name} will be Level ${level}.`;
+      ? `Queued — ${combatantLabel(giveLevelEntry)} is mid-battle, so this'll apply once the encounter ends.`
+      : `Queued — ${combatantLabel(giveLevelEntry)} will be Level ${level}.`;
   }
   givePlusOneBtn.addEventListener("click", () => giveLevel((Number(giveLevelInput.value) || giveLevelEntry?.mon.level || 1) + 1));
   giveSetLevelBtn.addEventListener("click", () => giveLevel(giveLevelInput.value));

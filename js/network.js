@@ -65,8 +65,12 @@ export async function listMyCampaigns(networkId) {
 export function getCampaign(id, networkId) {
   return getJSON(`/api/campaign/${encodeURIComponent(id)}?networkId=${encodeURIComponent(networkId)}`);
 }
-export function createCampaign(name, networkId, system = "pokemon-dnd") {
-  return postJSON("/api/campaigns", { name, networkId, system });
+export function createCampaign(name, networkId, system = "pokemon-dnd", edition = "2014") {
+  return postJSON("/api/campaigns", { name, networkId, system, edition });
+}
+// The D&D rules version (2014 or 2024) everyone in the campaign plays by; owner only.
+export function setCampaignEdition(id, edition, networkId) {
+  return postJSON(`/api/campaigns/${encodeURIComponent(id)}/set-edition`, { edition, networkId });
 }
 export function joinCampaign(code, networkId) {
   return postJSON("/api/campaigns/join", { code, networkId });
@@ -228,6 +232,22 @@ export async function checkDmToken(token) {
   const res = await getJSON(`/api/dm/check?token=${encodeURIComponent(token)}`);
   return !!res?.ok;
 }
+// --- Campaign planner: each player shares their own notes and checklists; only the DM (with the DM token) can read everyone's. ---
+export function sharePlan(id, name, plan) {
+  return postJSON("/api/plan", { id, name, plan });
+}
+export async function getAllPlans(token) {
+  const res = await getJSON(`/api/plans?token=${encodeURIComponent(token)}`);
+  return res?.plans || null;
+}
+// The one map the DM shares with the table. Players get only the places the DM has revealed; the DM token gets all of them.
+export async function getPartyMap(dmToken) {
+  const res = await getJSON(`/api/partymap${dmToken ? `?token=${encodeURIComponent(dmToken)}` : ""}`);
+  return res?.map ?? null;
+}
+export function publishPartyMap(token, map) { return postJSON("/api/partymap", { token, map }); }
+export function updatePartyMapLive(token, pins, tokens) { return postJSON("/api/partymap/live", { token, pins, tokens }); }
+export function clearPartyMap(token) { return postJSON("/api/partymap/clear", { token }); }
 export function dmAction(token, action, payload) {
   return postJSON("/api/dm/action", { token, action, ...payload });
 }

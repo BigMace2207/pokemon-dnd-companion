@@ -27,9 +27,14 @@
 - Character builder and a full sheet: abilities, skills, saves, HP and death saves, spell slots and spellbooks, inventory and encumbrance, features and choices, level-up and rests, multiclassing
 - SRD 5.1 (2014) and SRD 5.2 (2024) compendia: spells, monsters, equipment, magic items, classes, races/species, backgrounds, feats and rules text
 - Dice roller with macros; live party view; initiative and combat tracker the DM can publish to players
-- DM screen, encounter builder with XP budgets, generators (NPCs, taverns, loot, weather) and campaign notes
+- Pokémon D&D has its own look: every page is a town or route on a pixel overworld linked like the Hoenn map, with a route that scrolls as you read and a screen shake with falling Poké Balls when you click the page you are on. The shared sign-in and campaign screens are plain "D&D Companion"
+- The DM can share a map with the table, reveal places one by one and place the players on it; whiteboard nodes link to places on maps, and each session can be viewed on its own
+- The D&D rules version (2014 or 2024) is chosen by the campaign owner for the whole table (when creating the campaign, or in Settings > Campaign), so players never end up on different books
+- Rule keywords anywhere (conditions, skills, damage types, racial traits...) link to their Rules entry with a hover card, and are coloured and bold on the Rules page; the character builder saves your progress so you can continue later
+- DM screen, encounter builder with XP budgets, and campaign notes
 
 **Everywhere**
+- Campaign Planner (both games): one full-screen whiteboard, no tower behind it. A slim rail on the left adds nodes (notes, checklists, stickies, expandable dungeons with per-room notes, and every generator: Pokémon wild encounters, trainers, gym leaders, routes; D&D NPCs, encounters, taverns, loot...). Drag them around an endless board that grows as you near its edge, change or upload the background, and circle groups of nodes (box or freehand) into colour-coded "Session N" regions; a node can be in several sessions. The Notebook drawer holds searchable Markdown notes that can also be NPCs, quests (with status), locations and session recaps, with an export to Markdown (it replaces the old Campaign Notes page and imports its notes once). Maps, scenarios (DM) and party plans (DM) open as drawers. Players share their boards, notes and checklists with the DM automatically
 - Library: add your own PDF, EPUB, Word, text, Markdown and HTML books and read them in a built-in e-reader (they stay on your device)
 - Lava Tower theme (flame button in the top bar, or Settings → Appearance): grey brick tower, lava drips, cracks of light and crumbling stone; "Calm" turns the motion off
 - Pokémon D&D Rulebook page, rendered from the Obsidian vault
@@ -53,7 +58,7 @@ python -m unittest discover -s tests -v    # server tests
 node --test tests/js/*.test.mjs            # D&D rules engine (Node 20+)
 ```
 
-To try a branch or fork without touching real saves: `python tools/test_server.py [folder]` runs it on port 8860 with its own empty data (`--lan` for your phone, `--reset` to start fresh).
+To try a branch or fork without touching real saves: `python tools/test_server.py [folder]` runs it on port 8860 with its own empty data (`--lan` for your phone, `--reset` to start fresh). `python tools/seed_test_campaign.py` then fills that test server with a DM, seven players with 3rd-level characters and personal motives, and a twelve-session planner (three played), and `node tools/keep_table_online.mjs` keeps the seven players showing as online in Party.
 
 No packages to install and no build step: the server is standard-library Python and the front end is plain ES modules.
 

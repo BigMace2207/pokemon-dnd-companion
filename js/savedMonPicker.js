@@ -11,6 +11,7 @@
 // id, or null for your own team), which the Full Turn console needs to
 // route HP/status changes back to the right place later.
 
+import { monWithLevel } from "./battleLabels.js";
 import { el, field } from "./components.js";
 import { loadSave } from "./storage.js";
 import { getNpcs, getNpc, getWildList, getWildMon, listTrainers, getTrainerTeam } from "./network.js";
@@ -36,7 +37,7 @@ export function makeSavedMonPicker({ onPick, title = "Load a Saved Pokémon", de
     if (sourceSelect.value === "team") {
       const save = loadSave();
       [...save.party, ...save.pc].filter((m) => m.name).forEach((m) => {
-        entries.push({ mon: m, label: `${m.nickname || m.name} (Lv.${m.level})`, sourceKind: "team", sourceId: save.networkId, sourceLabel: save.trainer.name || "You" });
+        entries.push({ mon: m, label: monWithLevel(m), sourceKind: "team", sourceId: save.networkId, sourceLabel: save.trainer.name || "You" });
       });
     } else if (sourceSelect.value === "player") {
       const trainers = await listTrainers("");
@@ -44,7 +45,7 @@ export function makeSavedMonPicker({ onPick, title = "Load a Saved Pokémon", de
         const res = await getTrainerTeam(t.id);
         const mons = [...(res?.team?.party || []), ...(res?.team?.pc || [])].filter((m) => m.name);
         mons.forEach((m) => {
-          entries.push({ mon: m, label: `${t.name}: ${m.nickname || m.name} (Lv.${m.level})`, sourceKind: "player", sourceId: t.id, sourceLabel: t.name });
+          entries.push({ mon: m, label: `${t.name || "A trainer"}: ${monWithLevel(m)}`, sourceKind: "player", sourceId: t.id, sourceLabel: t.name || "A trainer" });
         });
       }
     } else if (sourceSelect.value === "npc") {
@@ -52,14 +53,14 @@ export function makeSavedMonPicker({ onPick, title = "Load a Saved Pokémon", de
       for (const n of npcs) {
         const full = await getNpc(n.id);
         (full?.team?.party || []).filter((m) => m.name).forEach((m) => {
-          entries.push({ mon: m, label: `${n.name}: ${m.nickname || m.name} (Lv.${m.level})`, sourceKind: "npc", sourceId: n.id, sourceLabel: n.name });
+          entries.push({ mon: m, label: `${n.name || "NPC"}: ${monWithLevel(m)}`, sourceKind: "npc", sourceId: n.id, sourceLabel: n.name || "NPC" });
         });
       }
     } else {
       const list = await getWildList();
       for (const w of list) {
         const full = await getWildMon(w.id);
-        if (full?.name) entries.push({ mon: full, label: `${full.nickname || full.name} (Lv.${full.level})`, sourceKind: "wild", sourceId: w.id, sourceLabel: full.nickname || full.name });
+        if (full?.name) entries.push({ mon: full, label: monWithLevel(full), sourceKind: "wild", sourceId: w.id, sourceLabel: full.nickname || full.name });
       }
     }
     monSelect.innerHTML = "";

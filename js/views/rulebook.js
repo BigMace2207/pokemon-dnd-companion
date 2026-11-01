@@ -77,14 +77,14 @@ function build(container, book) {
     const i = pages.findIndex((p) => p.id === id);
     const prev = pages[i - 1], next = pages[i + 1];
     const tools = TOOLS[id] || [];
-    body.replaceChildren(
+    body.replaceChildren(...[
       ...nodes,
       tools.length ? el("div", { class: "rb-tools" }, [el("strong", {}, "Related tools: "), ...tools.map(([view, label]) => { const b = el("button", { class: "btn secondary" }, label); b.addEventListener("click", () => { location.hash = view; }); return b; })]) : null,
       el("div", { class: "rb-pager" }, [
         prev ? pagerBtn("←", prev) : el("span"),
         next ? pagerBtn("→", next) : el("span"),
       ]),
-    );
+    ].filter(Boolean));
     if (scroll) { container.closest("main")?.scrollTo?.(0, 0); body.scrollIntoView({ block: "start" }); }
   }
   const pagerBtn = (arrow, p) => { const b = el("button", { class: "btn secondary" }, arrow === "←" ? `← ${p.title}` : `${p.title} →`); b.addEventListener("click", () => show(p.id)); return b; };

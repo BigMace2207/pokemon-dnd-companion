@@ -1,0 +1,13 @@
+/* Whiteboard background presets (css/whiteboard.css has the layout). Gradients only, so nothing is stored or shared. */
+/* backgrounds: gradients only, so nothing is stored or shared */
+.pl-bg-parchment { background-color: #e9d9b4; background-image: radial-gradient(ellipse at 20% 15%, rgba(255, 244, 214, .7), transparent 55%), radial-gradient(ellipse at 80% 85%, rgba(150, 110, 60, .28), transparent 60%); background-size: 100% 100%; }
+.pl-bg-grid { background-color: #f4f1e8; background-image: linear-gradient(#b9c4d6 1px, transparent 1px), linear-gradient(90deg, #b9c4d6 1px, transparent 1px); background-size: 40px 40px; }
+.pl-bg-dots { background-color: #fbfaf5; background-image: radial-gradient(#9aa3b2 2.2px, transparent 2.4px); background-size: 36px 36px; }
+.pl-bg-slate { background-color: #23272e; background-image: linear-gradient(rgba(255, 255, 255, .05) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, .05) 1px, transparent 1px); background-size: 48px 48px; }
+.pl-bg-blueprint { background-color: #1c4a86; background-image: linear-gradient(rgba(255, 255, 255, .22) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, .22) 1px, transparent 1px), linear-gradient(rgba(255, 255, 255, .09) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, .09) 1px, transparent 1px); background-size: 160px 160px, 160px 160px, 32px 32px, 32px 32px; }
+.pl-bg-stone { background-color: #55514d; background-image: linear-gradient(rgba(0, 0, 0, .35) 3px, transparent 3px), linear-gradient(90deg, rgba(0, 0, 0, .35) 3px, transparent 3px), radial-gradient(circle at 30% 30%, rgba(255, 255, 255, .08), transparent 60%); background-size: 120px 80px, 120px 80px, 400px 400px; }
+.pl-bg-forest { background-color: #2f4a2b; background-image: radial-gradient(circle at 20% 30%, rgba(120, 170, 80, .35), transparent 22%), radial-gradient(circle at 70% 60%, rgba(30, 70, 30, .6), transparent 26%), radial-gradient(circle at 45% 85%, rgba(150, 190, 90, .25), transparent 18%); background-size: 520px 520px; }
+.pl-bg-ocean { background-color: #cfe3ea; background-image: repeating-radial-gradient(circle at 50% 50%, transparent 0, transparent 38px, rgba(40, 90, 120, .18) 39px, transparent 41px); background-size: 400px 400px; }
+.pl-bg-lava { background-color: #1a0d0a; background-image: radial-gradient(ellipse at 50% 100%, rgba(255, 90, 20, .5), transparent 60%), radial-gradient(circle at 20% 40%, rgba(255, 140, 40, .18), transparent 15%), radial-gradient(circle at 80% 20%, rgba(255, 90, 20, .15), transparent 18%); background-size: 100% 100%; }
+.pl-bg-plain { background-color: #ffffff; }
+.pl-bg-image { background-color: #222; }

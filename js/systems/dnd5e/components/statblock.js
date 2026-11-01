@@ -63,7 +63,7 @@ export function statBlock(m, opts = {}) {
   const sub = [m.size, m.type + (m.subtype ? ` (${m.subtype})` : ""), m.alignment].filter(Boolean).join(" ");
   const root = el("div", { class: "dnd-statblock" });
   root.append(el("h3", {}, m.name), el("div", { class: "sub" }, sub.charAt(0).toUpperCase() + sub.slice(1)), el("hr"));
-  root.append(prop("Armor Class", acText(m)), prop("Hit Points", `${m.hp ?? "—"}${m.hpRoll ? ` (${m.hpRoll})` : m.hitDice ? ` (${m.hitDice})` : ""}`), prop("Speed", speedText(m.speed)), el("hr"));
+  root.append(...[prop("Armor Class", acText(m)), prop("Hit Points", `${m.hp ?? "—"}${m.hpRoll ? ` (${m.hpRoll})` : m.hitDice ? ` (${m.hitDice})` : ""}`), prop("Speed", speedText(m.speed)), el("hr")].filter(Boolean));
   const abil = el("div", { class: "abilities" }, ABILITY_KEYS.map((k) => {
     const score = m.abilities?.[k] ?? 10;
     const mod = abilityMod(score);
@@ -74,7 +74,7 @@ export function statBlock(m, opts = {}) {
   root.append(abil, el("hr"));
   const saves = Object.entries(m.saves || {});
   const skills = Object.entries(m.skills || {});
-  root.append(
+  root.append(...[   // prop() is null for an empty line, and append() would print that as "null"
     prop("Saving Throws", saves.length ? saves.map(([k, v]) => `${k} ${signed(v)}`).join(", ") : null),
     prop("Skills", skills.length ? skills.map(([k, v]) => `${k} ${signed(v)}`).join(", ") : null),
     prop("Damage Vulnerabilities", (m.vulnerabilities || []).join("; ")),
@@ -85,7 +85,7 @@ export function statBlock(m, opts = {}) {
     prop("Languages", m.languages || "—"),
     prop("Challenge", crText(m)),
     prop("Proficiency Bonus", m.pb != null ? signed(m.pb) : null),
-  );
+  ].filter(Boolean));
   root.append(el("hr"));
   for (const t of m.traits || []) {
     const e = entry(m, t, opts);

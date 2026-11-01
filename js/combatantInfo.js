@@ -5,14 +5,15 @@
 
 import { el, typePill } from "./components.js";
 import { attachInfoTooltip, tooltipTitle, tooltipRow } from "./infoTooltip.js";
+import { monName, ownerName, levelText } from "./battleLabels.js";
 
 function buildContent(c, species) {
   const mon = c.mon;
   const rows = [
-    tooltipTitle(mon.nickname || mon.name),
+    tooltipTitle(monName(mon)),
     species ? el("div", {}, [typePill(species.type1), species.type2 ? typePill(species.type2) : null].filter(Boolean)) : null,
-    tooltipRow(`Trainer: ${c.sourceLabel}`),
-    tooltipRow(`Level ${mon.level ?? "?"}`),
+    tooltipRow(`Trainer: ${ownerName(c)}`),
+    tooltipRow(`Level ${levelText(mon.level)}`),
     mon.ability ? tooltipRow(`Ability: ${mon.ability}`) : null,
     mon.item ? tooltipRow(`Held item: ${mon.item}`) : null,
     tooltipRow(`Status: ${mon.status && mon.status !== "None" ? mon.status : "None"}`),

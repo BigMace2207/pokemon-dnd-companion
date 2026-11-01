@@ -2,7 +2,7 @@
 // abilities -> spells -> equipment -> review) that produces a ready-to-play sheet.
 // Everything is editable on the sheet afterwards; the wizard only saves typing.
 
-import { el, field, btn, chip, selectEl, numInput, textInput, checkbox, toast, asyncView, section } from "../ui.js";
+import { el, field, btn, chip, selectEl, numInput, textInput, checkbox, toast, asyncView, section, confirmDialog } from "../ui.js";
 import { loadCtx, loadSet } from "../data.js";
 import { renderDesc } from "../../../markdown.js";
 import { pickMany, pickOne } from "../components/choiceUi.js";
@@ -16,9 +16,18 @@ import {
   ABILITIES, ABILITY_KEYS, ALIGNMENTS, SKILLS, STANDARD_ARRAY, POINT_BUY_COST, POINT_BUY_BUDGET, SUBCLASS_LEVEL, STARTING_GOLD,
 } from "../engine/rules.js";
 import { slug } from "../engine/dataIndex.js";
-import { getSettings, setSettings, saveCharacter, createCharacter } from "../store.js";
+import { getSettings, setSettings, saveCharacter, createCharacter, getCampaignEdition } from "../store.js";
 import { rollDie } from "../engine/dice.js";
 import { hpBar } from "../components/hpBar.js";
+import { DRAGONS, dragonFor } from "../engine/dragons.js";
+
+// ---- an unfinished character survives leaving the page (kept on this device until you finish or discard it)
+const DRAFT_KEY = "pokemon-dnd-dnd-builder-draft";
+const hasProgress = (d) => !!(d.name || d.raceId || d.classId || d.backgroundId);
+export function loadSavedDraft() {
+  try { const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null"); return d && d.draft && hasProgress(d.draft) ? d : null; } catch { return null; }
+}
+export function clearSavedDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch { /* storage blocked */ } }
 
 const STEPS = [
   ["basics", "Basics"], ["race", "Race"], ["class", "Class"], ["background", "Background"],
@@ -27,11 +36,21 @@ const STEPS = [
 
 const signed = (n) => (n >= 0 ? `+${n}` : `−${Math.abs(n)}`);
 
-export function renderBuilder(container, { onDone, onCancel } = {}) {
+export function renderBuilder(container, { onDone, onCancel, resume = false } = {}) {
   container.replaceChildren(el("p", { class: "view-sub" }, "Loading the rules…"));
   const edition0 = getSettings().edition || "2014";
-  let draft = newDraft(edition0);
-  let step = 0;
+  const saved = resume ? loadSavedDraft() : null;
+  let draft = saved ? Object.assign(newDraft(saved.draft.edition || edition0), saved.draft) : newDraft(edition0);
+  let step = saved ? Math.max(0, Number(saved.step) || 0) : 0;
+  let finished = false, saveTimer = null;
+  const persistDraft = () => {
+    clearTimeout(saveTimer);
+    if (finished || !hasProgress(draft)) return;
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ draft, step, saved: Date.now() })); } catch { /* storage blocked */ }
+  };
+  const queueSave = () => { clearTimeout(saveTimer); saveTimer = setTimeout(persistDraft, 400); };
+  window.addEventListener("pagehide", persistDraft, { once: true });
+  window.addEventListener("hashchange", persistDraft, { once: true });   // leaving for another tab of the site keeps your progress
   let ctx = null, categories = null, spellList = null, languages = [];
 
   const root = el("div", { class: "dnd-builder" });
@@ -107,7 +126,7 @@ export function renderBuilder(container, { onDone, onCancel } = {}) {
     const list = stepsList();
     stepBar.replaceChildren(...list.map(([id, label], i) => {
       const active = id === list[step]?.[0];
-      const b = el("button", { type: "button", class: `pill-btn${active ? " active" : ""}`, role: "listitem", "aria-current": active ? "step" : null }, `${i + 1}. ${label}`);
+      const b = el("button", { type: "button", class: `pill-btn${active ? " active" : ""}`, role: "listitem", "aria-current": active ? "step" : null }, `${i + 1}. ${id === "race" && draft.edition === "2024" ? "Species" : label}`);
       b.addEventListener("click", () => go(i));
       return b;
     }));
@@ -117,6 +136,7 @@ export function renderBuilder(container, { onDone, onCancel } = {}) {
     const list = stepsList();
     step = Math.max(0, Math.min(list.length - 1, i));
     draw();
+    persistDraft();
     root.scrollIntoView({ block: "start" });
   }
 
@@ -124,7 +144,10 @@ export function renderBuilder(container, { onDone, onCancel } = {}) {
     const list = stepsList();
     const last = step >= list.length - 1;
     nav.replaceChildren(
-      btn("Cancel", () => onCancel?.(), "btn secondary"),
+      el("div", { class: "dnd-row" }, [
+        btn("Save for later", () => { persistDraft(); toast("Saved. Pick it up again from the Characters page.", "good"); onCancel?.(); }, "btn secondary"),
+        btn("Discard", async () => { if (await confirmDialog("Throw away this unfinished character?", { ok: "Discard", danger: true })) { finished = true; clearSavedDraft(); onCancel?.(); } }, "btn secondary"),
+      ]),
       el("div", { class: "dnd-row" }, [
         step > 0 ? btn("← Back", () => go(step - 1), "btn secondary") : null,
         last ? null : btn("Next →", () => go(step + 1), "btn"),
@@ -158,7 +181,7 @@ export function renderBuilder(container, { onDone, onCancel } = {}) {
     const lvl = numInput(draft.startLevel, (v) => { draft.startLevel = Math.max(1, Math.min(20, v || 1)); lvl.value = draft.startLevel; renderSummary(); }, { min: 1, max: 20 });
     body.append(section("Who are you?", [
       el("div", { class: "dnd-grid-2" }, [field("Name", name), field("Player", player)]),
-      el("div", { class: "dnd-grid-2" }, [field("Rules edition", ed), field("Alignment", align)]),
+      el("div", { class: "dnd-grid-2" }, [getCampaignEdition() ? field("Rules edition", el("p", { class: "dnd-edition-note" }, [el("strong", {}, `${getCampaignEdition()} rules`), " · set by this campaign's owner (Settings > Campaign), so everyone builds with the same version."])) : field("Rules edition", ed), field("Alignment", align)]),
       field("Starting level", lvl),
       el("p", { class: "view-sub dnd-small" }, "Most campaigns start at level 1. Choose a higher level to jump in mid-campaign — hit points use the average for each level, and any feat or ability score improvements you've earned can be applied from the sheet."),
     ]));
@@ -168,7 +191,7 @@ export function renderBuilder(container, { onDone, onCancel } = {}) {
   function stepRace() {
     const list = ctx.raw.races.list;
     const kind = draft.edition === "2024" ? "species" : "race";
-    const options = list.map((r) => ({ value: r.id, label: r.name, sub: raceSub(r) }));
+    const options = list.map((r) => ({ value: r.id, label: r.name, sub: raceSub(r), tip: raceTip(r) }));
     const picker = pickOne(options, draft.raceId, (v) => {
       draft.raceId = v; draft.subraceId = ""; draft.raceAbilityPicks = []; draft.raceLanguagePicks = []; draft.raceSkillPicks = []; draft.raceToolPick = ""; draft.raceSpellPick = ""; draft.raceTraitPicks = {};
       detail(); renderSummary();
@@ -176,6 +199,10 @@ export function renderBuilder(container, { onDone, onCancel } = {}) {
     const detailBox = el("div");
     body.append(el("div", { class: "dnd-split-even" }, [section(draft.edition === "2024" ? "Choose a species" : "Choose a race", picker), detailBox]));
 
+    function raceTip(r) {
+      const names = [...r.traits.map((t) => t.name), ...(r.subraces.length ? [`${r.subraces.length} ${draft.edition === "2024" ? "lineages" : "subraces"}`] : [])];
+      return `${[r.size, r.speed ? `speed ${r.speed} ft` : ""].filter(Boolean).join(", ")}. ${names.length ? `Traits: ${names.join(", ")}.` : ""}`.trim();
+    }
     function raceSub(r) {
       const bonus = r.abilityBonuses.map((b) => `${b.ability} ${signed(b.bonus)}`).join(", ");
       return `${r.size || ""}${r.speed ? ` · ${r.speed} ft.` : ""}${bonus ? ` · ${bonus}` : ""}`;
@@ -190,6 +217,7 @@ export function renderBuilder(container, { onDone, onCancel } = {}) {
       if (r.subraces.length) {
         parts.push(el("h4", {}, draft.edition === "2024" ? "Lineage / ancestry" : "Subrace"));
         parts.push(pickOne(r.subraces.map((s) => ({ value: s.id, label: s.name, sub: s.abilityBonuses.map((b) => `${b.ability} ${signed(b.bonus)}`).join(", ") })), draft.subraceId, (v) => { draft.subraceId = v; detail(); renderSummary(); }));
+        if (r.id === "dragonborn") parts.push(dragonBlock(draft.subraceId, (color) => { draft.subraceId = `draconic-ancestor-${color.toLowerCase()}`; detail(); renderSummary(); }));
         const s = r.subraces.find((x) => x.id === draft.subraceId);
         if (s?.desc) parts.push(el("p", { class: "dnd-small" }, s.desc));
         for (const t of s?.traits || []) parts.push(traitBlock(t));
@@ -213,7 +241,7 @@ export function renderBuilder(container, { onDone, onCancel } = {}) {
           parts.push(field("Choose a tool", selectEl([["", "— choose —"], ...["Smith's Tools", "Brewer's Supplies", "Mason's Tools"].map((x) => [x, x])], draft.raceToolPick, (v) => { draft.raceToolPick = v; })));
         }
         if (t.options?.length && t.name === "Draconic Ancestry") {
-          parts.push(field("Dragon ancestry", selectEl([["", "— choose —"], ...t.options.map((o) => [o, o])], draft.raceTraitPicks[t.name] || "", (v) => { draft.raceTraitPicks[t.name] = v; })));
+          parts.push(dragonBlock(draft.raceTraitPicks[t.name] || "", (color) => { draft.raceTraitPicks[t.name] = t.options.find((o) => dragonFor(o)?.color === color) || ""; detail(); }));
         }
       }
       for (const t of [...r.traits, ...(r.subraces.find((x) => x.id === draft.subraceId)?.traits || [])]) {
@@ -224,12 +252,35 @@ export function renderBuilder(container, { onDone, onCancel } = {}) {
     detail();
   }
 
+  // The ten dragon ancestors with what each one gives: click a row to choose it.
+  function dragonBlock(selected, onPick) {
+    const cur = dragonFor(selected);
+    const rows = DRAGONS.map((d) => {
+      const tr = el("tr", { class: `dnd-dragon-row${cur?.color === d.color ? " selected" : ""}`, tabindex: "0", role: "button", "aria-pressed": String(cur?.color === d.color), "data-tip-title": `${d.color} dragon`, "data-tip": `${d.damage} damage breath weapon, ${d.shape}, ${d.save} save. You resist ${d.damage.toLowerCase()} damage.` }, [
+        el("td", {}, el("strong", {}, d.color)), el("td", {}, d.damage), el("td", {}, d.shape), el("td", {}, d.save),
+      ]);
+      const pick = () => onPick(d.color);
+      tr.addEventListener("click", pick);
+      tr.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } });
+      return tr;
+    });
+    return el("div", { class: "dnd-dragon" }, [
+      el("h4", {}, "Draconic ancestry"),
+      el("p", { class: "dnd-small dnd-muted" }, "Your dragon decides your breath weapon and the damage you resist. Click a row to choose."),
+      el("div", { class: "dnd-table-scroll" }, el("table", { class: "data-table" }, [
+        el("thead", {}, el("tr", {}, ["Dragon", "Damage", "Breath weapon", "Save"].map((h) => el("th", {}, h)))),
+        el("tbody", {}, rows),
+      ])),
+      cur ? el("p", { class: "dnd-strong" }, `${cur.color} dragon: your breath weapon is a ${cur.shape} of ${cur.damage.toLowerCase()} (${cur.save} save), and you resist ${cur.damage.toLowerCase()} damage.`) : el("p", { class: "dnd-small dnd-muted" }, "Nothing chosen yet."),
+    ]);
+  }
+
   const traitBlock = (t) => el("div", { class: "dnd-trait" }, [el("strong", {}, t.name), renderDesc(t.desc)]);
 
   // ------------------------------------------------------------ 3 class
   function stepClass() {
     const list = ctx.raw.classes.list;
-    const picker = pickOne(list.map((c) => ({ value: c.id, label: c.name, sub: `d${c.hitDie} · saves ${c.saves.join(", ")}${c.spellcasting ? " · spellcaster" : ""}` })), draft.classId, (v) => {
+    const picker = pickOne(list.map((c) => ({ value: c.id, label: c.name, sub: `d${c.hitDie} · saves ${c.saves.join(", ")}${c.spellcasting ? " · spellcaster" : ""}`, tip: `Armor: ${c.armor.join(", ") || "none"}. Weapons: ${c.weapons.join(", ") || "none"}.${c.primaryAbility ? ` Primary ability: ${c.primaryAbility}.` : ""}` })), draft.classId, (v) => {
       draft.classId = v; draft.classSkills = []; draft.subclassId = ""; draft.equipChoice = {}; draft.equipPick = {}; draft.cantrips = []; draft.spellsKnown = []; draft.spellbook = []; draft.prepared = [];
       draft.scores = draft.method === "standard" ? standardArrayFor(CLASS_PRIORITY[v]) : draft.scores;
       detail(); renderSummary();
@@ -275,7 +326,7 @@ export function renderBuilder(container, { onDone, onCancel } = {}) {
   // ------------------------------------------------------------ 4 background
   function stepBackground() {
     const list = ctx.raw.backgrounds.list;
-    const opts = [...list.map((b) => ({ value: b.id, label: b.name, sub: [...(b.skills || [])].join(", ") })),
+    const opts = [...list.map((b) => ({ value: b.id, label: b.name, sub: [...(b.skills || [])].join(", "), tip: b.skills?.length ? `Skills: ${b.skills.join(", ")}.` : "" })),
       ...(draft.edition === "2014" ? [{ value: "custom", label: "Custom background", sub: "Make your own: name, two skills, a feature" }] : [])];
     const picker = pickOne(opts, draft.backgroundId || (draft.bgCustom.name ? "custom" : ""), (v) => {
       draft.backgroundId = v === "custom" ? "" : v;
@@ -494,6 +545,7 @@ export function renderBuilder(container, { onDone, onCancel } = {}) {
       if (probs.length) { toast(probs[0], "bad"); return; }
       const c = buildCharacter(draft, ctx);
       saveCharacter(c);
+      finished = true; clearSavedDraft();
       toast(`${c.name} is ready — good luck!`, "good");
       onDone?.(c);
     }, "btn");
@@ -511,11 +563,13 @@ export function renderBuilder(container, { onDone, onCancel } = {}) {
 
   // ------------------------------------------------------------ boot
   root.append(stepBar, el("div", { class: "dnd-builder-grid" }, [body, summary]), nav);
+  for (const ev of ["input", "change", "click"]) root.addEventListener(ev, queueSave);
   (async () => {
     try {
       await loadEdition(draft.edition);
-      container.replaceChildren(el("h1", { class: "view-title" }, "New Character"), root);
+      container.replaceChildren(el("h1", { class: "view-title" }, saved ? "Continue your character" : "New Character"), root);
       draw();
+      if (saved) toast("Picked up where you left off.", "good");
     } catch (e) {
       container.replaceChildren(el("div", { class: "card" }, [el("strong", {}, "Couldn't load the rules."), el("p", { class: "view-sub" }, String(e.message))]));
     }

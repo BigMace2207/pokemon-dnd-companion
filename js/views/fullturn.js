@@ -12,6 +12,7 @@
 // only the DM needs, so it's saved server-side as STATE.fullTurn via the
 // fullTurnSave dmAction and loaded once per visit rather than polled.
 
+import { combatantLabel, ownerName, monName } from "../battleLabels.js";
 import { el, field } from "../components.js";
 import {
   calcAllStats, checkHit, d20Roll, rollMoveDice, successThreshold,
@@ -78,7 +79,7 @@ export function renderFullTurn(container, state, token) {
   }
   function labelFor(c) {
     const mega = c.megaEvolved ? " (Mega)" : "";
-    return `${c.sourceLabel}: ${c.mon.nickname || c.mon.name}${mega}`;
+    return `${ownerName(c)}: ${monName(c.mon)}${mega}`;
   }
 
   function orderedList() {
@@ -242,7 +243,7 @@ export function renderFullTurn(container, state, token) {
         priorityCheck.checked = c.priority;
         priorityCheck.style.width = "auto";
         priorityCheck.addEventListener("input", () => { c.priority = priorityCheck.checked; persist(); render(); });
-        const tieBtn = el("button", { class: "btn secondary" }, c.tiebreak !== null ? `d20: ${c.tiebreak}` : "Roll tiebreak");
+        const tieBtn = el("button", { class: "btn secondary" }, c.tiebreak != null ? `d20: ${c.tiebreak}` : "Roll tiebreak");
         tieBtn.addEventListener("click", () => { c.tiebreak = d20Roll(); persist(); render(); });
         const removeBtn = el("button", { class: "btn secondary" }, "✕");
         removeBtn.addEventListener("click", () => {
@@ -257,7 +258,7 @@ export function renderFullTurn(container, state, token) {
           el("td", {}, labelFor(c)),
           el("td", {}, sideSelect),
           el("td", {}, String(stats?.spe ?? "?")),
-          el("td", {}, `${hp} / ${max ?? "?"}${hp === 0 ? " (fainted)" : ""}`),
+          el("td", {}, `${hp ?? "?"} / ${max ?? "?"}${hp === 0 ? " (fainted)" : ""}`),
           el("td", {}, c.mon.status || "None"),
           el("td", {}, priorityCheck),
           el("td", {}, tieBtn),
@@ -363,7 +364,7 @@ export function renderFullTurn(container, state, token) {
     return dmAction(token, "setHp", {
       targetId: c.sourceId, targetKind: toServerTargetKind(c.sourceKind), monId: c.mon.id,
       absolute: c.mon.currentHp, delta: null, inBattle: true, logText,
-      trainerName: c.sourceLabel, monName: c.mon.nickname || c.mon.name,
+      trainerName: ownerName(c), monName: c.mon.nickname || c.mon.name,
     });
   }
 
@@ -371,7 +372,7 @@ export function renderFullTurn(container, state, token) {
     c.mon.status = status;
     return dmAction(token, "setStatus", {
       targetId: c.sourceId, targetKind: toServerTargetKind(c.sourceKind), monId: c.mon.id, status,
-      inBattle, trainerName: c.sourceLabel, monName: c.mon.nickname || c.mon.name,
+      inBattle, trainerName: ownerName(c), monName: c.mon.nickname || c.mon.name,
     });
   }
 
@@ -580,7 +581,7 @@ export function renderFullTurn(container, state, token) {
       c.megaFrom = c.mon.name;
       c.mon.name = megaSpecies.name;
       c.megaEvolved = true;
-      const text = `${c.sourceLabel}'s ${c.mon.nickname || c.megaFrom} Mega Evolved into ${megaSpecies.name}!`;
+      const text = `${ownerName(c)}'s ${c.mon.nickname || c.megaFrom} Mega Evolved into ${megaSpecies.name}!`;
       resultOut.textContent = text;
       await postLog(text);
       await persist();
@@ -592,7 +593,7 @@ export function renderFullTurn(container, state, token) {
       c.mon.name = c.megaFrom || c.mon.name;
       c.megaFrom = null;
       c.megaEvolved = false;
-      const text = `${c.sourceLabel}'s ${c.mon.nickname || c.mon.name} (${megaName}) reverted from its Mega Evolution.`;
+      const text = `${combatantLabel(c)} (${megaName}) reverted from its Mega Evolution.`;
       resultOut.textContent = text;
       await postLog(text);
       await persist();

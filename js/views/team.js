@@ -168,6 +168,7 @@ export function renderTeam(container, state) {
     // level (level-up moves gated by level, TM/Egg/Tutor moves always
     // available) rather than the entire move list — see learnableMoveNames.
     const monMoveNames = learnableMoveNames(state, mon);
+    if (!Array.isArray(mon.moves)) mon.moves = ["", "", "", ""];   // an older or imported save without a move list
     const moveCombos = mon.moves.map((mv, i) => {
       const combo = makeCombo({ options: monMoveNames, initial: mv, placeholder: `Move ${i + 1}`, onSelect: (n) => { mon.moves[i] = n; writeSave(save); } });
       combo.inputEl.addEventListener("blur", () => { mon.moves[i] = combo.inputEl.value; writeSave(save); });

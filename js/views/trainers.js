@@ -1,3 +1,4 @@
+import { monWithLevel } from "../battleLabels.js";
 import { el, field, typePill } from "../components.js";
 import { loadSave, writeSave, newMon } from "../storage.js";
 import { pingTrainer, listTrainers, getTrainerTeam, sendToTrainer, getInbox, ackInbox, sendNoteToDm } from "../network.js";
@@ -121,7 +122,7 @@ export function renderTrainersOnline(container, state) {
       if (typeSelect.value === "Pokémon") {
         const options = [...save.party, ...save.pc].filter((m) => m.name);
         if (!options.length) { body.appendChild(el("p", { class: "view-sub" }, "You have no Pokémon with a species set yet — set one up in My Team first.")); return; }
-        const monSelect = el("select", {}, options.map((m, i) => el("option", { value: i }, `${m.nickname || m.name} (Lv.${m.level})`)));
+        const monSelect = el("select", {}, options.map((m, i) => el("option", { value: i }, monWithLevel(m))));
         const sendBtn = el("button", { class: "btn" }, `Send to ${trainer.name}`);
         sendBtn.addEventListener("click", async () => {
           const mon = options[Number(monSelect.value)];

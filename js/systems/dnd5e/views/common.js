@@ -2,7 +2,7 @@
 
 import { el, pill } from "../ui.js";
 import { EDITIONS } from "../data.js";
-import { getSettings, setSettings } from "../store.js";
+import { getSettings, setSettings, getCampaignEdition } from "../store.js";
 
 export function pageTitle(title, sub) {
   return [
@@ -13,6 +13,8 @@ export function pageTitle(title, sub) {
 
 // A compact "2014 | 2024" switch that remembers the choice in the D&D settings.
 export function editionSwitch(onChange, current = getSettings().edition) {
+  const fixed = getCampaignEdition();
+  if (fixed) return el("p", { class: "dnd-edition-note" }, [el("strong", {}, `${fixed} rules`), " · set by this campaign's owner, so everyone plays the same version."]);
   const wrap = el("div", { class: "dnd-row tight", role: "group", "aria-label": "Rules edition" });
   let cur = current;
   const draw = () => wrap.replaceChildren(...EDITIONS.map((e) => pill(e.id === "2014" ? "2014 rules" : "2024 rules", e.id === cur, () => {

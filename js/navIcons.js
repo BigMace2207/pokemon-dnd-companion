@@ -43,8 +43,7 @@ export const DND_ICONS = {
   dndTables: svg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/>'),
   dndDmScreen: svg('<path d="M3 6l6 2v13l-6-2zM9 8l6-2v13l-6 2zM15 6l6 2v13l-6-2z"/>'),
   dndEncounter: svg('<path d="M12 3v18M5 21h14M5 8h14"/><path d="M5 8l-3 7a3.5 3.5 0 0 0 6 0zM19 8l-3 7a3.5 3.5 0 0 0 6 0z"/>'),
-  dndGenerators: svg('<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.2"/><circle cx="15" cy="15" r="1.2"/><circle cx="15" cy="9" r="1.2"/><circle cx="9" cy="15" r="1.2"/>'),
-  dndNotes: svg('<path d="M4 20l1-4L17 4l3 3L8 19z"/><path d="M14 7l3 3"/>'),
+  planner: svg('<path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><path d="M8 5H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2"/><path d="M9 11l1.6 1.6L13.5 9.5M9 16.5h6"/>'),
   library: svg('<path d="M4 4h4v16H4zM9 4h4v16H9z"/><path d="M14 6l4-1 3 14-4 1z"/>'),
   rulebook: svg('<path d="M5 3h12a2 2 0 0 1 2 2v16H7a2 2 0 0 1-2-2z"/><circle cx="12" cy="11" r="3.2"/><path d="M8.8 11h6.4"/>'),
 };

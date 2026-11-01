@@ -121,6 +121,12 @@ body {
   grid-template-areas: "top" "main";
 }
 #app.gate-mode .sidenav, #app.gate-mode .nav-toggle { display: none; }
+/* Desktop: the menu can be folded away (the toggle in the top bar; remembered per device) */
+@media (min-width: 781px) {
+  html.nav-collapsed { --sidenav-w: 0px; }
+  html.nav-collapsed .sidenav { display: none; }
+  html.nav-collapsed .lava-tower-wrap, html.nav-collapsed .lava-debris { display: none; }
+}
 
 .topbar {
   grid-area: top;
@@ -143,7 +149,7 @@ body {
 }
 @media (max-width: 480px) { .brand-text { display: none; } }
 .nav-toggle {
-  display: none;
+  display: inline-block;
   background: none; border: 1px solid var(--border); border-radius: 8px;
   color: var(--text); font-size: calc(24.5px * var(--s)); padding: calc(5px * var(--s)) calc(11px * var(--s)); cursor: pointer;
 }

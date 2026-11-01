@@ -1,7 +1,7 @@
 {
-  "name": "Pokémon D&D Companion",
-  "short_name": "Pokédex",
-  "description": "Pokédex, calculators, and character sheet for the Pokémon D&D tabletop campaign.",
+  "name": "D&D Companion",
+  "short_name": "D&D",
+  "description": "A tabletop companion for your D&D campaigns: characters, rules, dice, party tools and a campaign planner.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

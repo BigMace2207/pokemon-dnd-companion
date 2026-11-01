@@ -1,0 +1,45 @@
+/* ===========================================================================
+   Rule keywords (js/systems/dnd5e/glossary.js), the shared hover card (js/tooltip.js), the dragonborn ancestry table and
+   hover polish. Sizes follow style.css: calc(Npx * var(--s)), text 12px minimum, motion under .25s, transform/opacity only.
+   =========================================================================== */
+
+#appTip { position: fixed; z-index: 100000; max-width: min(340px, calc(100vw - 16px)); padding: calc(9px * var(--s)) calc(12px * var(--s)); display: flex; flex-direction: column; gap: 3px; background: var(--panel); color: var(--text); border: 2px solid var(--gold); border-radius: 8px; box-shadow: 0 8px 22px rgba(0, 0, 0, .45); font-size: max(12px, calc(15.5px * var(--s))); line-height: 1.35; pointer-events: none; animation: tip-in .12s ease-out; }
+#appTip[hidden] { display: none; }
+#appTip strong { font-family: var(--font-display); color: var(--gold); }
+#appTip em { font-size: max(12px, calc(13px * var(--s))); opacity: .75; }
+@keyframes tip-in { from { opacity: 0; transform: translateY(3px); } }
+
+/* keywords: coloured and linked everywhere; bold too on the Rules page */
+a.kw { color: var(--kw, var(--gold)); text-decoration: underline dotted; text-decoration-thickness: 1.5px; text-underline-offset: 3px; cursor: help; }
+a.kw:hover, a.kw:focus-visible { text-decoration-style: solid; background: color-mix(in srgb, var(--kw, var(--gold)) 16%, transparent); border-radius: 3px; outline: none; }
+.kw-cond { --kw: #e0705f; }
+.kw-dmg { --kw: #b57be0; }
+.kw-stat { --kw: #43b7ae; }
+.kw-magic { --kw: #5f9be6; }
+.kw-item { --kw: #c9915a; }
+.kw-rule { --kw: #e0b43c; }
+.kw-race { --kw: #6cc66a; }
+:root[data-theme="light"] .kw-cond { --kw: #b3392a; } :root[data-theme="light"] .kw-dmg { --kw: #7a3fb0; } :root[data-theme="light"] .kw-stat { --kw: #0f7f77; }
+:root[data-theme="light"] .kw-magic { --kw: #2468c0; } :root[data-theme="light"] .kw-item { --kw: #8f5a24; } :root[data-theme="light"] .kw-rule { --kw: #8f6a00; } :root[data-theme="light"] .kw-race { --kw: #2f8a2d; }
+.dnd-rules-doc a.kw { font-weight: 700; text-decoration: none; border-bottom: 2px solid color-mix(in srgb, var(--kw) 55%, transparent); }
+
+/* dragonborn ancestry */
+.dnd-dragon .data-table { width: 100%; }
+.dnd-dragon-row { cursor: pointer; }
+.dnd-dragon-row:hover td, .dnd-dragon-row:focus-visible td { background: color-mix(in srgb, var(--gold) 18%, transparent); outline: none; }
+.dnd-dragon-row.selected td { background: var(--accent-dim); box-shadow: inset 0 0 0 0 transparent; font-weight: 700; }
+.dnd-dragon-row.selected td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+
+.dnd-resume { border-color: var(--gold); box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 35%, transparent); }
+
+/* hover polish */
+.dnd-char-card, .dnd-option, .dnd-list-item, .dnd-chip.dnd-pickable, .pill-btn, .card.dnd-section { transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+.dnd-char-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0, 0, 0, .25); }
+.dnd-option:hover { transform: translateX(2px); }
+.dnd-list-item:hover { background: color-mix(in srgb, var(--gold) 12%, var(--panel-alt)); }
+.data-table tbody tr:hover td { background: color-mix(in srgb, var(--gold) 10%, transparent); }
+.dnd-chip.dnd-pickable:hover:not(.off), .pill-btn:hover { transform: translateY(-1px); }
+@media (prefers-reduced-motion: reduce) { #appTip { animation: none; } .dnd-char-card, .dnd-option, .dnd-list-item, .dnd-chip.dnd-pickable, .pill-btn, .card.dnd-section { transition: none; } .dnd-char-card:hover, .dnd-option:hover, .pill-btn:hover { transform: none; } }
+
+/* the rules version is decided by the campaign owner */
+.dnd-edition-note { margin: 0; padding: calc(8px * var(--s)) calc(12px * var(--s)); border: 2px solid var(--gold-dim); border-radius: var(--radius); background: color-mix(in srgb, var(--gold) 10%, var(--panel)); font-size: max(12px, calc(16px * var(--s))); }

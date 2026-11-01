@@ -1,5 +1,6 @@
 import { renderSettings } from "./views/settings.js";
 import { renderLibrary } from "./views/library.js";
+import { renderPlanner } from "./views/planner.js";
 import { el } from "./components.js";
 import "./systems/index.js"; // registers every game system
 import { setActiveSystem, activeSystem, viewsOf } from "./systems/registry.js";
@@ -14,6 +15,7 @@ import { mountLogDrawer } from "./logDrawer.js";
 import { mountDiceWidget } from "./diceWidget.js";
 import { startTrainerPresenceWatcher } from "./trainerPresence.js";
 import { mountShortcuts } from "./shortcuts.js";
+import { installTooltips } from "./tooltip.js";
 import { NAV_ICONS } from "./navIcons.js";
 import { mountLavaToggle, goToFloor } from "./lavaTheme.js";
 import {
@@ -38,6 +40,7 @@ function setView(name, { initial = false } = {}) {
   if (!VIEWS[name] || !state) return;
   clearAllIntervals();
   current = name;
+  document.documentElement.classList.toggle("planner-full", name === "planner");   // the whiteboard is a full-screen page, no tower behind it
   // every page is a floor of the Lava Tower, in menu order: the first page is the roof
   const floorBtn = sideNav.querySelector(`.nav-item[data-view="${name}"]`);
   if (floorBtn) goToFloor(Number(floorBtn.dataset.floor) || 0, sideNav.querySelectorAll(".nav-item").length, initial);
@@ -68,7 +71,7 @@ function playViewEnter() {
 // Settings page), so a different game system gets its own pages.
 function buildNav(system) {
   sideNav.innerHTML = "";
-  const groups = [...system.nav, { label: "App", views: [{ id: "library", label: "Library", render: renderLibrary }, { id: "settings", label: "Settings", render: renderSettings }] }];
+  const groups = [...system.nav, { label: "App", views: [{ id: "planner", label: "Campaign Planner", render: renderPlanner }, { id: "library", label: "Library", render: renderLibrary }, { id: "settings", label: "Settings", render: renderSettings }] }];
   VIEWS = viewsOf({ nav: groups });
   DIRECTIVE_SENSITIVE_VIEWS = new Set(system.directiveViews || []);
   let floor = 0;
@@ -110,7 +113,16 @@ function buildNav(system) {
   }
   updateNavVisibility();
 }
-navToggle.addEventListener("click", () => sideNav.classList.toggle("open"));
+const NAV_KEY = "pokemon-dnd-nav-collapsed";
+try { if (localStorage.getItem(NAV_KEY) === "1") document.documentElement.classList.add("nav-collapsed"); } catch { /* storage blocked */ }
+navToggle.addEventListener("click", () => {
+  if (window.innerWidth > 780) {   // desktop: fold the menu away or bring it back
+    const on = document.documentElement.classList.toggle("nav-collapsed");
+    try { localStorage.setItem(NAV_KEY, on ? "1" : "0"); } catch { /* storage blocked */ }
+    navToggle.setAttribute("aria-expanded", String(!on));
+    window.dispatchEvent(new Event("resize"));   // the lava layer and any canvas re-measure
+  } else sideNav.classList.toggle("open");
+});
 
 window.addEventListener("hashchange", () => {
   const name = location.hash.replace("#", "");
@@ -145,6 +157,7 @@ function updateNavVisibility() {
 onHiddenViewsChanged(updateNavVisibility);
 applyTheme();
 mountLavaToggle({ get: getTheme, set: setTheme });
+installTooltips();
 
 // Every trainer/battle/NPC/etc. endpoint is scoped to one campaign now (see
 // server.py) -- nothing past this point can run until one is selected.
@@ -176,7 +189,7 @@ async function init() {
   if (campaignId) {
     setActiveCampaign(campaignId);
     const check = await getCampaign(campaignId, save.networkId);
-    if (check?.id) setActiveSystem(check.system);
+    if (check?.id) { setActiveSystem(check.system); activeSystem()?.applyCampaign?.(check); applyTheme(); }
     if (!check?.id) {
       // Deleted, or this device was removed as a member -- don't get stuck
       // pointed at a campaign that no longer accepts it.
@@ -192,6 +205,8 @@ async function init() {
       setActiveCampaign(chosenId);
       const picked = await getCampaign(chosenId, save.networkId);
       setActiveSystem(picked?.system);
+      activeSystem()?.applyCampaign?.(picked);
+      applyTheme();
       appEl.classList.remove("gate-mode");
       await startApp();
     });

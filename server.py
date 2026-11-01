@@ -129,6 +129,7 @@ LEGACY_DM_PASSWORD = os.environ.get("PKDND_LEGACY_DM_PASSWORD") or None
 # directives are generic); the system id is just stored on the campaign so
 # every client loads the matching rules module (see js/systems/).
 KNOWN_SYSTEMS = ("pokemon-dnd", "dnd5e")
+KNOWN_EDITIONS = ("2014", "2024")   # D&D rules version, chosen by the campaign owner
 DEFAULT_SYSTEM = "pokemon-dnd"
 
 # Invite codes and DM passwords: ambiguity-free lowercase alphabet, 10
@@ -264,10 +265,12 @@ def default_campaign_state():
         "dmInbox": [],       # [ {id, fromName, text, ts} ] -- notes from players, DM-only to read
         "fullTurn": {"combatants": [], "currentIndex": 0, "round": 1, "background": "", "spreadHitsAllies": False, "phase": "draft"},
         "playerSaves": {},   # networkId -> {"current": <save object>, "named": {slotName: <save object>}}
+        "partyMap": None,    # the one map the DM shares with the table: {name, image, w, h, pins[{..., revealed}], tokens[], updated}
+        "plans": {},         # networkId -> {name, updated, plan} -- each player's planning notes and checklists; the DM can read them
     }
 
 
-def new_campaign_entry(name, owner_id, system=DEFAULT_SYSTEM):
+def new_campaign_entry(name, owner_id, system=DEFAULT_SYSTEM, edition=None):
     cid = secrets.token_hex(8)
     entry = {
         "meta": {
@@ -278,6 +281,7 @@ def new_campaign_entry(name, owner_id, system=DEFAULT_SYSTEM):
             "inviteCode": new_code(),
             "dmPassword": new_code(),
             "system": system if system in KNOWN_SYSTEMS else DEFAULT_SYSTEM,
+            "edition": edition if edition in KNOWN_EDITIONS else "2014",
             "createdAt": time.time(),
         },
         "state": default_campaign_state(),
@@ -298,6 +302,43 @@ SESSIONS = {}  # sha256(token) -> {"accountId", "expires"} -- raw tokens are nev
 DM_TOKENS = {}
 
 
+def _unit(v):
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return 0.0
+    return 0.0 if f != f else min(1.0, max(0.0, f))   # NaN-safe, clamped to the map
+
+
+def _text(v, n):
+    return v.strip()[:n] if isinstance(v, str) else ""
+
+
+def _colour(v, default):
+    return v if isinstance(v, str) and re.match(r"^#[0-9a-fA-F]{6}$", v) else default
+
+
+def clean_map_pins(raw):
+    """The DM's labelled places on the shared map. `revealed` is what players are allowed to see."""
+    out = []
+    for p in (raw if isinstance(raw, list) else [])[:300]:
+        if isinstance(p, dict):
+            out.append({"id": _text(p.get("id"), 40) or secrets.token_hex(4), "x": _unit(p.get("x")), "y": _unit(p.get("y")),
+                        "label": _text(p.get("label"), 80), "note": _text(p.get("note"), 2000), "icon": _text(p.get("icon"), 2) or "●",
+                        "color": _colour(p.get("color"), "#ff4a22"), "revealed": p.get("revealed") is True})
+    return out
+
+
+def clean_map_tokens(raw):
+    """Where the DM has placed each player on the shared map."""
+    out = []
+    for t in (raw if isinstance(raw, list) else [])[:40]:
+        if isinstance(t, dict):
+            out.append({"id": _text(t.get("id"), 60) or secrets.token_hex(4), "name": _text(t.get("name"), 40) or "Player",
+                        "x": _unit(t.get("x")), "y": _unit(t.get("y")), "color": _colour(t.get("color"), "#5aa8f0")})
+    return out
+
+
 def mark_dirty():
     global CAMPAIGNS_DIRTY
     CAMPAIGNS_DIRTY = True
@@ -314,6 +355,7 @@ def campaign_summary(cid, entry, is_owner):
         "isOwner": is_owner,
         "memberCount": len(meta.get("memberIds") or []),
         "system": meta.get("system", DEFAULT_SYSTEM),
+        "edition": meta.get("edition"),   # None on campaigns made before this existed: players then keep their own choice
         "createdAt": meta["createdAt"],
     }
     if is_owner:
@@ -686,6 +728,8 @@ def merge_account_identities(acc):
 # Largest request body accepted (a full player save with a big PC box is well
 # under 1 MB) and the longest free-text / name fields stored from clients.
 MAX_BODY = 4 * 1024 * 1024
+MAX_PARTYMAP = 2_600_000  # the DM's shared map image (a data: URL) may be up to this long
+MAX_PLAN = 200_000  # largest planner document (notes + checklists) one player may share with the DM, as JSON
 MAX_NAME = 60
 MAX_TEXT = 1000
 MAX_INBOX = 100
@@ -1154,6 +1198,27 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     return self._send_json({"error": "unauthorized"}, 403)
                 return self._send_json({"entries": state["dmInbox"][-200:]})
 
+            if parts[1:] == ["plans"]:
+                # every player's planner notes and checklists: the DM only (the DM password token, scoped to this campaign)
+                token = qs.get("token", [None])[0]
+                if not self._dm_ok(token, cid):
+                    return self._send_json({"error": "unauthorized"}, 403)
+                members = set(entry["meta"].get("memberIds") or [])
+                out = [{"id": pid, "name": p.get("name", ""), "updated": p.get("updated", 0), "plan": p.get("plan", {})}
+                       for pid, p in state.get("plans", {}).items() if pid in members]
+                return self._send_json({"plans": out})
+
+            if parts[1:] == ["partymap"]:
+                # the map the DM shares: members get only the pins the DM has revealed (decided here, never by the client);
+                # the DM token gets everything so the DM's own view is complete
+                pm = state.get("partyMap")
+                if not pm:
+                    return self._send_json({"map": None})
+                out = dict(pm)
+                if not self._dm_ok(qs.get("token", [None])[0], cid):
+                    out["pins"] = [p for p in pm.get("pins", []) if p.get("revealed")]
+                return self._send_json({"map": out})
+
             # ---- Shared static asset folders (not campaign-scoped) ----
             if parts[1:] == ["backgrounds"]:
                 BACKGROUNDS_DIR.mkdir(parents=True, exist_ok=True)
@@ -1209,7 +1274,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             with CAMPAIGNS_LOCK:
                 if not self._signed_in_for(network_id):
                     return self._send_json({"error": "sign in required"}, 401)
-                cid, entry = new_campaign_entry(name if isinstance(name, str) else "", network_id, data.get("system") or DEFAULT_SYSTEM)
+                cid, entry = new_campaign_entry(name if isinstance(name, str) else "", network_id, data.get("system") or DEFAULT_SYSTEM, data.get("edition"))
                 CAMPAIGNS[cid] = entry
                 mark_dirty()
                 out = campaign_summary(cid, entry, True)
@@ -1259,6 +1324,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     mark_dirty()
                     return self._send_json(campaign_summary(cid, entry, True))
 
+                if action == "set-edition":
+                    if not is_owner:
+                        return self._send_json({"error": "owner only"}, 403)
+                    edition = data.get("edition")
+                    if edition not in KNOWN_EDITIONS:
+                        return self._send_json({"error": "edition must be 2014 or 2024"}, 400)
+                    entry["meta"]["edition"] = edition
+                    mark_dirty()
+                    return self._send_json(campaign_summary(cid, entry, True))
+
                 if action == "regenerate-code":
                     if not is_owner:
                         return self._send_json({"error": "owner only"}, 403)
@@ -1280,6 +1355,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     if target == entry["meta"]["ownerId"]:
                         return self._send_json({"error": "can't remove the owner"}, 400)
                     entry["meta"]["memberIds"] = [m for m in entry["meta"].get("memberIds") or [] if m != target]
+                    entry["state"].get("plans", {}).pop(target, None)
                     mark_dirty()
                     return self._send_json(campaign_summary(cid, entry, True))
 
@@ -1342,6 +1418,59 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 if nid not in mine:
                     return self._send_json({"error": "not your save"}, 403)
                 state["playerSaves"].setdefault(nid, {"current": None, "named": {}})["current"] = save
+                mark_dirty()
+                return self._send_json({"ok": True})
+
+            if parts[1:] == ["plan"]:
+                nid, plan, name = data.get("id"), data.get("plan"), data.get("name")
+                if not nid or not isinstance(plan, dict):
+                    return self._send_json({"error": "missing id/plan"}, 400)
+                if nid not in mine or nid not in (entry["meta"].get("memberIds") or []):
+                    return self._send_json({"error": "not your identity"}, 403)
+                if len(json.dumps(plan)) > MAX_PLAN:
+                    return self._send_json({"error": "plan too large"}, 413)
+                name = name.strip()[:MAX_NAME] if isinstance(name, str) and name.strip() else "Player"
+                state.setdefault("plans", {})[nid] = {"name": name, "updated": time.time(), "plan": plan}
+                mark_dirty()
+                return self._send_json({"ok": True})
+
+            if parts[1:] in (["partymap"], ["partymap", "live"], ["partymap", "clear"]):
+                # DM only (the DM password token for this campaign). "live" updates just the pins and tokens, which is
+                # what a drag or a reveal sends; the image only travels when the map is published.
+                if not self._require_dm(data, cid):
+                    return self._send_json({"error": "DM only"}, 403)
+                if parts[-1] == "clear":
+                    state["partyMap"] = None
+                    mark_dirty()
+                    return self._send_json({"ok": True})
+                if parts[-1] == "live":
+                    pm = state.get("partyMap")
+                    if not pm:
+                        return self._send_json({"error": "no shared map"}, 404)
+                    pm["pins"] = clean_map_pins(data.get("pins"))
+                    pm["tokens"] = clean_map_tokens(data.get("tokens"))
+                    pm["updated"] = time.time()
+                    mark_dirty()
+                    return self._send_json({"ok": True})
+                raw = data.get("map")
+                if not isinstance(raw, dict):
+                    return self._send_json({"error": "missing map"}, 400)
+                image = raw.get("image")
+                if not isinstance(image, str) or not re.match(r"^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$", image):
+                    return self._send_json({"error": "the map image must be a PNG, JPEG, WebP or GIF"}, 400)
+                if len(image) > MAX_PARTYMAP:
+                    return self._send_json({"error": "map image too large"}, 413)
+                def dim(v):
+                    try:
+                        return max(1, min(20000, int(v)))
+                    except (TypeError, ValueError):
+                        return 1
+                name = raw.get("name")
+                state["partyMap"] = {
+                    "name": name.strip()[:80] if isinstance(name, str) and name.strip() else "Map",
+                    "image": image, "w": dim(raw.get("w")), "h": dim(raw.get("h")),
+                    "pins": clean_map_pins(raw.get("pins")), "tokens": clean_map_tokens(raw.get("tokens")), "updated": time.time(),
+                }
                 mark_dirty()
                 return self._send_json({"ok": True})
 
@@ -1464,13 +1593,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if action == "setHp":
             apply_hp(state, target_kind, target_id, data.get("monId"), data.get("delta"), data.get("absolute"))
             if data.get("inBattle"):
-                log_battle(state, "Dungeon Master", data.get("logText") or f"{data.get('trainerName', 'A trainer')}'s {data.get('monName', 'Pokémon')} HP changed.")
+                log_battle(state, "Dungeon Master", data.get("logText") or f"{(data.get('trainerName') or 'A trainer')}'s {(data.get('monName') or 'Pokémon')} HP changed.")
             return {"ok": True}
 
         if action == "setStatus":
             apply_status(state, target_kind, target_id, data.get("monId"), data.get("status"))
             if data.get("inBattle"):
-                log_battle(state, "Dungeon Master", data.get("logText") or f"{data.get('trainerName', 'A trainer')}'s {data.get('monName', 'Pokémon')} is now {data.get('status')}.")
+                log_battle(state, "Dungeon Master", data.get("logText") or f"{(data.get('trainerName') or 'A trainer')}'s {(data.get('monName') or 'Pokémon')} is now {data.get('status') or 'healthy'}.")
             return {"ok": True}
 
         if action == "forceMove":
@@ -1497,7 +1626,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return {"error": "bad request"}
             level = max(1, min(100, level))
             queue_directive(state, target_id, "setLevel", {"monId": mon_id, "level": level})
-            log_battle(state, "Dungeon Master", data.get("logText") or f"{data.get('trainerName', 'A trainer')}'s {data.get('monName', 'Pokémon')} was granted levels by the DM — now Level {level}.")
+            log_battle(state, "Dungeon Master", data.get("logText") or f"{(data.get('trainerName') or 'A trainer')}'s {(data.get('monName') or 'Pokémon')} was granted levels by the DM — now Level {level}.")
             return {"ok": True}
 
         if action == "giveItem":
@@ -1506,7 +1635,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if not name or not isinstance(qty, int) or qty < 1:
                 return {"error": "bad request"}
             queue_directive(state, target_id, "giveItem", {"name": name, "qty": qty})
-            log_battle(state, "Dungeon Master", f"{data.get('trainerName', 'A trainer')} received {qty}× {name} from the DM.")
+            log_battle(state, "Dungeon Master", f"{(data.get('trainerName') or 'A trainer')} received {qty}× {name} from the DM.")
             return {"ok": True}
 
         if action == "battleLogEntry":

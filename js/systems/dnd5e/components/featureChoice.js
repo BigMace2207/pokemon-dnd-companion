@@ -44,7 +44,7 @@ function optionsDialog(S, f, onDone) {
   const opts = f.options.map((o) => ({ value: o.id, label: o.name, o }));
   let selected = [...cur];
   const detail = el("div", { class: "dnd-pick-detail-box" });
-  const showDetail = (o) => detail.replaceChildren(el("h4", {}, o.name), o.prereq?.length ? el("p", { class: "dnd-small dnd-muted" }, `Prerequisite: ${o.prereq.join(", ")}`) : null, renderDesc(o.desc));
+  const showDetail = (o) => detail.replaceChildren(...[el("h4", {}, o.name), o.prereq?.length ? el("p", { class: "dnd-small dnd-muted" }, `Prerequisite: ${o.prereq.join(", ")}`) : null, renderDesc(o.desc)].filter(Boolean));
   const picker = pickMany(opts, need, selected, (v) => { selected = v; }, { disabled: opts.filter((o) => !meets(o.o)).map((o) => o.value) });
   picker.addEventListener("mouseover", (e) => { const b = e.target.closest("button"); if (b) { const o = opts.find((x) => x.label === b.textContent); if (o) showDetail(o.o); } });
   picker.addEventListener("focusin", (e) => { const b = e.target.closest("button"); if (b) { const o = opts.find((x) => x.label === b.textContent); if (o) showDetail(o.o); } });

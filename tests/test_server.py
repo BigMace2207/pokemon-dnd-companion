@@ -476,6 +476,25 @@ class CampaignAuthorization(ServerCase):
         status, out = call(self.base, "POST", f"/api/campaigns/{self.cid}/rename", {"name": "Renamed"}, token=self.owner_tok)
         self.assertEqual((status, out["name"]), (200, "Renamed"))
 
+    def test_only_the_owner_sets_the_rules_edition(self):
+        base = f"/api/campaigns/{self.cid}/set-edition"
+        status, _ = call(self.base, "POST", base, {"networkId": "id-member", "edition": "2024"}, token=self.member_tok)
+        self.assertEqual(status, 403)
+        self.entry["meta"].pop("edition", None)   # a campaign from before this existed has none: players keep their own choice
+        status, out = call(self.base, "GET", f"/api/campaign/{self.cid}?networkId=id-member", token=self.member_tok)
+        self.assertIsNone(out["edition"])
+        status, out = call(self.base, "POST", base, {"networkId": "id-owner", "edition": "2024"}, token=self.owner_tok)
+        self.assertEqual((status, out["edition"]), (200, "2024"))
+        status, _ = call(self.base, "POST", base, {"networkId": "id-owner", "edition": "3.5"}, token=self.owner_tok)
+        self.assertEqual(status, 400)
+        # members see it (it's not a secret), and so does a brand-new campaign
+        status, out = call(self.base, "GET", f"/api/campaign/{self.cid}?networkId=id-member", token=self.member_tok)
+        self.assertEqual(out["edition"], "2024")
+        status, made = call(self.base, "POST", "/api/campaigns", {"name": "New", "networkId": "id-owner", "system": "dnd5e", "edition": "2024"}, token=self.owner_tok)
+        self.assertEqual((status, made["edition"]), (200, "2024"))
+        status, made = call(self.base, "POST", "/api/campaigns", {"name": "Bad", "networkId": "id-owner", "system": "dnd5e", "edition": "nope"}, token=self.owner_tok)
+        self.assertEqual(made["edition"], "2014")
+
     def test_messages_cannot_be_forged_or_flooded(self):
         m = self.member_tok
         good = {"fromId": "id-member", "toId": "id-owner", "type": "note", "payload": {"text": "hi"}}
@@ -510,6 +529,129 @@ class CampaignAuthorization(ServerCase):
             self.assertEqual(e.code, 400)
         status, _ = call(self.base, "POST", "/api/campaigns/join", {"code": "çodé-ünicode", "networkId": "id-member"}, token=self.member_tok)
         self.assertEqual(status, 404, "a non-ASCII invite code is just a wrong code, not a crash")
+
+
+class PlannerPlans(ServerCase):
+    """The campaign planner: each player shares their own notes and checklists, and only the DM can read everyone's."""
+
+    def setUp(self):
+        super().setUp()
+        reg = lambda email, nid: call(self.base, "POST", "/api/auth/register", {"email": email, "password": "password-123", "networkId": nid})[1]["token"]
+        self.owner_tok, self.p1_tok, self.p2_tok, self.outsider_tok = reg("o@example.com", "id-owner"), reg("a@example.com", "id-a"), reg("b@example.com", "id-b"), reg("x@example.com", "id-x")
+        self.cid, self.entry = self.make_campaign("id-owner", "Table")
+        self.entry["meta"]["memberIds"] += ["id-a", "id-b"]
+        self.state = self.entry["state"]
+
+    def share(self, tok, nid, plan, name="Ash"):
+        return call(self.base, "POST", "/api/plan", {"campaignId": self.cid, "id": nid, "name": name, "plan": plan}, token=tok)
+
+    def dm_token(self):
+        status, out = call(self.base, "POST", "/api/dm/login", {"campaignId": self.cid, "password": self.entry["meta"]["dmPassword"]}, token=self.owner_tok)
+        self.assertEqual(status, 200)
+        return out["token"]
+
+    def read(self, session, dm=None):
+        return call(self.base, "GET", f"/api/plans?campaignId={self.cid}" + (f"&token={dm}" if dm else ""), token=session)
+
+    def test_a_player_can_share_only_their_own_plan(self):
+        plan = {"notes": [{"id": "n1", "title": "Ideas", "body": "Rob the bank"}], "lists": []}
+        self.assertEqual(self.share(self.p1_tok, "id-a", plan)[0], 200)
+        self.assertEqual(self.share(self.p1_tok, "id-b", plan)[0], 403, "can't write as another player")
+        self.assertEqual(self.share(self.outsider_tok, "id-x", plan)[0], 403, "not a member of the campaign")
+        self.assertEqual(self.share(self.p1_tok, "id-x", plan)[0], 403)
+        self.assertEqual(self.share(None, "id-a", plan)[0], 401)
+        self.assertEqual(self.share(self.p1_tok, "id-a", ["not", "a", "dict"])[0], 400)
+        self.assertEqual(set(self.state["plans"]), {"id-a"})
+
+    def test_only_the_dm_can_read_everyones_plans(self):
+        self.share(self.p1_tok, "id-a", {"notes": [{"id": "n", "title": "A", "body": "secret plan"}]}, "Ash")
+        self.share(self.p2_tok, "id-b", {"lists": [{"id": "l", "title": "Buy", "items": []}]}, "Misty")
+        # a player (even the owner) without the DM token gets nothing, and the token can't be faked
+        for tok in (self.p1_tok, self.owner_tok):
+            self.assertEqual(self.read(tok)[0], 403)
+            self.assertEqual(self.read(tok, "made-up-token")[0], 403)
+        self.assertEqual(self.read(self.outsider_tok, "x")[0], 403)
+        self.assertEqual(self.read(None)[0], 401)
+        dm = self.dm_token()
+        status, out = self.read(self.owner_tok, dm)
+        self.assertEqual(status, 200)
+        self.assertEqual(sorted(p["name"] for p in out["plans"]), ["Ash", "Misty"])
+        self.assertEqual(next(p for p in out["plans"] if p["id"] == "id-a")["plan"]["notes"][0]["body"], "secret plan")
+        # a DM token from one campaign opens nothing in another
+        other_cid, other = self.make_campaign("id-owner", "Other")
+        status, _ = call(self.base, "GET", f"/api/plans?campaignId={other_cid}&token={dm}", token=self.owner_tok)
+        self.assertEqual(status, 403)
+
+    def test_plans_are_size_capped_and_leave_with_the_member(self):
+        big = {"notes": [{"id": "n", "title": "x", "body": "y" * (server.MAX_PLAN + 10)}]}
+        self.assertEqual(self.share(self.p1_tok, "id-a", big)[0], 413)
+        self.assertNotIn("id-a", self.state["plans"])
+        self.share(self.p1_tok, "id-a", {"notes": []})
+        self.share(self.p2_tok, "id-b", {"notes": []})
+        status, _ = call(self.base, "POST", f"/api/campaigns/{self.cid}/remove-member", {"networkId": "id-owner", "memberId": "id-a"}, token=self.owner_tok)
+        self.assertEqual(status, 200)
+        self.assertEqual(set(self.state["plans"]), {"id-b"})
+        status, out = self.read(self.owner_tok, self.dm_token())
+        self.assertEqual([p["id"] for p in out["plans"]], ["id-b"])
+
+
+class PartyMap(ServerCase):
+    """The DM's shared map: only the DM publishes or moves things, players only ever see the places the DM has revealed."""
+
+    IMG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+
+    def setUp(self):
+        super().setUp()
+        reg = lambda email, nid: call(self.base, "POST", "/api/auth/register", {"email": email, "password": "password-123", "networkId": nid})[1]["token"]
+        self.owner, self.member, self.outsider = reg("o@example.com", "id-owner"), reg("m@example.com", "id-member"), reg("x@example.com", "id-out")
+        self.cid, self.entry = self.make_campaign("id-owner", "Table")
+        self.entry["meta"]["memberIds"].append("id-member")
+        status, out = call(self.base, "POST", "/api/dm/login", {"campaignId": self.cid, "password": self.entry["meta"]["dmPassword"]}, token=self.owner)
+        self.dm = out.get("token") if status == 200 else None
+
+    def post(self, path, body, tok):
+        return call(self.base, "POST", path, {"campaignId": self.cid, **body}, token=tok)
+
+    def get(self, path, tok):
+        return call(self.base, "GET", f"{path}{'&' if '?' in path else '?'}campaignId={self.cid}", token=tok)
+
+    def publish(self, **extra):
+        pins = [{"id": "a", "x": .2, "y": .3, "label": "Town", "revealed": True}, {"id": "b", "x": .8, "y": .9, "label": "Secret lair", "note": "dragon", "revealed": False}]
+        return self.post("/api/partymap", {"token": self.dm, "map": {"name": "World", "image": self.IMG, "w": 100, "h": 80, "pins": pins, "tokens": [{"id": "id-member", "name": "Mia", "x": .5, "y": .5}], **extra}}, self.owner)
+
+    def test_only_the_dm_publishes_and_players_see_only_revealed_places(self):
+        self.assertIsNotNone(self.dm, "dm login failed in the test setup")
+        self.assertEqual(self.post("/api/partymap", {"map": {"image": self.IMG}}, self.member)[0], 403)
+        self.assertEqual(self.post("/api/partymap", {"token": "nope", "map": {"image": self.IMG}}, self.owner)[0], 403)
+        self.assertEqual(self.publish()[0], 200)
+        status, out = self.get("/api/partymap", self.member)
+        self.assertEqual(status, 200)
+        self.assertEqual([p["label"] for p in out["map"]["pins"]], ["Town"])
+        self.assertNotIn("dragon", json.dumps(out), "a hidden place's note must never reach a player")
+        self.assertEqual(out["map"]["tokens"][0]["name"], "Mia")
+        status, out = self.get(f"/api/partymap?token={self.dm}", self.owner)
+        self.assertEqual(len(out["map"]["pins"]), 2)
+        # a player can't pass the DM token off as theirs without having it, and an outsider can't read at all
+        self.assertIn(self.get("/api/partymap", self.outsider)[0], (403, 404))
+
+    def test_revealing_and_moving_use_the_live_update_and_keep_the_image(self):
+        self.publish()
+        pins = [{"id": "a", "x": .2, "y": .3, "label": "Town", "revealed": True}, {"id": "b", "x": .8, "y": .9, "label": "Secret lair", "revealed": True}]
+        self.assertEqual(self.post("/api/partymap/live", {"pins": pins, "tokens": []}, self.member)[0], 403)
+        self.assertEqual(self.post("/api/partymap/live", {"token": self.dm, "pins": pins, "tokens": [{"id": "x", "name": "Bo", "x": 5, "y": -2}]}, self.owner)[0], 200)
+        out = self.get("/api/partymap", self.member)[1]["map"]
+        self.assertEqual(len(out["pins"]), 2)
+        self.assertEqual((out["tokens"][0]["x"], out["tokens"][0]["y"]), (1.0, 0.0), "positions are clamped to the map")
+        self.assertEqual(out["image"], self.IMG)
+
+    def test_bad_images_and_oversize_maps_are_refused_and_it_can_be_cleared(self):
+        self.assertEqual(self.post("/api/partymap", {"token": self.dm, "map": {"image": "javascript:alert(1)"}}, self.owner)[0], 400)
+        self.assertEqual(self.post("/api/partymap", {"token": self.dm, "map": {"image": "data:image/svg+xml;base64,AAAA"}}, self.owner)[0], 400)
+        big = "data:image/png;base64," + "A" * (server.MAX_PARTYMAP + 10)
+        self.assertEqual(self.post("/api/partymap", {"token": self.dm, "map": {"image": big}}, self.owner)[0], 413)
+        self.publish()
+        self.assertEqual(self.post("/api/partymap/clear", {"token": self.dm}, self.owner)[0], 200)
+        self.assertIsNone(self.get("/api/partymap", self.member)[1]["map"])
 
 
 class ResponseHardening(ServerCase):

@@ -1,12 +1,8 @@
-// The Dungeons tab of the Generators page: a whole connected dungeon with a map, and for every
-// room its contents plus each exit (direction, door, passage, where it leads).
+// Dungeon rendering for the planner whiteboard's dungeon nodes (js/planner/boardView.js): the connected map, and for every
+// room its contents plus each exit (direction, door, passage, where it leads). genDungeon itself is in engine/generators.js.
 
-import { el, btn, chip, field, numInput, selectEl, toast } from "../ui.js";
-import { updateDm } from "../store.js";
-import { uid } from "../engine/character.js";
-import { genDungeon } from "../engine/generators.js";
+import { el, chip } from "../ui.js";
 
-const rng = Math.random;
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const SVG = "http://www.w3.org/2000/svg";
 const svgEl = (tag, attrs = {}, text) => { const n = document.createElementNS(SVG, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); if (text != null) n.textContent = text; return n; };
@@ -16,7 +12,7 @@ const OPP = { N: "S", S: "N", E: "W", W: "E" };
 
 const kv = (rows) => el("table", { class: "data-table dnd-kv" }, rows.filter(([, v]) => v).map(([k, v]) => el("tr", {}, [el("th", {}, k), el("td", {}, v)])));
 
-function dungeonText(d) {
+export function dungeonText(d) {
   const nm = d.dirName;
   return d.rooms.map((r) => [
     `Room ${r.id}: ${cap(r.type)} (${ROLE_LABEL[r.role]}, ${r.w}x${r.h} ft)`,
@@ -26,7 +22,7 @@ function dungeonText(d) {
   ].join("\n")).join("\n\n");
 }
 
-function dungeonMap(d, onPick) {
+export function dungeonMap(d, onPick) {
   const CW = 150, CH = 112, PAD = 24;
   const svg = svgEl("svg", { viewBox: `0 0 ${d.cols * CW + PAD * 2} ${d.rows * CH + PAD * 2}`, class: "dnd-dmap", role: "img", "aria-label": `Dungeon map with ${d.rooms.length} rooms` });
   const box = (r) => {
@@ -71,7 +67,7 @@ function dungeonMap(d, onPick) {
   return svg;
 }
 
-function roomCard(d, r) {
+export function roomCard(d, r) {
   const nm = d.dirName;
   const rows = r.exits.map((e) => el("tr", {}, [
     el("td", { class: "dnd-strong" }, cap(nm[e.dir])),
@@ -91,37 +87,4 @@ function roomCard(d, r) {
       el("tbody", {}, rows),
     ])),
   ]);
-}
-
-export function dungeonTab(panel) {
-  const count = numInput(9, () => {}, { min: 3, max: 24, ariaLabel: "Number of rooms" });
-  const loops = selectEl([["0", "None (a single route)"], ["0.25", "A few loops"], ["0.6", "Many loops"]], "0.25", () => {});
-  const out = el("div", { class: "dnd-stack" });
-  function run() {
-    const d = genDungeon(rng, { rooms: Number(count.value) || 9, loops: Number(loops.value) });
-    const cards = el("div", { class: "dnd-stack" }, d.rooms.map((r) => roomCard(d, r)));
-    const map = dungeonMap(d, (id) => {
-      const c = cards.querySelector(`#dungeon-room-${id}`);
-      c?.scrollIntoView({ behavior: "smooth", block: "start" });
-      c?.classList.add("flash");
-      setTimeout(() => c?.classList.remove("flash"), 1200);
-    });
-    out.replaceChildren(
-      el("div", { class: "card" }, [
-        el("div", { class: "dnd-section-head" }, [
-          el("h4", {}, `Dungeon map — ${d.rooms.length} rooms`),
-          el("div", { class: "dnd-row tight" }, [chip("Entrance: room 1", "good"), chip(`Lair: room ${d.lair}`, "bad"), chip(`${d.loops} loop${d.loops === 1 ? "" : "s"}`), chip(`${d.secrets} secret door${d.secrets === 1 ? "" : "s"}`)]),
-        ]),
-        map,
-        el("div", { class: "dnd-map-key dnd-small dnd-muted" }, "Circles on the passages are doors: L locked, S secret, B barred, # portcullis, ! trapped, x collapsed, | wooden. ↓↑ stairs, ⚠ trap, ⚔ monsters, ◆ treasure. Click a room for its details."),
-        el("div", { class: "dnd-row" }, [
-          btn("Copy as text", () => { navigator.clipboard?.writeText(dungeonText(d)); toast("Copied.", "good"); }, "btn secondary small"),
-          btn("Save to notes", () => { updateDm((dm) => dm.locations.unshift({ id: uid(), name: `Dungeon (${d.rooms.length} rooms)`, kind: "Dungeon", notes: dungeonText(d), created: Date.now() })); toast("Saved to Campaign Notes.", "good"); }, "btn secondary small"),
-        ]),
-      ]),
-      cards,
-    );
-  }
-  panel.append(el("div", { class: "card" }, el("div", { class: "dnd-row" }, [field("Rooms", count), field("Extra routes", loops), btn("Generate dungeon", run, "btn")])), out);
-  run();
 }

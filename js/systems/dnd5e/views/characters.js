@@ -8,8 +8,9 @@ import {
   exportCharacterJson, importCharacterJson, saveCharacter,
 } from "../store.js";
 import { derive, classLabel } from "../engine/character.js";
+import { getCampaignEdition } from "../store.js";
 import { hpBar } from "../components/hpBar.js";
-import { renderBuilder } from "./builder.js";
+import { renderBuilder, loadSavedDraft, clearSavedDraft } from "./builder.js";
 import { pageTitle } from "./common.js";
 
 export function renderCharacters(container) {
@@ -23,10 +24,23 @@ export function renderCharacters(container) {
       const active = activeCharacter();
       const rows = [];
       const actions = el("div", { class: "dnd-row" }, [
-        btn("New character", openBuilder, "btn"),
+        btn("New character", async () => { if (loadSavedDraft() && !(await confirmDialog("Starting a new character replaces the unfinished one. Continue?", { ok: "Start new" }))) return; clearSavedDraft(); openBuilder(false); }, "btn"),
         btn("Quick blank sheet", () => { const c = createCharacter(); toast("Blank character created.", "good"); location.hash = "dndSheet"; void c; }, "btn secondary"),
         btn("Import file", importFile, "btn secondary"),
       ]);
+      const unfinished = loadSavedDraft();
+      if (unfinished) {
+        const d = unfinished.draft;
+        const when = new Date(unfinished.saved || Date.now()).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+        rows.push(el("div", { class: "card dnd-resume" }, [
+          el("h4", {}, "You have an unfinished character"),
+          el("p", { class: "view-sub" }, `${d.name || "Unnamed"}${d.raceId || d.classId ? ` · ${[d.raceId, d.classId].filter(Boolean).map((x) => x.replace(/-/g, " ")).join(" ")}` : ""}. Last edited ${when}.`),
+          el("div", { class: "dnd-row" }, [
+            btn("Continue", () => openBuilder(true), "btn"),
+            btn("Discard", async () => { if (await confirmDialog("Throw away this unfinished character?", { ok: "Discard", danger: true })) { clearSavedDraft(); draw(); } }, "btn secondary"),
+          ]),
+        ]));
+      }
       rows.push(section("", actions));
       if (!chars.length) {
         rows.push(section("No characters yet", el("p", {}, "Start the builder for a guided character, or import a character file you've exported before.")));
@@ -50,7 +64,7 @@ export function renderCharacters(container) {
       el("div", { class: "dnd-grow" }, [
         el("h3", { class: "dnd-char-name", style: "font-size:calc(24px*var(--s))" }, c.name || "Unnamed"),
         el("div", { class: "dnd-muted dnd-small" }, `${c.race?.name || "—"} · ${classLabel(c, ctx)}`),
-        el("div", { class: "dnd-chip-row", style: "margin-top:4px" }, [chip(`Level ${d.level}`), chip(`AC ${d.ac.value}`), chip(c.edition === "2024" ? "2024 rules" : "2014 rules"), isActive ? chip("Active", "gold") : null].filter(Boolean)),
+        el("div", { class: "dnd-chip-row", style: "margin-top:4px" }, [chip(`Level ${d.level}`), chip(`AC ${d.ac.value}`), ...(getCampaignEdition() === c.edition ? [] : [chip(c.edition === "2024" ? "2024 rules" : "2014 rules")]), isActive ? chip("Active", "gold") : null, getCampaignEdition() && c.edition !== getCampaignEdition() ? chip(`Campaign uses ${getCampaignEdition()}`, "bad") : null].filter(Boolean)),
       ]),
     ]);
     const open = btn("Open sheet", () => { setActive(c.id); location.hash = "dndSheet"; }, "btn small");
@@ -63,8 +77,9 @@ export function renderCharacters(container) {
     return el("div", { class: `card dnd-char-card${isActive ? " active" : ""}` }, [head, hpBar(d.hp.current, d.hp.max, d.hp.temp), el("div", { class: "dnd-row", style: "margin-top:10px" }, [open, use, copy, exp, del].filter(Boolean))]);
   }
 
-  function openBuilder() {
+  function openBuilder(resume = false) {
     renderBuilder(container, {
+      resume,
       onDone: () => { location.hash = "dndSheet"; renderCharacters(container); },
       onCancel: () => renderCharacters(container),
     });

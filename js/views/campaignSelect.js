@@ -19,8 +19,10 @@ export async function renderCampaignSelect(container, networkId, onEnter) {
   const nameInput = el("input", { type: "text", placeholder: "Campaign name, e.g. \"Kanto Sunday Group\"" });
   const systemSelect = el("select", {}, listSystems().map((s) =>
     el("option", s.status === "preview" ? { value: s.id, disabled: "" } : { value: s.id }, s.name + (s.status === "preview" ? " (coming soon)" : ""))));
+  const editionSelect = el("select", {}, [el("option", { value: "2014" }, "2014 rules (SRD 5.1)"), el("option", { value: "2024" }, "2024 rules (SRD 5.2)")]);
+  const editionField = field("D&D rules version (everyone in the campaign uses it)", editionSelect);
   const systemHint = el("p", { class: "view-sub" }, "");
-  const showHint = () => { systemHint.textContent = getSystem(systemSelect.value)?.tagline || ""; };
+  const showHint = () => { systemHint.textContent = getSystem(systemSelect.value)?.tagline || ""; editionField.hidden = systemSelect.value !== "dnd5e"; };
   systemSelect.addEventListener("change", showHint);
   showHint();
   const createBtn = el("button", { class: "btn" }, "Create Campaign");
@@ -28,6 +30,7 @@ export async function renderCampaignSelect(container, networkId, onEnter) {
   const createCard = el("div", { class: "card" }, [
     el("h4", {}, "Create a New Campaign"),
     el("div", { class: "grid-2" }, [field("Campaign name", nameInput), field("Game system", systemSelect)]),
+    editionField,
     systemHint,
     createBtn,
     createMsg,
@@ -42,9 +45,6 @@ export async function renderCampaignSelect(container, networkId, onEnter) {
     el("div", { class: "grid-2" }, [field("Invite code", codeInput), joinBtn]),
     joinMsg,
   ]));
-
-  container.appendChild(el("p", { class: "art-credit" },
-    "All Pokémon art is provided by PokeAPI and originates from Nintendo, Game Freak and The Pokémon Company. This is an unofficial fan project and is not affiliated with or endorsed by them."));
 
   function campaignRow(c) {
     const enterBtn = el("button", { class: "btn secondary" }, "Enter");
@@ -75,7 +75,7 @@ export async function renderCampaignSelect(container, networkId, onEnter) {
   createBtn.addEventListener("click", async () => {
     if (!nameInput.value.trim()) { createMsg.textContent = "Give it a name first."; return; }
     createBtn.disabled = true;
-    const result = await createCampaign(nameInput.value.trim(), networkId, systemSelect.value);
+    const result = await createCampaign(nameInput.value.trim(), networkId, systemSelect.value, editionSelect.value);
     createBtn.disabled = false;
     if (!result?.id) { createMsg.textContent = "Couldn't create the campaign — check your connection and try again."; return; }
     onEnter(result.id);

@@ -1,7 +1,7 @@
 import { el, field } from "../components.js";
 import { getTheme, setTheme, getLavaFx, setLavaFx, getHiddenViews, setViewHidden, getSelectedCampaignId, clearSelectedCampaignId } from "../deviceSettings.js";
 import {
-  getCampaign, renameCampaign, regenerateInviteCode, regenerateDmPassword,
+  getCampaign, renameCampaign, setCampaignEdition, regenerateInviteCode, regenerateDmPassword,
   removeCampaignMember, transferCampaignOwnership, deleteCampaign, listTrainers,
 } from "../network.js";
 import { loadSave } from "../storage.js";
@@ -137,8 +137,9 @@ export function renderSettings(container) {
     panel.appendChild(el("div", { class: "card" }, [
       el("h4", {}, info.name),
       el("p", { class: "view-sub" }, info.isOwner ? "You own this campaign." : "You're a member of this campaign."),
+      info.system === "dnd5e" ? el("p", { class: "view-sub" }, info.edition ? `Rules version: D&D ${info.edition}. The owner decides this for everyone.` : "Rules version: not set yet, so each player picks their own.") : null,
       switchBtn,
-    ]));
+    ].filter(Boolean)));
     if (!info.isOwner) return;
 
     const nameInput = el("input", { type: "text", value: info.name });
@@ -165,9 +166,21 @@ export function renderSettings(container) {
       await regenerateDmPassword(cid, save.networkId);
       refresh();
     });
+    // D&D only: which rules version the whole table plays by, so players never end up on different books
+    const editionSel = el("select", {}, [el("option", { value: "2014" }, "2014 rules (SRD 5.1)"), el("option", { value: "2024" }, "2024 rules (SRD 5.2)")]);
+    editionSel.value = info.edition || "2014";
+    const editionBtn = el("button", { class: "btn secondary" }, info.edition ? "Change" : "Set for everyone");
+    editionBtn.addEventListener("click", async () => {
+      if (editionSel.value === info.edition) return;
+      if (!confirm(`Switch this campaign to the ${editionSel.value} rules? Everyone sees the new rules the next time they open the app. Characters already built on the other version keep their own rules and are flagged on the Characters page.`)) return;
+      await setCampaignEdition(cid, editionSel.value, save.networkId);
+      refresh();
+    });
+    const editionRow = info.system === "dnd5e" ? [el("div", { class: "grid-2" }, [field("D&D rules version for the whole table", editionSel), editionBtn])] : [];
     panel.appendChild(el("div", { class: "card" }, [
       el("h4", {}, "Campaign Settings"),
       el("div", { class: "grid-2" }, [field("Campaign name", nameInput), renameBtn]),
+      ...editionRow,
       el("div", { class: "grid-2" }, [field("Invite code", codeInput), regenCodeBtn]),
       el("div", { class: "grid-2" }, [field("DM password", pwInput), regenPwBtn]),
     ]));
@@ -244,6 +257,9 @@ export function renderSettings(container) {
         if (windowSection) panel.appendChild(windowSection);
         const fullscreenSection = renderFullscreenSection();
         if (fullscreenSection) panel.appendChild(fullscreenSection);
+        // credits for a game's own artwork live inside that game (the Pokémon area), not on the shared screens
+        const credit = activeSystem()?.credit;
+        if (credit) panel.appendChild(el("p", { class: "art-credit" }, credit));
       },
     },
     { id: "pages", label: "Sidebar", render: (panel) => panel.appendChild(pagesCard()) },

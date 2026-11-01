@@ -171,7 +171,7 @@ export async function openReader(container, book, { onClose } = {}) {
   function drawMarks(body) {
     const bms = [...notes.bookmarks].sort((a, b) => a.fraction - b.fraction);
     const hls = [...notes.highlights].sort((a, b) => a.c - b.c || a.start - b.start);
-    body.replaceChildren(
+    body.replaceChildren(...[
       el("h5", {}, `Bookmarks (${bms.length})`),
       ...(bms.length ? bms.map((m) => row(m.label, `${Math.round(m.fraction * 100)}%`, () => reader.goto(m.loc), () => { notes.bookmarks = notes.bookmarks.filter((x) => x !== m); persist(); drawTab(); })) : [el("p", { class: "dnd-small dnd-muted" }, "Press B (or the heart) to bookmark where you are.")]),
       reader.kind === "flow" ? el("h5", {}, `Highlights (${hls.length})`) : null,
@@ -180,7 +180,7 @@ export async function openReader(container, book, { onClose } = {}) {
         return r;
       }) : [el("p", { class: "dnd-small dnd-muted" }, "Select some text to highlight it or add a note.")]) : [el("p", { class: "dnd-small dnd-muted" }, "Highlighting isn't available for PDFs — use bookmarks.")]),
       (bms.length || hls.length) ? btn("Export as Markdown", () => download(`${book.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-notes.md`, exportMarkdown(), "text/markdown"), "btn secondary small") : null,
-    );
+    ].filter(Boolean));
   }
   function row(text, sub, go, remove, cls = "") {
     const open = el("button", { type: "button", class: `lib-mark ${cls}` }, [el("span", {}, text), sub ? el("span", { class: "dnd-small dnd-muted" }, sub) : null].filter(Boolean));

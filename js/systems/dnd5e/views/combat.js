@@ -61,7 +61,7 @@ function renderPlayerView(panel) {
 
   function draw(ft) {
     if (!ft || !ft.combatants.length || ft.phase === "draft") {
-      host.replaceChildren(el("div", { class: "card" }, [el("h4", {}, "No fight right now"), el("p", { class: "view-sub" }, "When the DM starts combat and publishes it, the initiative order shows up here.")]), initiativeCard(mine));
+      host.replaceChildren(el("div", { class: "card" }, [el("h4", {}, "No fight right now"), el("p", { class: "view-sub" }, "When the DM starts combat and publishes it, the initiative order shows up here.")]), initiativeCard(mine) || "");
       return;
     }
     const cur = ft.combatants[ft.currentIndex];
@@ -72,7 +72,7 @@ function renderPlayerView(panel) {
         cur && mine && cur.pcId === mine.id ? el("strong", { style: "color:var(--good)" }, "That’s you!") : null,
       ].filter(Boolean)),
       el("div", { class: "dnd-stack" }, ft.combatants.map((c, i) => combatantPublic(c, i === ft.currentIndex, mine))),
-      initiativeCard(mine),
+      initiativeCard(mine) || "",   // no character (the DM): nothing, not the text "null"
     );
   }
 

@@ -98,6 +98,22 @@ DOM with `el()` and load lazily.
   condition changes reach a player's sheet as DM directives; rolls go to the Battle Log.
 - DM pages sit behind the campaign's DM password (`dmAccess.js`).
 
+## Keywords, hover cards and unfinished characters
+
+`systems/dnd5e/glossary.js` turns every Rules-page entry (conditions, skills, damage types, rules sections, racial extras like
+Draconic Ancestry) into a keyword. `markdown.js` calls a registered linker on every rendered rules text, so a keyword anywhere
+becomes a link that opens its Rules entry (`openRules`), with a hover card; on the Rules page every mention is also coloured and
+bold. `js/tooltip.js` is the one hover card for the whole app (`data-tip`, and native `title`s are upgraded to it). The character
+builder keeps its draft in localStorage (`pokemon-dnd-dnd-builder-draft`) on every change and when you leave, and the Characters page
+offers Continue / Discard. The dragonborn ancestry table is `engine/dragons.js`.
+
+## D&D rules version
+
+2014 vs 2024 is a **campaign** setting, not a player one: `meta.edition` on the campaign (chosen when it is created, changed by the
+owner in Settings > Campaign via `POST /api/campaigns/<id>/set-edition`, owner only). On entering a campaign `app.js` calls the system's
+`applyCampaign`, and the D&D system copies the edition into the player's settings and locks the edition switches (`getCampaignEdition`).
+Campaigns that predate this have no edition and keep the old per-player switch until the owner sets one.
+
 ## Library and reader
 
 Books are stored only in the browser (IndexedDB), never on the server. `js/library/formats.js` turns
@@ -125,6 +141,38 @@ floor and spins the tower round to face its room (about 0.95s, with a rumble and
 keeps turning slowly on its own, and scrolling a page descends further. Choosing the same floor as the last click unlocks the rotation like a free-spinning scroll wheel: each click flicks
 the tower faster (stacking, capped), and it coasts to a stop under friction without settling on a window; the camera
 only hurries slightly. Choosing a different floor locks it and snaps to that room again.
+
+## Campaign Planner
+
+One full-screen page (`js/views/planner.js`, `js/planner/boardView.js`; `html.planner-full` hides the tower and removes <main>'s
+padding). The whiteboard is the whole interface: an endless pan/zoom board in world coordinates. A left rail adds nodes (notes,
+checklists, stickies, dungeons, every generator for the game; drag or click), and Maps, Scenarios and Party plans (DM) open as
+drawers over the board. `bounds` (the drawn paper) grows by 900 whenever a node comes within 260 of an edge (`board.js`).
+Backgrounds are CSS gradients (`planner-board.css`) or an upload kept in IndexedDB only (`bg-<board id>`). A dungeon node expands
+to every room card with a note box per room (`dungeonMap`/`roomCard` in `dnd5e/views/dungeonGen.js`). "Sessions" are drawn round
+nodes (box or freehand), numbered, coloured and labelled "Session N"; a node keeps a list of session ids, so it can be in several.
+Each kind of node has its own look (`kinds.js`, `[data-kind]` in `whiteboard.css`): a shop has an awning, an NPC an avatar, loot a dashed gold ring, a room a stone grid, a hook a parchment scrap. Membership of a session follows geometry (`syncSessions`: a node belongs to every session shape holding its centre), so nodes dropped or dragged into one join it. The paper always covers the screen (`coverBounds` grows it as you pan, zoom or resize). The Connect tool links two nodes with a labelled arrow: a relationship from a list (works at, found in, guards...) or your own words, suggested from the two kinds (`suggestRelation`), and for a dungeon either end can name one room ("Loot is found in Room 9"). Links live in `board.links` and are shared with the board.
+The generators live only here: there is no separate Generators page any more.
+
+Data lives in `save.planner[campaignId]` (so it is mirrored and follows the player). A player's boards, notes and checklists are
+also pushed to the server (`POST /api/plan`, one document per member, capped at `MAX_PLAN`); only the DM token can read them
+(`GET /api/plans`), shown read-only in Party plans. Because boards also arrive from other players, `normalizeBoard` rebuilds every
+field from a known type. A DM's scenarios and boards are never pushed. Map images are device-local (`mapStore.js`); "Export pack"
+moves a whole map. Generators: `pokeGenerators.js` is built on the Pokémon data and `dndText.js` wraps the D&D ones; both are
+Node-tested (`tests/js`), as is the board geometry (`board.test.mjs`). The server tests cover who may write and read plans
+(`PlannerPlans`). The desktop sidebar folds away (`html.nav-collapsed`, remembered per device).
+
+## Shared screens
+
+The shared sign-in and campaign screens say "D&D Companion" and show nothing Pokémon; the Pokémon artwork credit is in
+Settings > Appearance inside the Pokémon area.
+
+## The party map
+
+The DM can share one map with the table: `POST /api/partymap` (DM token) stores the image (shrunk to a JPEG), the labelled places
+and the players' tokens; `GET /api/partymap` returns it to any member with **only the places the DM has revealed** (the server
+filters; hidden places and their notes are never sent to players). Dragging a token or revealing a place uses `/partymap/live`,
+which carries just pins and tokens. Whiteboard nodes can be linked to a place on a map (`node.mapLink`, `planner/mapLink.js`).
 
 ## Fonts
 

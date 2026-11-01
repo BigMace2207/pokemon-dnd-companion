@@ -7,6 +7,7 @@
 // browser's own save, exactly like My Team — it's a shortcut into the same
 // data, not a second source of truth.
 
+import { monWithLevel } from "./battleLabels.js";
 import { el, field, makeCombo } from "./components.js";
 import { widgetDock } from "./widgetDock.js";
 import { loadSave, writeSave, addBagItem, useBagItem, bagEntries } from "./storage.js";
@@ -26,7 +27,7 @@ function monOptions(save) {
   return [...save.party, ...save.pc].filter((m) => m.name);
 }
 
-function monLabel(m) { return `${m.nickname || m.name} (Lv.${m.level})`; }
+const monLabel = monWithLevel;
 
 export function mountQuickConsole(state) {
   if (document.getElementById("quickConsoleBtn")) return; // already mounted (e.g. hot-reload)

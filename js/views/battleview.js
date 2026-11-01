@@ -17,6 +17,7 @@
 // teams (NPCs, wild Pokémon, every online player) at once, not one lead
 // Pokémon in a scene.
 
+import { combatantLabel, ownerName, levelText } from "../battleLabels.js";
 import { el } from "../components.js";
 import { calcAllStats, BALL_TYPES } from "../calc.js";
 import { HEAL_ITEMS } from "../battleItems.js";
@@ -189,7 +190,7 @@ export function renderBattleView(container, state, options = {}) {
     flash("Sent to the Dungeon Master!");
   }
 
-  function targetLabel(c) { return `${c.sourceLabel}'s ${c.mon.nickname || c.mon.name}`; }
+  const targetLabel = combatantLabel;
 
   // Single-target actions (a move, a thrown ball, ...): if there's exactly
   // one valid enemy, act on it immediately (no extra tap, matches how the
@@ -359,7 +360,7 @@ export function renderBattleView(container, state, options = {}) {
     const hud = el("div", { class: "battle-hud" + (facing === "front" ? " enemy-hud" : "") }, [
       el("div", { class: "battle-hud-row" }, [
         el("span", { class: "battle-name" }, mon.nickname || mon.name),
-        el("span", { class: "battle-level" }, `Lv${mon.level ?? "?"}`),
+        el("span", { class: "battle-level" }, `Lv${levelText(mon.level)}`),
       ]),
       el("div", { class: "battle-hpbar-bg" }, [el("div", { class: `battle-hpbar-fill ${hpBarClass(hpPct(state, mon))}`, style: `width:${hpPct(state, mon)}%` })]),
       isMine ? el("div", { class: "battle-hp-numbers" }, maxHpFor(state, mon) !== null ? `${cur} / ${maxHpFor(state, mon)}` : "") : null,
@@ -388,7 +389,7 @@ export function renderBattleView(container, state, options = {}) {
     const hud = el("div", { class: "battle-hud" }, mon ? [
       el("div", { class: "battle-hud-row" }, [
         el("span", { class: "battle-name" }, mon.nickname || mon.name),
-        el("span", { class: "battle-level" }, `Lv${mon.level ?? "?"}`),
+        el("span", { class: "battle-level" }, `Lv${levelText(mon.level)}`),
       ]),
       el("div", { class: "battle-hpbar-bg" }, [el("div", { class: `battle-hpbar-fill ${hpBarClass(pct)}`, style: `width:${pct}%` })]),
       el("div", { class: "battle-hp-numbers" }, max !== null ? `${cur} / ${max}` : ""),
@@ -434,7 +435,7 @@ export function renderBattleView(container, state, options = {}) {
         : spriteImg(species?.dex, { back: false, alt: c.mon.name, className: "vs-portrait-sprite" });
       return el("div", { class: "vs-portrait" }, [
         img,
-        el("div", { class: "vs-portrait-name" }, c.sourceLabel),
+        el("div", { class: "vs-portrait-name" }, ownerName(c)),
         el("div", { class: "vs-portrait-trainer" }, c.mon.nickname || c.mon.name),
       ]);
     }
@@ -589,7 +590,7 @@ export function renderBattleView(container, state, options = {}) {
         // so the "not disabled" case must omit the attribute (null) rather
         // than pass false.
         const isDisabled = fainted || idx === activeIndex;
-        const b = el("button", { class: "btn secondary battle-party-btn", disabled: isDisabled ? "" : null }, `${m.nickname || m.name} (Lv.${m.level}) — ${fainted ? "Fainted" : `${cur}/${max} HP`}`);
+        const b = el("button", { class: "btn secondary battle-party-btn", disabled: isDisabled ? "" : null }, `${m.nickname || m.name} (Lv.${levelText(m.level)}) — ${fainted ? "Fainted" : (max === null ? "HP unknown" : `${cur}/${max} HP`)}`);
         if (!fainted && idx !== activeIndex) {
           b.addEventListener("click", () => {
             activeIndex = idx;
@@ -613,7 +614,7 @@ export function renderBattleView(container, state, options = {}) {
         box.appendChild(el("div", { class: "battle-prompt" }, `What will ${mon?.nickname || mon?.name || "your Pokémon"} do?`));
         box.appendChild(menuGridButtons());
       } else {
-        box.appendChild(el("div", { class: "battle-prompt" }, `Waiting for ${active ? `${active.sourceLabel}'s ${active.mon.nickname || active.mon.name}` : "the next turn"}…`));
+        box.appendChild(el("div", { class: "battle-prompt" }, `Waiting for ${active ? combatantLabel(active) : "the next turn"}…`));
       }
     }
 

@@ -11,7 +11,7 @@ feature docs.
 
 ```
 python server.py [port]                    # default 8850; serves the app + /api
-python -m unittest discover -s tests -v    # ~40s, 52 tests, run before every commit
+python -m unittest discover -s tests -v    # ~45s, 59 tests, run before every commit
 node --test tests/js/*.test.mjs            # D&D rules engine, <1s (use the glob, not the folder)
 ```
 
@@ -35,6 +35,8 @@ a proxy), `PKDND_BACKUP_DIR`, `PKDND_BACKUP_INTERVAL`, `PKDND_GOOGLE_CLIENT_ID`,
   sit beside it. `data/` rules JSON. `sprites/` images.
 - `js/systems/dnd5e/` the D&D 5e system (engine is DOM-free, tested in `tests/js`); `js/library/` the
   e-reader; `js/lavaTheme.js` the lava theme's ambient layer. See docs/architecture.md.
+- `js/views/planner.js` + `js/planner/` the Campaign Planner (players share notes/checklists with the DM via `/api/plan`;
+  only the DM token reads `/api/plans`).
 - `tests/test_server.py` the server test suite (static-file lockdown, backups,
   accounts, authorization, tokens).
 

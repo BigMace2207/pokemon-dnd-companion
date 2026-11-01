@@ -8,7 +8,7 @@ import { loadSet } from "../../data.js";
 import { pendingChoices } from "../../engine/character.js";
 import { openFeatureChoice, chosenNames, choiceCount } from "../../components/featureChoice.js";
 
-const GROUPS = [["class", "Class features"], ["subclass", "Subclass features"], ["race", "Race / species traits"], ["background", "Background"], ["feat", "Feats"]];
+const GROUPS = [["class", "Class features"], ["subclass", "Subclass features"], ["race", "Race traits"], ["background", "Background"], ["feat", "Feats"]];
 
 export function renderFeaturesTab(panel, S) {
   const { char, d } = S;
@@ -23,7 +23,8 @@ export function renderFeaturesTab(panel, S) {
   function draw() {
     const needle = q.value.trim().toLowerCase();
     const blocks = [];
-    for (const [kind, title] of GROUPS) {
+    for (const [kind, label] of GROUPS) {
+      const title = kind === "race" ? (char.edition === "2024" ? "Species traits" : "Race traits") : label;
       const items = d.features.filter((f) => f.kind === kind && (!needle || `${f.name} ${f.desc.join(" ")}`.toLowerCase().includes(needle)));
       if (!items.length) continue;
       blocks.push(section(title, items.map((f) => featureBlock(S, f, draw))));

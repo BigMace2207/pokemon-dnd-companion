@@ -1,0 +1,63 @@
+/* ===========================================================================
+   Campaign Planner (js/views/planner.js, js/planner/*).
+   Sizes follow style.css: calc(Npx * var(--s)), text 12px minimum. Reuses the .dnd-* building blocks.
+   =========================================================================== */
+
+.pl-banner { margin: 0 0 calc(12px * var(--s)); padding: calc(8px * var(--s)) calc(12px * var(--s)); border-left: 3px solid var(--gold); background: color-mix(in srgb, var(--gold) 10%, var(--panel)); border-radius: 0 var(--radius) var(--radius) 0; font-size: max(12px, calc(16px * var(--s))); color: var(--text-dim); }
+
+/* ---------------------------------------------------------------- checklists */
+
+.pl-lists { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(380px * var(--s) + 20px)), 1fr)); gap: calc(14px * var(--s)); margin-top: calc(14px * var(--s)); align-items: start; }
+.pl-lists > * { margin-bottom: 0; min-width: 0; }
+.pl-list { display: flex; flex-direction: column; gap: calc(8px * var(--s)); }
+.pl-list-title { font-family: var(--font-display); font-weight: 700; font-size: calc(21px * var(--s)); background: transparent; border: 0; border-bottom: 1px dashed var(--border); padding: 2px 0; }
+.pl-bar { height: calc(10px * var(--s)); min-height: 8px; }
+.pl-items { display: flex; flex-direction: column; gap: 2px; }
+.pl-item { display: flex; align-items: center; gap: calc(6px * var(--s)); }
+.pl-item input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--gold); }
+.pl-item-text { flex: 1 1 auto; min-width: 0; background: transparent; border: 0; border-bottom: 1px solid transparent; padding: calc(5px * var(--s)) 2px; font-size: calc(19px * var(--s)); }
+.pl-item-text:focus { border-bottom-color: var(--gold); outline: none; }
+.pl-item-text.done { text-decoration: line-through; opacity: .55; }
+.pl-items.readonly .pl-item-text { padding: calc(4px * var(--s)) 2px; }
+.pl-items.readonly .pl-item.done { opacity: .6; }
+.pl-tick { font-size: calc(20px * var(--s)); color: var(--gold); }
+.pl-open { margin: 0 0 calc(8px * var(--s)); padding-left: 1.2em; }
+.pl-mini { display: flex; flex-direction: column; gap: 3px; margin: calc(6px * var(--s)) 0; }
+
+/* ---------------------------------------------------------------- scenarios */
+
+.pl-scene > summary { display: flex; align-items: center; gap: calc(8px * var(--s)); flex-wrap: wrap; }
+.pl-scene-n { display: inline-grid; place-items: center; min-width: 1.8em; height: 1.8em; border-radius: 50%; background: var(--gold); color: #1a1208; font-weight: 800; font-size: .85em; }
+.pl-scene[open] { border-color: var(--gold-dim); }
+.pl-gen-body p { margin: 0 0 calc(4px * var(--s)); }
+.pl-gen-body h5 { margin: calc(8px * var(--s)) 0 calc(4px * var(--s)); color: var(--gold); }
+
+/* ---------------------------------------------------------------- maps */
+
+.pl-map-layout { display: grid; grid-template-columns: minmax(calc(240px * var(--s)), calc(320px * var(--s))) minmax(0, 1fr); gap: calc(16px * var(--s)); align-items: start; }
+@media (max-width: 1000px) { .pl-map-layout { grid-template-columns: minmax(0, 1fr); } }
+.pl-map-side { display: flex; flex-direction: column; gap: calc(12px * var(--s)); min-width: 0; }
+.pl-map-side .card { margin-bottom: 0; }
+.pl-drop { display: flex; flex-direction: column; gap: 2px; align-items: center; text-align: center; margin-top: calc(10px * var(--s)); padding: calc(14px * var(--s)); border: 2px dashed var(--border); border-radius: var(--radius); cursor: pointer; }
+.pl-drop:hover, .pl-drop.over, .pl-drop:focus-visible { border-color: var(--gold); background: color-mix(in srgb, var(--gold) 10%, var(--panel)); outline: none; }
+.pl-map-viewer { min-width: 0; }
+.pl-map-frame { position: relative; }
+.pl-map-wrap { position: relative; height: min(72vh, 780px); min-height: 320px; overflow: hidden; touch-action: none; background: #0d0a09; border: 1px solid var(--border); border-radius: var(--radius); cursor: grab; --inv: 1; }
+.pl-map-wrap:active { cursor: grabbing; }
+.pl-map-wrap.adding { cursor: crosshair; outline: 2px solid var(--gold); }
+.pl-map-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.pl-map-tools { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 80%; }
+.pl-map-empty { padding: calc(30px * var(--s)); text-align: center; border: 1px dashed var(--border); border-radius: var(--radius); }
+.pl-pin { position: absolute; transform: translate(-50%, -100%) scale(var(--inv)); transform-origin: 50% 100%; display: flex; align-items: center; gap: 4px; cursor: pointer; touch-action: none; z-index: 2; }
+.pl-pin-dot { display: inline-grid; place-items: center; width: 28px; height: 28px; min-width: 28px; border-radius: 50% 50% 50% 4px; transform: rotate(-45deg); background: var(--c, #ff4a22); color: #fff; border: 2px solid #1a1208; font-size: 14px; font-weight: 800; box-shadow: 0 2px 6px rgba(0, 0, 0, .6); }
+.pl-pin .pl-pin-dot { transform: none; border-radius: 50%; }
+.pl-pin-text { background: rgba(14, 10, 8, .88); color: #fff; border: 1px solid var(--c, #ff4a22); border-radius: 6px; padding: 1px 7px; font-size: 14px; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.pl-pin-text:empty { display: none; }
+.pl-map-wrap.no-text .pl-pin-text { display: none; }
+.pl-pin.flash .pl-pin-dot { animation: pl-flash .5s ease-in-out 3; }
+@keyframes pl-flash { 50% { transform: scale(1.5); } }
+.pl-pin-rows { display: flex; flex-direction: column; max-height: 40vh; overflow-y: auto; margin-top: calc(8px * var(--s)); }
+.pl-pin-row { display: flex; gap: 8px; align-items: center; width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--border); color: var(--text); font: inherit; padding: calc(7px * var(--s)) 4px; cursor: pointer; min-height: 40px; }
+.pl-pin-row:hover { background: var(--panel-alt); }
+.pl-pin-row .pl-pin-dot { width: 24px; height: 24px; min-width: 24px; font-size: 12px; background: var(--c); }
+@media (prefers-reduced-motion: reduce) { .pl-pin.flash .pl-pin-dot { animation: none; } }
