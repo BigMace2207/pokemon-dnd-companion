@@ -5,13 +5,14 @@ sessions played on the DM's planner, the DM's homebrew monsters / items / spells
 published to the players, a shared party map with revealed and hidden places, battle-log rolls and messages to the DM.
 
     python tools/seed_showcase.py                       # the local test server (tools/test_server.py, port 8860)
-    python tools/seed_showcase.py --base https://pokemon-dnd.duckdns.org --live
+    python tools/seed_showcase.py --base https://fluxdev.org --live
 
 Everything goes through the normal API as the accounts themselves, so it is additive: it creates the accounts and the
 campaign if they are missing and otherwise refreshes the showcase data in them (never touching anyone else's). The shared
 password is generated on the first run and kept outside the repo in ~/.pkdnd-showcase/<host>.txt. Afterwards
 `node tools/keep_table_online.mjs --showcase [base]` keeps the eight players showing as online.
 """
+import hashlib
 import argparse
 import base64
 import json
@@ -45,6 +46,12 @@ def accounts_file(base):
     return Path.home() / ".pkdnd-showcase" / f"{urlparse(base).hostname}.txt"
 
 
+def device_key(pw, nid):
+    """The same made-up device every run, so once sign-in codes are on (server.py "Trusted devices") these
+    scripted sign-ins never wait for an email: the device an account was registered from is trusted."""
+    return "seed-device-" + hashlib.sha256(f"{pw}:{nid}".encode()).hexdigest()[:32]
+
+
 def password(base):
     f = accounts_file(base)
     if f.exists():
@@ -61,9 +68,9 @@ def password(base):
 
 def sign_in(base, key, pw):
     email, nid = f"{key}@{DOMAIN}", f"showcase-{key}"
-    status, out = call(base, "POST", "/api/auth/login", {"email": email, "password": pw, "networkId": nid})
+    status, out = call(base, "POST", "/api/auth/login", {"email": email, "password": pw, "networkId": nid, "deviceKey": device_key(pw, nid)})
     if status == 401:   # first run: the account doesn't exist yet
-        status, out = call(base, "POST", "/api/auth/register", {"email": email, "password": pw, "networkId": nid})
+        status, out = call(base, "POST", "/api/auth/register", {"email": email, "password": pw, "networkId": nid, "deviceKey": device_key(pw, nid)})
     if status != 200:
         sys.exit(f"sign-in failed for {key}: {status} {out}")
     return out["token"], out["account"]["networkId"]

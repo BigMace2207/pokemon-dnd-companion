@@ -251,3 +251,63 @@ export function clearPartyMap(token) { return postJSON("/api/partymap/clear", { 
 export function dmAction(token, action, payload) {
   return postJSON("/api/dm/action", { token, action, ...payload });
 }
+
+// --- Uploaded files (server.py "Uploaded files"). Maps live on the server per campaign; Library books only for
+// accounts allowed to keep them there. Images are fetched with the session and shown through a blob: URL, and a
+// copy is kept per page load keyed by the file's hash, so a map that hasn't changed is never downloaded twice. ---
+export async function listFiles(kind, campaignId = activeCampaignId) {
+  const q = kind === "map" ? `?kind=map&campaignId=${encodeURIComponent(campaignId || "")}` : `?kind=${kind}`;
+  try {
+    const res = await fetch(`/api/files${q}`, { cache: "no-store", headers: authHeaders() });
+    return res.ok ? await res.json() : null;
+  } catch { return null; }
+}
+
+// Resolves to { file } or { error }. onProgress(0..1) while it uploads.
+export function uploadFile(kind, file, { name = file.name, campaignId = activeCampaignId, onProgress } = {}) {
+  return new Promise((resolve) => {
+    const q = new URLSearchParams({ kind, name, ...(kind === "map" ? { campaignId: campaignId || "" } : {}) });
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/files/upload?${q}`);
+    const token = getSessionToken();
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    if (onProgress) xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
+      resolve(xhr.status === 200 ? data : { error: data.error || `Upload failed (${xhr.status}).` });
+    };
+    xhr.onerror = () => resolve({ error: "Couldn't reach the server." });
+    xhr.send(file);
+  });
+}
+
+const fileCache = new Map();   // file id -> { etag, url, blob }
+export async function fileBlob(id) {
+  const cached = fileCache.get(id);
+  try {
+    const res = await fetch(`/api/files/${encodeURIComponent(id)}`, { headers: authHeaders(cached ? { "If-None-Match": cached.etag } : {}) });
+    if (res.status === 304 && cached) return cached;
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    if (cached) URL.revokeObjectURL(cached.url);
+    const entry = { etag: res.headers.get("ETag"), url: URL.createObjectURL(blob), blob };
+    fileCache.set(id, entry);
+    return entry;
+  } catch { return cached || null; }
+}
+export async function fileUrl(id) { return (await fileBlob(id))?.url || null; }
+export const cachedFileUrl = (id) => fileCache.get(id)?.url || null;
+
+export function setFileMeta(id, patch) { return postJSON(`/api/files/${encodeURIComponent(id)}/meta`, patch); }
+export function deleteFile(id) { return postJSON(`/api/files/${encodeURIComponent(id)}/delete`, {}); }
+
+// --- Admin console (only answers for an admin; see server.py "Admin console") ---
+export function adminOverview() { return getJSON("/api/admin/overview"); }
+export function adminSetPerm(accountId, perm, value) { return postJSON("/api/admin/perm", { accountId, perm, value }); }
+export function adminCommand(text) { return postJSON("/api/admin/command", { text }); }
+
+// --- The Pokémon hub's shared board (server.py "The Pokémon hub") ---
+export function hubSync(id, since, cursor) { return postJSON("/api/hub/sync", { id, since, cursor }); }
+export function hubOp(id, body, token) { return postJSON("/api/hub/op", { id, ...body, ...(token ? { token } : {}) }); }

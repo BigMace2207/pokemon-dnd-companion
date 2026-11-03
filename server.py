@@ -56,6 +56,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 
 import auth
+import mailer
 
 # Not every OS's mimetypes registry has this by default; register it
 # explicitly so .mp3 files in sfx/ are served with a type browsers will
@@ -267,6 +268,7 @@ def default_campaign_state():
         "playerSaves": {},   # networkId -> {"current": <save object>, "named": {slotName: <save object>}}
         "partyMap": None,    # the one map the DM shares with the table: {name, image, w, h, pins[{..., revealed}], tokens[], updated}
         "plans": {},         # networkId -> {name, updated, plan} -- each player's planning notes and checklists; the DM can read them
+        "hub": {"items": [], "rev": 0, "activeButton": None},  # the Pokémon hub whiteboard everyone shares (see the Hub section)
     }
 
 
@@ -297,6 +299,11 @@ CAMPAIGNS_DIRTY = False
 # by the hourly backups, and both are guarded by CAMPAIGNS_LOCK.
 ACCOUNTS = {}  # accountId -> {id, email, password, providers, networkId, linkedIds, createdAt}
 SESSIONS = {}  # sha256(token) -> {"accountId", "expires"} -- raw tokens are never stored
+# Uploaded files (map images, and cloud Library books for accounts allowed to
+# keep them on the server). Only this metadata lives in the save file; the
+# bytes are separate files in UPLOAD_DIR, so a big upload never slows the
+# autosave down. fileId -> {id, owner, kind, campaignId, name, mime, size, sha256, created, meta, deleted}
+FILES = {}
 # token -> campaignId. A DM login is scoped to the one campaign it was
 # issued for, since each campaign now has its own DM password.
 DM_TOKENS = {}
@@ -437,7 +444,7 @@ def _read_state_file(path):
 def _serialize_state():
     """The exact bytes written to the save file and to every backup. Caller
     holds CAMPAIGNS_LOCK."""
-    body = json.dumps({"campaigns": CAMPAIGNS, "accounts": ACCOUNTS, "sessions": SESSIONS}).encode("utf-8")
+    body = json.dumps({"campaigns": CAMPAIGNS, "accounts": ACCOUNTS, "sessions": SESSIONS, "files": FILES}).encode("utf-8")
     return _MAGIC + _xor(body, _FILE_KEY) if ENCRYPT_STATE_FILE else body
 
 
@@ -511,7 +518,7 @@ def _quarantine_unreadable_state():
 
 
 def load_state_from_disk():
-    global CAMPAIGNS, ACCOUNTS, SESSIONS
+    global CAMPAIGNS, ACCOUNTS, SESSIONS, FILES
     if not STATE_FILE.exists():
         return
     try:
@@ -528,14 +535,14 @@ def load_state_from_disk():
             return
         except Exception as e:
             print(f"WARNING: backup {backup.name} is unreadable too ({e}).")
-    CAMPAIGNS, ACCOUNTS, SESSIONS = {}, {}, {}
+    CAMPAIGNS, ACCOUNTS, SESSIONS, FILES = {}, {}, {}, {}
     print("No usable backup found -- starting fresh (the unreadable file was kept, see above).")
 
 
 def _install_loaded(loaded, source_name):
     """Replaces the in-memory state with a parsed save. Raises (leaving the
     caller to fall back) if the data isn't shaped like a save."""
-    global CAMPAIGNS, ACCOUNTS, SESSIONS
+    global CAMPAIGNS, ACCOUNTS, SESSIONS, FILES
     if "campaigns" in loaded:
         campaigns = loaded["campaigns"]
         # Backfill any fields added to campaign meta after some campaigns
@@ -570,6 +577,7 @@ def _install_loaded(loaded, source_name):
     CAMPAIGNS = campaigns
     ACCOUNTS = loaded.get("accounts") or {}   # absent in saves from before accounts existed
     SESSIONS = loaded.get("sessions") or {}
+    FILES = loaded.get("files") or {}
     total_trainers = sum(len(e["state"]["trainers"]) for e in CAMPAIGNS.values())
     print(f"Loaded {len(CAMPAIGNS)} campaign(s), {len(ACCOUNTS)} account(s) from {source_name} ({total_trainers} trainer(s) remembered).")
 
@@ -656,13 +664,116 @@ def account_from_token(token):
     return ACCOUNTS.get(s["accountId"])
 
 
+# ---- Admins and per-account permissions ----
+# The site owner's address goes in PKDND_ADMIN_EMAILS (comma separated) on the
+# server, never in the repo. An account only counts as that admin once it has
+# proved it owns the address (a code sent there, or Google saying so), so
+# registering someone else's address gets nothing. Admins can grant the
+# permissions below to anyone from the admin console.
+ADMIN_EMAILS = {e.strip().lower() for e in (os.environ.get("PKDND_ADMIN_EMAILS") or "").split(",") if e.strip()}
+PERMS = {
+    "admin": "Admin console, and everything below",
+    "cloudLibrary": "Keep Library books (PDFs) on the server, on every device",
+    "unlimitedMaps": "No 10-map limit per campaign, and much bigger map files",
+}
+MB = 1024 * 1024
+LIMITS_STANDARD = {"mapsPerCampaign": 10, "mapBytes": 15 * MB, "bookBytes": 0}
+LIMITS_ELEVATED_MAPS = {"mapsPerCampaign": None, "mapBytes": 100 * MB}
+BOOK_BYTES_CLOUD = 300 * MB
+MIN_FREE_DISK = 2 * 1024 * MB   # refuse uploads before the server's disk gets this full
+
+
+def env_admin(acc):
+    return bool(acc) and bool(acc.get("emailVerified")) and (acc.get("email") or "").lower() in ADMIN_EMAILS
+
+
+def effective_perms(acc):
+    granted = (acc or {}).get("perms") or {}
+    admin = env_admin(acc) or granted.get("admin") is True
+    return {k: admin or granted.get(k) is True for k in PERMS}
+
+
+def account_limits(acc):
+    perms = effective_perms(acc)
+    out = dict(LIMITS_STANDARD)
+    if perms["unlimitedMaps"]:
+        out.update(LIMITS_ELEVATED_MAPS)
+    if perms["cloudLibrary"]:
+        out["bookBytes"] = BOOK_BYTES_CLOUD
+    return out
+
+
 def public_account(acc):
     return {
         "email": acc.get("email"),
         "hasPassword": bool(acc.get("password")),
         "providers": sorted(acc.get("providers") or {}),
         "networkId": acc["networkId"],
+        "emailVerified": bool(acc.get("emailVerified")),
+        "perms": effective_perms(acc),
+        "limits": account_limits(acc),
     }
+
+
+# ---- Trusted devices and emailed sign-in codes ----
+# Each browser keeps a random device key. Signing in with a password from a
+# device the account hasn't seen before needs a 4-digit code emailed to the
+# account's address. Only hashes of device keys and codes are kept, and the
+# pending codes live in memory only (a restart just means asking again).
+MAX_DEVICES = 40
+CODE_TTL = 600
+CODE_TRIES = 5
+CHALLENGES = {}   # challengeId -> {accountId, codeHash, expires, tries, purpose, networkId, deviceHash, sentAt}
+
+
+def _device_hash(device_key):
+    if not isinstance(device_key, str) or not (16 <= len(device_key) <= 200):
+        return None
+    return hashlib.sha256(("device:" + device_key).encode("utf-8")).hexdigest()
+
+
+def device_trusted(acc, device_hash):
+    return bool(device_hash) and any(d.get("h") == device_hash for d in acc.get("devices") or [])
+
+
+def trust_device(acc, device_hash, label=""):
+    """Caller holds CAMPAIGNS_LOCK. Remembers (or refreshes) this device."""
+    if not device_hash:
+        return
+    devices = acc.setdefault("devices", [])
+    now = time.time()
+    for d in devices:
+        if d.get("h") == device_hash:
+            d["seen"] = now
+            return
+    devices.append({"h": device_hash, "added": now, "seen": now, "label": (label or "")[:60]})
+    devices.sort(key=lambda d: d.get("seen", 0), reverse=True)
+    del devices[MAX_DEVICES:]
+    mark_dirty()
+
+
+def _code_hash(challenge_id, code):
+    return hashlib.sha256(f"{challenge_id}:{code}".encode("utf-8")).hexdigest()
+
+
+def new_challenge(acc, purpose, network_id=None, device_hash=None):
+    """Caller holds CAMPAIGNS_LOCK. Returns (challengeId, code); the caller
+    emails the code (outside the lock)."""
+    now = time.time()
+    for k in [k for k, c in CHALLENGES.items() if c["expires"] < now]:
+        del CHALLENGES[k]
+    cid = secrets.token_urlsafe(18)
+    code = f"{secrets.randbelow(10000):04d}"
+    CHALLENGES[cid] = {"accountId": acc["id"], "codeHash": _code_hash(cid, code), "expires": now + CODE_TTL, "tries": 0,
+                       "purpose": purpose, "networkId": network_id, "deviceHash": device_hash, "sentAt": now}
+    return cid, code
+
+
+def masked_email(email):
+    if not email or "@" not in email:
+        return ""
+    name, domain = email.split("@", 1)
+    return (name[:2] + "•" * max(1, len(name) - 2)) + "@" + domain
 
 
 def find_password_account(email):
@@ -725,6 +836,129 @@ def merge_account_identities(acc):
     return changed
 
 
+# ---- Uploaded files ----
+UPLOAD_DIR = Path(os.environ.get("PKDND_UPLOAD_DIR") or (DATA_DIR / "uploads"))
+FILE_KINDS = ("map", "book")
+IMAGE_MIMES = {b"\x89PNG\r\n\x1a\n": "image/png", b"\xff\xd8\xff": "image/jpeg", b"GIF87a": "image/gif", b"GIF89a": "image/gif"}
+BOOK_EXTS = {"pdf": "application/pdf", "epub": "application/epub+zip", "txt": "text/plain", "md": "text/markdown",
+             "html": "text/html", "htm": "text/html", "cbz": "application/vnd.comicbook+zip", "zip": "application/zip",
+             "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+FILE_ID_RE = re.compile(r"f[0-9a-f]{20}")
+
+
+def sniff_image(head):
+    for magic, mime in IMAGE_MIMES.items():
+        if head.startswith(magic):
+            return mime
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def file_path(rec):
+    return UPLOAD_DIR / rec["owner"] / f"{rec['id']}.bin"
+
+
+def live_files(owner=None, kind=None, campaign_id=None):
+    """Caller holds CAMPAIGNS_LOCK."""
+    return [f for f in FILES.values() if not f.get("deleted") and (owner is None or f["owner"] == owner)
+            and (kind is None or f["kind"] == kind) and (campaign_id is None or f.get("campaignId") == campaign_id)]
+
+
+def public_file(rec):
+    return {k: rec.get(k) for k in ("id", "kind", "campaignId", "name", "mime", "size", "sha256", "created", "meta")}
+
+
+def disk_free():
+    try:
+        return shutil.disk_usage(UPLOAD_DIR if UPLOAD_DIR.exists() else DATA_DIR).free
+    except OSError:
+        return 0
+
+
+def clean_meta(raw, limit=60_000):
+    """Small JSON metadata stored beside a file (a book's title/author/cover, a map's size)."""
+    if not isinstance(raw, dict):
+        return {}
+    try:
+        return raw if len(json.dumps(raw)) <= limit else {}
+    except (TypeError, ValueError):
+        return {}
+
+
+# ---- The Pokémon hub ----
+# One shared whiteboard per campaign. Items are notes, drawings and text from
+# anyone, and the DM's encounter buttons. Cursors are only kept in memory for
+# a few seconds: they change many times a second and never need saving.
+HUB_MAX_ITEMS = 600
+HUB_CURSOR_TTL = 6
+HUB_CURSORS = {}   # campaignId -> {networkId: {name, color, x, y, t}}
+HUB_TYPES = ("note", "stroke", "text", "button")
+HUB_SOURCES = ("npc", "wild", "plan")
+
+
+def _num(v, lo=-200000, hi=200000):
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return 0
+    return 0 if f != f else round(min(hi, max(lo, f)), 1)
+
+
+def clean_hub_item(raw, owner, is_dm):
+    """A validated copy of one hub item, or None. Only the DM makes buttons."""
+    if not isinstance(raw, dict) or raw.get("type") not in HUB_TYPES:
+        return None
+    kind = raw["type"]
+    if kind == "button" and not is_dm:
+        return None
+    item = {"id": _text(raw.get("id"), 40) or secrets.token_hex(6), "type": kind, "owner": owner,
+            "x": _num(raw.get("x")), "y": _num(raw.get("y")), "color": _colour(raw.get("color"), "#f0b45a"), "updated": time.time()}
+    if kind == "note":
+        item.update({"text": _text(raw.get("text"), 2000), "w": _num(raw.get("w"), 120, 900) or 220, "h": _num(raw.get("h"), 80, 900) or 160})
+    elif kind == "text":
+        item.update({"text": _text(raw.get("text"), 400), "size": _num(raw.get("size"), 12, 120) or 28})
+    elif kind == "stroke":
+        pts = raw.get("pts") if isinstance(raw.get("pts"), list) else []
+        item.update({"pts": [[_num(p[0]), _num(p[1])] for p in pts[:600] if isinstance(p, list) and len(p) == 2],
+                     "width": _num(raw.get("width"), 1, 40) or 4})
+        if len(item["pts"]) < 2:
+            return None
+    else:
+        src = raw.get("source") if isinstance(raw.get("source"), dict) else {}
+        if src.get("kind") not in HUB_SOURCES:
+            return None
+        mons = src.get("mons") if isinstance(src.get("mons"), list) else []
+        item.update({
+            "label": _text(raw.get("label"), 60) or "Encounter",
+            "reveal": "sprite" if raw.get("reveal") == "sprite" else "hidden",
+            "source": {"kind": src["kind"], "id": _text(src.get("id"), 80), "title": _text(src.get("title"), 120),
+                       "trainer": _text(src.get("trainer"), 60),
+                       "mons": [{"name": _text(m.get("name"), 40), "level": int(_num(m.get("level"), 1, 100) or 1)}
+                                for m in mons[:6] if isinstance(m, dict) and _text(m.get("name"), 40)]},
+        })
+    return item
+
+
+def hub_button_preview(state, item):
+    """What hovering a button shows: the first Pokémon's level (and name, for
+    the sprite when the DM allows it), read fresh from the DM's libraries."""
+    src = item.get("source") or {}
+    first, count = None, 0
+    if src.get("kind") == "npc":
+        npc = state["npcTrainers"].get(src.get("id")) or {}
+        party = [m for m in ((npc.get("team") or {}).get("party") or []) if isinstance(m, dict) and m.get("name")]
+        first, count = (party[0] if party else None), len(party)
+    elif src.get("kind") == "wild":
+        first, count = state["wildPokemon"].get(src.get("id")), 1
+    else:
+        mons = src.get("mons") or []
+        first, count = (mons[0] if mons else None), len(mons)
+    if not first:
+        return {"level": None, "name": None, "count": count, "missing": src.get("kind") != "plan"}
+    return {"level": first.get("level"), "name": first.get("name") if item.get("reveal") == "sprite" else None, "count": count}
+
+
 # Largest request body accepted (a full player save with a big PC box is well
 # under 1 MB) and the longest free-text / name fields stored from clients.
 MAX_BODY = 4 * 1024 * 1024
@@ -742,7 +976,7 @@ CONTENT_SECURITY_POLICY = "; ".join([
     "script-src 'self' https://accounts.google.com https://appleid.cdn-apple.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",
     "font-src https://fonts.gstatic.com",
-    "img-src 'self' data:",
+    "img-src 'self' data: blob:",   # blob: shows map images fetched with the session (never a URL with a token in it)
     "media-src 'self'",
     "frame-src https://accounts.google.com https://appleid.apple.com",
     "connect-src 'self' https://accounts.google.com https://appleid.apple.com",
@@ -897,18 +1131,42 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def _auth_get(self, parts):
         action = parts[2] if len(parts) > 2 else ""
         if action == "config":
-            return self._send_json({"google": GOOGLE_CLIENT_ID, "apple": APPLE_CLIENT_ID})
+            return self._send_json({"google": GOOGLE_CLIENT_ID, "apple": APPLE_CLIENT_ID, "emailCodes": mailer.configured()})
         if action == "me":
             with CAMPAIGNS_LOCK:
                 acc = account_from_token(self._bearer())
                 if not acc:
                     return self._send_json({"error": "not signed in"}, 401)
+                # A device that already holds a valid session is one the person
+                # signed in on before codes existed: remember it, so they aren't
+                # asked for a code on a device they've been using all along.
+                trust_device(acc, _device_hash(self.headers.get("X-Device-Key")), self._device_label())
                 return self._send_json({"account": public_account(acc)})
         return self._send_json({"error": "not found"}, 404)
+
+    def _device_label(self):
+        ua = self.headers.get("User-Agent", "")
+        browser = next(({"Edg": "Edge", "OPR": "Opera"}.get(n, n) for n in ("Edg", "OPR", "Firefox", "Chrome", "Safari") if n in ua), "Browser")
+        for key, os_name in (("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"), ("Windows", "Windows"), ("Mac OS", "Mac"), ("Linux", "Linux")):
+            if key in ua:
+                return f"{browser} on {os_name}"
+        return browser
+
+    def _send_code(self, acc, purpose, network_id=None, device_hash=None):
+        """Emails a fresh code and answers with the challenge to quote back."""
+        with CAMPAIGNS_LOCK:
+            challenge, code = new_challenge(acc, purpose, network_id, device_hash)
+            email = acc.get("email")
+        if not mailer.send_code(email, code, purpose):
+            with CAMPAIGNS_LOCK:
+                CHALLENGES.pop(challenge, None)
+            return self._send_json({"error": "Couldn't send the code email. Try again in a minute."}, 502)
+        return self._send_json({"needCode": True, "challenge": challenge, "sentTo": masked_email(email)})
 
     def _auth_post(self, parts, data):
         action = parts[2] if len(parts) > 2 else ""
         ip = self._client_ip()
+        device_hash = _device_hash(data.get("deviceKey"))
         network_id = data.get("networkId")
         if network_id is not None and (not isinstance(network_id, str) or not network_id or len(network_id) > 100):
             return self._send_json({"error": "bad networkId"}, 400)
@@ -970,6 +1228,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     "networkId": network_id, "linkedIds": [network_id], "createdAt": time.time(),
                 }
                 ACCOUNTS[acc["id"]] = acc
+                trust_device(acc, device_hash, self._device_label())   # the device an account was made on is trusted
                 token = issue_session(acc["id"])
                 mark_dirty()
                 return self._send_json({"token": token, "account": public_account(acc)})
@@ -996,10 +1255,79 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 acc = ACCOUNTS.get(acc_id)
                 if not acc:
                     return self._send_json({"error": "Wrong email or password."}, 401)
-                self._link_device(acc, network_id)
-                token = issue_session(acc["id"])
+                # A new device needs the emailed code first. Without a mail
+                # provider configured nobody could get one, so sign-in then
+                # works as it always did instead of locking everyone out.
+                need_code = mailer.configured() and acc.get("email") and not device_trusted(acc, device_hash)
+                if not need_code:
+                    trust_device(acc, device_hash, self._device_label())
+                    self._link_device(acc, network_id)
+                    token = issue_session(acc["id"])
+                    mark_dirty()
+                    return self._send_json({"token": token, "account": public_account(acc)})
+            if auth_blocked(f"code:{acc_id}", AUTH_LIMIT_EMAIL):
+                return self._send_json({"error": "Too many codes sent. Try again in a few minutes."}, 429)
+            auth_note(f"code:{acc_id}")
+            return self._send_code(acc, "login", network_id, device_hash)
+
+        if action == "verify":
+            # The 4-digit code: finishes a new-device sign-in, or confirms the
+            # signed-in account's email address.
+            challenge, code = data.get("challenge"), data.get("code")
+            code = code.strip() if isinstance(code, str) else ""
+            if not isinstance(challenge, str):
+                return self._send_json({"error": "That code has expired. Ask for a new one."}, 410)
+            with CAMPAIGNS_LOCK:
+                c = CHALLENGES.get(challenge)
+                if not c or c["expires"] < time.time():
+                    CHALLENGES.pop(challenge, None)
+                    return self._send_json({"error": "That code has expired. Ask for a new one."}, 410)
+                if not re.fullmatch(r"[0-9]{4}", code) or not secrets.compare_digest(c["codeHash"], _code_hash(challenge, code)):
+                    c["tries"] += 1
+                    if c["tries"] >= CODE_TRIES:
+                        del CHALLENGES[challenge]
+                        return self._send_json({"error": "Too many wrong codes. Start again to get a new one."}, 410)
+                    left = CODE_TRIES - c["tries"]
+                    return self._send_json({"error": f"That code isn't right. {left} {'try' if left == 1 else 'tries'} left."}, 401)
+                del CHALLENGES[challenge]
+                acc = ACCOUNTS.get(c["accountId"])
+                if not acc:
+                    return self._send_json({"error": "That account no longer exists."}, 410)
+                acc["emailVerified"] = True   # the code went to that address, so they own it
                 mark_dirty()
+                if c["purpose"] == "verify":
+                    return self._send_json({"account": public_account(acc)})
+                trust_device(acc, c["deviceHash"], self._device_label())
+                self._link_device(acc, c["networkId"])
+                token = issue_session(acc["id"])
                 return self._send_json({"token": token, "account": public_account(acc)})
+
+        if action == "resend":
+            challenge = data.get("challenge")
+            with CAMPAIGNS_LOCK:
+                c = CHALLENGES.pop(challenge, None) if isinstance(challenge, str) else None
+                acc = ACCOUNTS.get(c["accountId"]) if c else None
+            if not acc:
+                return self._send_json({"error": "That sign-in has expired. Start again."}, 410)
+            if auth_blocked(f"code:{acc['id']}", AUTH_LIMIT_EMAIL):
+                return self._send_json({"error": "Too many codes sent. Try again in a few minutes."}, 429)
+            auth_note(f"code:{acc['id']}")
+            return self._send_code(acc, c["purpose"], c["networkId"], c["deviceHash"])
+
+        if action == "verify-email":
+            # Signed in: email a code to the account's own address to confirm it.
+            with CAMPAIGNS_LOCK:
+                acc = account_from_token(self._bearer())
+            if not acc:
+                return self._send_json({"error": "not signed in"}, 401)
+            if not acc.get("email"):
+                return self._send_json({"error": "This account has no email address."}, 400)
+            if not mailer.configured():
+                return self._send_json({"error": "Email isn't set up on this server yet."}, 503)
+            if auth_blocked(f"code:{acc['id']}", AUTH_LIMIT_EMAIL):
+                return self._send_json({"error": "Too many codes sent. Try again in a few minutes."}, 429)
+            auth_note(f"code:{acc['id']}")
+            return self._send_code(acc, "verify")
 
         if action in ("google", "apple"):
             provider, audience = (auth.GOOGLE, GOOGLE_CLIENT_ID) if action == "google" else (auth.APPLE, APPLE_CLIENT_ID)
@@ -1039,6 +1367,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                         "providers": {action: sub}, "networkId": primary, "linkedIds": [primary], "createdAt": time.time(),
                     }
                     ACCOUNTS[acc["id"]] = acc
+                if acc.get("email") and claims.get("email_verified") in (True, "true") and (claims.get("email") or "").lower() == acc["email"].lower():
+                    acc["emailVerified"] = True
+                trust_device(acc, device_hash, self._device_label())
                 self._link_device(acc, network_id)
                 token = issue_session(acc["id"])
                 mark_dirty()
@@ -1056,7 +1387,297 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 acc["linkedIds"].append(network_id)
         merge_account_identities(acc)
 
+    # ---------------- Uploaded files ----------------
+
+    def _upload(self):
+        """POST /api/files/upload?kind=map&campaignId=..&name=.. with the raw file as the body. Streamed to disk
+        in pieces (never held in memory), checked against the account's limits before a byte is read."""
+        qs = parse_qs(urlparse(self.path).query)
+        kind, cid, name = qs.get("kind", [""])[0], qs.get("campaignId", [None])[0], unquote(qs.get("name", [""])[0])
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            length = 0
+        def refuse(msg, status):
+            self.close_connection = True   # the unread body must not be taken for the next request
+            return self._send_json({"error": msg}, status)
+        if kind not in FILE_KINDS or length <= 0:
+            return refuse("bad upload", 400)
+        if auth_blocked(f"upload:{self._client_ip()}", 120):
+            return refuse("Too many uploads. Try again in a few minutes.", 429)
+        auth_note(f"upload:{self._client_ip()}")
+        with CAMPAIGNS_LOCK:
+            acc = account_from_token(self._bearer())
+            if not acc:
+                return refuse("sign in required", 401)
+            limits = account_limits(acc)
+            if kind == "map":
+                entry = self._campaign(cid)
+                if not entry or not self._member_account(entry):
+                    return refuse("not a member of this campaign", 403)
+                cap = limits["mapsPerCampaign"]
+                if cap is not None and len(live_files(acc["id"], "map", cid)) >= cap:
+                    return refuse(f"You can keep {cap} maps in a campaign. Delete one to add another.", 409)
+                max_bytes = limits["mapBytes"]
+            else:
+                if not limits["bookBytes"]:
+                    return refuse("Your account keeps books on this device only.", 403)
+                cid, max_bytes = None, limits["bookBytes"]
+            owner = acc["id"]
+        if length > max_bytes:
+            return refuse(f"That file is over the {max_bytes // MB} MB limit.", 413)
+        if disk_free() - length < MIN_FREE_DISK:
+            return refuse("The server is running out of space. Ask the admin.", 507)
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        if kind == "book" and ext not in BOOK_EXTS:
+            return refuse("That isn't a book format the Library reads.", 415)
+        fid = "f" + secrets.token_hex(10)
+        folder = UPLOAD_DIR / owner
+        folder.mkdir(parents=True, exist_ok=True)
+        tmp = folder / f"{fid}.part"
+        digest, got, head = hashlib.sha256(), 0, b""
+        try:
+            with open(tmp, "wb") as out:
+                while got < length:
+                    chunk = self.rfile.read(min(1024 * 1024, length - got))
+                    if not chunk:
+                        break
+                    if len(head) < 16:
+                        head += chunk[:16]
+                    digest.update(chunk)
+                    out.write(chunk)
+                    got += len(chunk)
+            if got != length:
+                raise ValueError("upload cut short")
+            mime = sniff_image(head) if kind == "map" else BOOK_EXTS[ext]
+            if kind == "map" and not mime:
+                raise TypeError("not an image")
+            if kind == "book" and ext == "pdf" and not head.startswith(b"%PDF"):
+                raise TypeError("not a PDF")
+        except TypeError:
+            tmp.unlink(missing_ok=True)
+            return self._send_json({"error": "Maps must be PNG, JPEG, WebP or GIF images." if kind == "map" else "That file isn't a real PDF."}, 415)
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            self.close_connection = True
+            return self._send_json({"error": "The upload didn't finish. Try again."}, 400)
+        rec = {"id": fid, "owner": owner, "kind": kind, "campaignId": cid, "name": name.strip()[:120] or kind,
+               "mime": mime, "size": got, "sha256": digest.hexdigest(), "created": time.time(), "meta": {}, "deleted": None}
+        tmp.replace(file_path(rec))
+        with CAMPAIGNS_LOCK:
+            FILES[fid] = rec
+            mark_dirty()
+        return self._send_json({"file": public_file(rec)})
+
+    def _may_read_file(self, acc, rec):
+        """Caller holds CAMPAIGNS_LOCK. Your own files, plus the map a campaign's DM shares with that campaign."""
+        if rec["owner"] == acc["id"]:
+            return True
+        if rec["kind"] == "map":
+            entry = self._campaign(rec.get("campaignId"))
+            pm = entry["state"].get("partyMap") if entry else None
+            return bool(pm and pm.get("fileId") == rec["id"] and self._member_account(entry))
+        return False
+
+    def _files_get(self, parts, qs):
+        with CAMPAIGNS_LOCK:
+            acc = account_from_token(self._bearer())
+            if not acc:
+                return self._send_json({"error": "sign in required"}, 401)
+            if len(parts) == 2:
+                # GET /api/files?kind=map&campaignId=.. -- your own files, with your limits and usage
+                kind, cid = qs.get("kind", [None])[0], qs.get("campaignId", [None])[0]
+                rows = live_files(acc["id"], kind if kind in FILE_KINDS else None, cid if kind == "map" else None)
+                rows.sort(key=lambda f: f["created"], reverse=True)
+                return self._send_json({"files": [public_file(f) for f in rows], "limits": account_limits(acc),
+                                        "perms": effective_perms(acc), "used": sum(f["size"] for f in live_files(acc["id"]))})
+            rec = FILES.get(parts[2]) if len(parts) == 3 else None
+            if not rec or rec.get("deleted") or not self._may_read_file(acc, rec):
+                return self._send_json({"error": "not found"}, 404)
+            path, etag = file_path(rec), f'"{rec["sha256"]}"'
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.end_headers()
+            return
+        try:
+            size = path.stat().st_size
+            src = open(path, "rb")
+        except OSError:
+            return self._send_json({"error": "the file is missing on the server"}, 410)
+        with src:
+            self.send_response(200)
+            self.send_header("Content-Type", rec["mime"])
+            self.send_header("Content-Length", str(size))
+            self.send_header("ETag", etag)
+            self.send_header("Content-Disposition", "attachment" if rec["kind"] == "book" else "inline")
+            self.end_headers()
+            shutil.copyfileobj(src, self.wfile, 1024 * 1024)
+
+    def _files_post(self, parts, data):
+        # POST /api/files/<id>/meta {name?, meta?}   POST /api/files/<id>/delete
+        with CAMPAIGNS_LOCK:
+            acc = account_from_token(self._bearer())
+            if not acc:
+                return self._send_json({"error": "sign in required"}, 401)
+            rec = FILES.get(parts[2]) if len(parts) == 4 else None
+            if not rec or rec.get("deleted") or rec["owner"] != acc["id"]:
+                return self._send_json({"error": "not found"}, 404)
+            if parts[3] == "meta":
+                if isinstance(data.get("name"), str) and data["name"].strip():
+                    rec["name"] = data["name"].strip()[:120]
+                if "meta" in data:
+                    rec["meta"] = clean_meta(data.get("meta"))
+                mark_dirty()
+                return self._send_json({"file": public_file(rec)})
+            if parts[3] == "delete":
+                # Kept aside, not erased: the record is marked and the bytes move to _deleted/ (never served again).
+                rec["deleted"] = time.time()
+                src = file_path(rec)
+                trash = UPLOAD_DIR / "_deleted" / rec["owner"]
+                try:
+                    trash.mkdir(parents=True, exist_ok=True)
+                    if src.exists():
+                        src.replace(trash / src.name)
+                except OSError:
+                    pass
+                for entry in CAMPAIGNS.values():
+                    pm = entry["state"].get("partyMap")
+                    if pm and pm.get("fileId") == rec["id"]:
+                        entry["state"]["partyMap"] = None
+                mark_dirty()
+                return self._send_json({"ok": True})
+        return self._send_json({"error": "not found"}, 404)
+
+    # ---------------- Admin console ----------------
+
+    def _admin(self):
+        """Caller holds CAMPAIGNS_LOCK. The signed-in account if it is an admin."""
+        acc = account_from_token(self._bearer())
+        return acc if acc and effective_perms(acc)["admin"] else None
+
+    def _admin_overview(self):
+        """Caller holds CAMPAIGNS_LOCK."""
+        email_of = {}
+        for a in ACCOUNTS.values():
+            for nid in a.get("linkedIds") or []:
+                email_of[nid] = a.get("email") or "(no email)"
+        accounts = []
+        for a in sorted(ACCOUNTS.values(), key=lambda a: a.get("createdAt") or 0):
+            ids = set(a.get("linkedIds") or [])
+            files = live_files(a["id"])
+            accounts.append({
+                "id": a["id"], "email": a.get("email"), "emailVerified": bool(a.get("emailVerified")),
+                "createdAt": a.get("createdAt"), "providers": sorted(a.get("providers") or {}), "hasPassword": bool(a.get("password")),
+                "perms": effective_perms(a), "granted": {k: (a.get("perms") or {}).get(k) is True for k in PERMS}, "envAdmin": env_admin(a),
+                "devices": len(a.get("devices") or []), "lastSeen": max([d.get("seen", 0) for d in a.get("devices") or []] or [0]),
+                "campaigns": sum(1 for e in CAMPAIGNS.values() if ids & set(e["meta"].get("memberIds") or [])),
+                "files": len(files), "bytes": sum(f["size"] for f in files),
+            })
+        campaigns = [{
+            "id": c, "name": e["meta"].get("name"), "system": e["meta"].get("system"), "members": len(e["meta"].get("memberIds") or []),
+            "owner": email_of.get(e["meta"].get("ownerId"), "(no account)"), "createdAt": e["meta"].get("createdAt"),
+            "online": sum(1 for t in e["state"]["trainers"].values() if time.time() - t.get("lastSeen", 0) < TRAINER_TIMEOUT),
+            "maps": len(live_files(kind="map", campaign_id=c)),
+        } for c, e in CAMPAIGNS.items()]
+        all_files = live_files()
+        try:
+            disk = shutil.disk_usage(DATA_DIR)
+            disk = {"total": disk.total, "free": disk.free}
+        except OSError:
+            disk = None
+        return {
+            "accounts": accounts, "campaigns": campaigns, "perms": PERMS, "mail": mailer.describe(),
+            "storage": {"disk": disk, "files": len(all_files), "fileBytes": sum(f["size"] for f in all_files),
+                        "books": sum(1 for f in all_files if f["kind"] == "book"), "maps": sum(1 for f in all_files if f["kind"] == "map"),
+                        "stateBytes": STATE_FILE.stat().st_size if STATE_FILE.exists() else 0},
+            "limits": {"standard": LIMITS_STANDARD, "elevatedMaps": LIMITS_ELEVATED_MAPS, "cloudBookBytes": BOOK_BYTES_CLOUD},
+        }
+
+    def _admin_get(self, parts):
+        with CAMPAIGNS_LOCK:
+            if not self._admin():
+                return self._send_json({"error": "not found"}, 404)   # the console doesn't admit it exists
+            if parts[2:] == ["overview"]:
+                return self._send_json(self._admin_overview())
+        return self._send_json({"error": "not found"}, 404)
+
+    def _set_perm(self, me, target, perm, value):
+        """Caller holds CAMPAIGNS_LOCK. Returns a sentence for the console."""
+        if perm not in PERMS:
+            return f"Unknown permission '{perm}'. Known: {', '.join(PERMS)}."
+        if perm == "admin" and env_admin(target) and not value:
+            return f"{target.get('email')} is an admin from the server settings; that can't be taken away here."
+        if perm == "admin" and target is me and not value:
+            return "You can't remove your own admin access."
+        target.setdefault("perms", {})[perm] = bool(value)
+        mark_dirty()
+        state = "now has" if effective_perms(target)[perm] else "no longer has"
+        return f"{target.get('email') or target['id']} {state} {perm}."
+
+    def _admin_post(self, parts, data):
+        with CAMPAIGNS_LOCK:
+            me = self._admin()
+            if not me:
+                return self._send_json({"error": "not found"}, 404)
+            if parts[2:] == ["perm"]:
+                target = ACCOUNTS.get(data.get("accountId"))
+                if not target:
+                    return self._send_json({"error": "no such account"}, 404)
+                msg = self._set_perm(me, target, data.get("perm"), data.get("value") is True)
+                return self._send_json({"message": msg, "overview": self._admin_overview()})
+            if parts[2:] == ["command"]:
+                return self._send_json({"output": self._admin_command(me, data.get("text")), "overview": self._admin_overview()})
+        return self._send_json({"error": "not found"}, 404)
+
+    def _admin_command(self, me, text):
+        """Caller holds CAMPAIGNS_LOCK. A tiny command line for the console:
+        grant/revoke <email> <permission>, perms <email>, signout <email>, who, help."""
+        words = text.split() if isinstance(text, str) else []
+        if not words or words[0] in ("help", "?"):
+            return ("Commands:\n  grant <email> <permission>    give someone a permission\n  revoke <email> <permission>   take it away\n"
+                    "  perms <email>                 show what someone has\n  signout <email>               end all their sessions (they sign in again)\n"
+                    "  who                           every account and its permissions\n"
+                    f"Permissions: {', '.join(f'{k} ({v})' for k, v in PERMS.items())}")
+        cmd = words[0].lower()
+
+        def find(email):
+            email = (email or "").lower()
+            return next((a for a in ACCOUNTS.values() if (a.get("email") or "").lower() == email), None)
+        if cmd == "who":
+            lines = []
+            for a in sorted(ACCOUNTS.values(), key=lambda a: (a.get("email") or "")):
+                on = [k for k, v in effective_perms(a).items() if v]
+                lines.append(f"{a.get('email') or a['id']}: {', '.join(on) or 'standard'}")
+            return "\n".join(lines) or "No accounts yet."
+        if cmd in ("grant", "revoke") and len(words) == 3:
+            target = find(words[1])
+            return self._set_perm(me, target, words[2], cmd == "grant") if target else f"No account with the email {words[1]}."
+        if cmd == "perms" and len(words) == 2:
+            target = find(words[1])
+            if not target:
+                return f"No account with the email {words[1]}."
+            on = [k for k, v in effective_perms(target).items() if v]
+            lim = account_limits(target)
+            maps = "unlimited" if lim["mapsPerCampaign"] is None else str(lim["mapsPerCampaign"])
+            books = f"up to {lim['bookBytes'] // MB} MB each on the server" if lim["bookBytes"] else "on their devices only"
+            return (f"{target.get('email')}: {', '.join(on) or 'standard account'}\n  maps: {maps} per campaign, up to {lim['mapBytes'] // MB} MB each\n"
+                    f"  books: {books}\n  email confirmed: {'yes' if target.get('emailVerified') else 'no'}")
+        if cmd == "signout" and len(words) == 2:
+            target = find(words[1])
+            if not target:
+                return f"No account with the email {words[1]}."
+            gone = [k for k, sess in SESSIONS.items() if sess["accountId"] == target["id"]]
+            for k in gone:
+                del SESSIONS[k]
+            target["devices"] = []   # and every device needs a code again
+            mark_dirty()
+            return f"Signed {target.get('email')} out of {len(gone)} session{'s' if len(gone) != 1 else ''}; every device will need a code."
+        return f"I don't know '{text.strip()}'. Type help."
+
     def do_POST(self):
+        if self.path.split("?")[0] == "/api/files/upload":
+            return self._upload()   # a raw file body, not JSON
         if self.path.startswith("/api/"):
             return self._api_post()
         self.send_error(404)
@@ -1072,6 +1693,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         if len(parts) >= 2 and parts[1] == "auth":
             return self._auth_get(parts)
+        if len(parts) >= 2 and parts[1] == "files":
+            return self._files_get(parts, qs)
+        if len(parts) >= 2 and parts[1] == "admin":
+            return self._admin_get(parts)
 
         # ---- Campaign selection (not scoped to any one campaign) ----
         if parts[1:] == ["campaigns"]:
@@ -1265,6 +1890,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         if len(parts) >= 2 and parts[1] == "auth":
             return self._auth_post(parts, data)
+        if len(parts) >= 2 and parts[1] == "files":
+            return self._files_post(parts, data)
+        if len(parts) >= 2 and parts[1] == "admin":
+            return self._admin_post(parts, data)
 
         # ---- Campaign management (not scoped to an existing campaign) ----
         if parts[1:] == ["campaigns"]:
@@ -1455,10 +2084,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 raw = data.get("map")
                 if not isinstance(raw, dict):
                     return self._send_json({"error": "missing map"}, 400)
-                image = raw.get("image")
-                if not isinstance(image, str) or not re.match(r"^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$", image):
+                # Normally the image is a map file this account uploaded to this campaign (served once, then
+                # cached); an inline data: URL still works for older clients.
+                file_id, image = raw.get("fileId"), raw.get("image")
+                if file_id is not None:
+                    rec = FILES.get(file_id) if isinstance(file_id, str) else None
+                    if not rec or rec.get("deleted") or rec["kind"] != "map" or rec.get("campaignId") != cid or rec["owner"] != acc["id"]:
+                        return self._send_json({"error": "upload the map first"}, 400)
+                    image = None
+                elif not isinstance(image, str) or not re.match(r"^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$", image):
                     return self._send_json({"error": "the map image must be a PNG, JPEG, WebP or GIF"}, 400)
-                if len(image) > MAX_PARTYMAP:
+                elif len(image) > MAX_PARTYMAP:
                     return self._send_json({"error": "map image too large"}, 413)
                 def dim(v):
                     try:
@@ -1468,11 +2104,82 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 name = raw.get("name")
                 state["partyMap"] = {
                     "name": name.strip()[:80] if isinstance(name, str) and name.strip() else "Map",
-                    "image": image, "w": dim(raw.get("w")), "h": dim(raw.get("h")),
+                    **({"fileId": file_id} if file_id is not None else {"image": image}), "w": dim(raw.get("w")), "h": dim(raw.get("h")),
                     "pins": clean_map_pins(raw.get("pins")), "tokens": clean_map_tokens(raw.get("tokens")), "updated": time.time(),
                 }
                 mark_dirty()
                 return self._send_json({"ok": True})
+
+            if parts[1:] == ["hub", "sync"]:
+                # Called a few times a second while the hub is open: reports where this player's
+                # cursor is, and answers with everyone else's, plus the board if it changed.
+                nid = data.get("id")
+                if nid not in mine:
+                    return self._send_json({"error": "not your identity"}, 403)
+                now = time.time()
+                cursors = HUB_CURSORS.setdefault(cid, {})
+                cur = data.get("cursor")
+                if isinstance(cur, dict):
+                    cursors[nid] = {"name": _text(cur.get("name"), MAX_NAME) or "Player", "color": _colour(cur.get("color"), "#5aa8f0"),
+                                    "x": _num(cur.get("x")), "y": _num(cur.get("y")), "t": now}
+                else:
+                    cursors.pop(nid, None)
+                for k in [k for k, c in cursors.items() if now - c["t"] > HUB_CURSOR_TTL]:
+                    del cursors[k]
+                hub = state["hub"]
+                out = {"rev": hub["rev"], "activeButton": hub.get("activeButton"),
+                       "cursors": [{"id": k, **{f: c[f] for f in ("name", "color", "x", "y")}} for k, c in cursors.items() if k != nid]}
+                if data.get("since") != hub["rev"]:
+                    out["items"] = [{**it, "preview": hub_button_preview(state, it)} if it["type"] == "button" else it for it in hub["items"]]
+                return self._send_json(out)
+
+            if parts[1:] == ["hub", "op"]:
+                nid = data.get("id")
+                if nid not in mine:
+                    return self._send_json({"error": "not your identity"}, 403)
+                is_dm = self._require_dm(data, cid)
+                hub = state["hub"]
+                op = data.get("op")
+                if op == "put":
+                    item = clean_hub_item(data.get("item"), nid, is_dm)
+                    if not item:
+                        return self._send_json({"error": "bad item"}, 400)
+                    existing = next((i for i, it in enumerate(hub["items"]) if it["id"] == item["id"]), None)
+                    if existing is not None:
+                        old = hub["items"][existing]
+                        if old["owner"] not in mine and not is_dm:
+                            return self._send_json({"error": "not yours"}, 403)
+                        if old["type"] == "button" and not is_dm:
+                            return self._send_json({"error": "DM only"}, 403)
+                        item["owner"] = old["owner"]
+                        hub["items"][existing] = item
+                    else:
+                        if len(hub["items"]) >= HUB_MAX_ITEMS:
+                            return self._send_json({"error": "the hub is full; clear some drawings first"}, 409)
+                        hub["items"].append(item)
+                elif op == "delete":
+                    item_id = data.get("itemId")
+                    old = next((it for it in hub["items"] if it["id"] == item_id), None)
+                    if not old:
+                        return self._send_json({"ok": True, "rev": hub["rev"]})
+                    if not is_dm and (old["owner"] not in mine or old["type"] == "button"):
+                        return self._send_json({"error": "not yours"}, 403)
+                    hub["items"] = [it for it in hub["items"] if it["id"] != item_id]
+                    if hub.get("activeButton") == item_id:
+                        hub["activeButton"] = None
+                elif op == "clearDrawings":
+                    # Anyone can wipe their own drawings; the DM wipes everyone's.
+                    hub["items"] = [it for it in hub["items"] if it["type"] != "stroke" or (not is_dm and it["owner"] not in mine)]
+                elif op == "activate":
+                    if not is_dm:
+                        return self._send_json({"error": "DM only"}, 403)
+                    target = data.get("itemId")
+                    hub["activeButton"] = target if any(it["id"] == target and it["type"] == "button" for it in hub["items"]) else None
+                else:
+                    return self._send_json({"error": "unknown op"}, 400)
+                hub["rev"] += 1
+                mark_dirty()
+                return self._send_json({"ok": True, "rev": hub["rev"]})
 
             if parts[1:] == ["playersave", "named"]:
                 nid, name, save = data.get("id"), data.get("name"), data.get("save")

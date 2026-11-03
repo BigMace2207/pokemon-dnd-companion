@@ -212,7 +212,7 @@ def _install_f11_override(window, api):
 # else connecting to that address, rather than this PC's own local
 # .server_state.dat silently drifting into its own separate copy. Empty
 # string reverts to the old fully-local/LAN-only behavior.
-REMOTE_SERVER_URL = "https://pokemon-dnd.duckdns.org"
+REMOTE_SERVER_URL = "https://fluxdev.org"
 
 
 def main():

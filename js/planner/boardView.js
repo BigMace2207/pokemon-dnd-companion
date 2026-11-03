@@ -311,7 +311,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     if (spec.type === "gen") {
       const g = gens.find((x) => x.id === spec.gen); if (!g) return null;
       const res = await g.run({ ...defaults(g.id), edition: getSettings().edition }, Math.random);
-      return { ...base, title: res.title, genLabel: g.label, gen: g.id, kind: system !== "dnd5e" && g.id === "wild" ? "wildmon" : g.id, lines: res.lines };
+      return { ...base, title: res.title, genLabel: g.label, gen: g.id, kind: system !== "dnd5e" && g.id === "wild" ? "wildmon" : g.id, lines: res.lines, ...(res.mons ? { mons: res.mons } : {}) };
     }
     if (spec.type === "dungeon") {
       const { genDungeon } = await import("../systems/dnd5e/engine/generators.js");
@@ -356,7 +356,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     const g = gens.find((x) => x.id === n.gen); if (!g) return;
     try {
       const res = await g.run({ ...defaults(g.id), edition: getSettings().edition }, Math.random);
-      edit((b) => { const x = nodeOf(b, n.id); if (x) { x.title = res.title; x.lines = res.lines; } });
+      edit((b) => { const x = nodeOf(b, n.id); if (x) { x.title = res.title; x.lines = res.lines; if (res.mons) x.mons = res.mons; } });
       drawNodes();
     } catch (err) { toast(`Couldn't roll that: ${err.message || err}`, "bad"); }
   }

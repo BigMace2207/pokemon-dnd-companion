@@ -1,6 +1,7 @@
 import { renderSettings } from "./views/settings.js";
 import { renderLibrary } from "./views/library.js";
 import { renderPlanner } from "./views/planner.js";
+import { renderAdmin } from "./views/admin.js";
 import { el } from "./components.js";
 import "./systems/index.js"; // registers every game system
 import { setActiveSystem, activeSystem, viewsOf } from "./systems/registry.js";
@@ -27,6 +28,10 @@ import {
 // campaign uses (see js/systems/). Settings is shared by every system.
 let VIEWS = {};
 let DIRECTIVE_SENSITIVE_VIEWS = new Set();
+// Pages that aren't in the sidebar and only open from inside the app (the Pokémon Battle screen opens only from an
+// encounter button on the hub). A typed address or the back button lands on the system's default page instead.
+let GATED_VIEWS = new Set();
+let gatePass = null;
 
 const appEl = document.getElementById("app");
 const mainView = document.getElementById("mainView");
@@ -38,9 +43,13 @@ let current = null;
 
 function setView(name, { initial = false } = {}) {
   if (!VIEWS[name] || !state) return;
+  if (GATED_VIEWS.has(name) && gatePass !== name) name = activeSystem().defaultView;
+  gatePass = null;
   clearAllIntervals();
   current = name;
   document.documentElement.classList.toggle("planner-full", name === "planner");   // the whiteboard is a full-screen page, no tower behind it
+  document.documentElement.classList.toggle("hub-full", name === "hub");
+  document.documentElement.classList.toggle("admin-full", name === "admin");
   // every page is a floor of the Lava Tower, in menu order: the first page is the roof
   const floorBtn = sideNav.querySelector(`.nav-item[data-view="${name}"]`);
   if (floorBtn) goToFloor(Number(floorBtn.dataset.floor) || 0, sideNav.querySelectorAll(".nav-item").length, initial);
@@ -71,8 +80,11 @@ function playViewEnter() {
 // Settings page), so a different game system gets its own pages.
 function buildNav(system) {
   sideNav.innerHTML = "";
-  const groups = [...system.nav, { label: "App", views: [{ id: "planner", label: "Campaign Planner", render: renderPlanner }, { id: "library", label: "Library", render: renderLibrary }, { id: "settings", label: "Settings", render: renderSettings }] }];
-  VIEWS = viewsOf({ nav: groups });
+  const appViews = [{ id: "planner", label: "Campaign Planner", render: renderPlanner }, { id: "library", label: "Library", render: renderLibrary }, { id: "settings", label: "Settings", render: renderSettings }];
+  if (signedInAccount?.perms?.admin) appViews.push({ id: "admin", label: "Admin", render: renderAdmin });   // the server checks too
+  const groups = [...system.nav, { label: "App", views: appViews }];
+  VIEWS = viewsOf({ nav: [...groups, { label: null, views: system.gatedViews || [] }] });
+  GATED_VIEWS = new Set((system.gatedViews || []).map((v) => v.id));
   DIRECTIVE_SENSITIVE_VIEWS = new Set(system.directiveViews || []);
   let floor = 0;
   for (const group of groups) {
@@ -122,6 +134,14 @@ navToggle.addEventListener("click", () => {
     navToggle.setAttribute("aria-expanded", String(!on));
     window.dispatchEvent(new Event("resize"));   // the lava layer and any canvas re-measure
   } else sideNav.classList.toggle("open");
+});
+
+// A page asking to open another one (the hub's encounter buttons open the gated Battle screen this way).
+window.addEventListener("app-open-view", (e) => {
+  const view = e.detail?.view;
+  if (!VIEWS[view]) return;
+  if (GATED_VIEWS.has(view) && e.detail?.via === "hub") gatePass = view;
+  setView(view);
 });
 
 window.addEventListener("hashchange", () => {

@@ -4,7 +4,8 @@ import {
   getCampaign, renameCampaign, setCampaignEdition, regenerateInviteCode, regenerateDmPassword,
   removeCampaignMember, transferCampaignOwnership, deleteCampaign, listTrainers,
 } from "../network.js";
-import { loadSave } from "../storage.js";
+import { loadSave, writeSave } from "../storage.js";
+import { CURSOR_COLORS, cursorColorOf } from "../cursorColor.js";
 import { renderAccountCard } from "../accountCard.js";
 import { getViewState, setViewState } from "../viewState.js";
 import { activeSystem } from "../systems/registry.js";
@@ -112,6 +113,33 @@ export function renderSettings(container) {
       el("h4", {}, "Appearance"), group,
       el("p", { class: "view-sub", style: "margin-top:12px" }, "Lava Tower: a grey-brick tower wall with lava, cracks of light and crumbling stone. The flame button in the top bar toggles it too."),
       el("h4", {}, "Lava effects"), fx,
+    ]);
+  }
+
+  // The colour of your cursor (and the name tag above it) on the Pokémon hub's shared board.
+  function cursorCard() {
+    const current = cursorColorOf(loadSave());
+    const preview = el("span", { class: "cursor-preview", style: `--c:${current}` }, [el("span", { class: "cursor-preview-arrow" }), el("span", { class: "cursor-preview-name" }, loadSave().trainer?.name || "You")]);
+    const pick = (c) => {
+      const s2 = loadSave();
+      s2.trainer = { ...(s2.trainer || {}), cursorColor: c };
+      writeSave(s2);
+      preview.style.setProperty("--c", c);
+      row.querySelectorAll(".cursor-swatch").forEach((b) => b.classList.toggle("active", b.dataset.c === c));
+      custom.value = c;
+    };
+    const row = el("div", { class: "cursor-swatches" }, CURSOR_COLORS.map((c) => {
+      const b = el("button", { type: "button", class: `cursor-swatch${c === current ? " active" : ""}`, style: `--c:${c}`, "data-c": c, "aria-label": `Cursor colour ${c}` });
+      b.addEventListener("click", () => pick(c));
+      return b;
+    }));
+    const custom = el("input", { type: "color", value: current, "aria-label": "Any colour" });
+    custom.addEventListener("input", () => pick(custom.value));
+    row.append(custom);
+    return el("div", { class: "card" }, [
+      el("h4", {}, "Cursor colour"),
+      el("p", { class: "view-sub" }, "On the hub, everyone sees your cursor in this colour with your name above it."),
+      row, preview,
     ]);
   }
 
@@ -253,6 +281,7 @@ export function renderSettings(container) {
     {
       id: "appearance", label: "Appearance", render: (panel) => {
         panel.appendChild(appearanceCard());
+        panel.appendChild(cursorCard());
         const windowSection = renderWindowSection();
         if (windowSection) panel.appendChild(windowSection);
         const fullscreenSection = renderFullscreenSection();

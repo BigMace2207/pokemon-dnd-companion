@@ -148,7 +148,9 @@ function cleanNode(n) {
   if (n.type === "note" || n.type === "text") out.body = str(n.body, 20000);
   if (n.type === "text") out.color = hex(n.color, "#f6e27a");
   if (n.type === "list") out.items = (Array.isArray(n.items) ? n.items : []).slice(0, 200).map((i) => ({ id: str(i?.id, 40) || Math.random().toString(36).slice(2), text: str(i?.text, 300), done: !!i?.done }));
-  if (n.type === "gen") { out.kind = str(n.kind || n.gen, 20); out.genLabel = str(n.genLabel, 60); out.gen = str(n.gen, 40); out.lines = (Array.isArray(n.lines) ? n.lines : []).slice(0, 200).map((l) => str(l, 2000)); }
+  if (n.type === "gen") { out.kind = str(n.kind || n.gen, 20); out.genLabel = str(n.genLabel, 60); out.gen = str(n.gen, 40); out.lines = (Array.isArray(n.lines) ? n.lines : []).slice(0, 200).map((l) => str(l, 2000));
+    // a Pokémon encounter's team (name and level), so the hub can turn it into a battle
+    if (Array.isArray(n.mons)) out.mons = n.mons.slice(0, 6).map((m) => ({ name: str(m?.name, 40), level: clamp(fin(m?.level, 5), 1, 100), ability: str(m?.ability, 40), moves: (Array.isArray(m?.moves) ? m.moves : []).slice(0, 4).map((x) => str(x, 40)) })).filter((m) => m.name); }
   if (n.type === "dungeon") {
     out.dungeon = n.dungeon && Array.isArray(n.dungeon.rooms) ? n.dungeon : null;
     out.roomNotes = {};

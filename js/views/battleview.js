@@ -100,6 +100,10 @@ export function renderBattleView(container, state, options = {}) {
   const { networkId: overrideNetworkId, trainerName: overrideName, registerIntervalFn = registerInterval, embedded = false } = options;
   container.innerHTML = "";
   if (!embedded) {
+    // The Battle screen opens from the hub's encounter buttons, so that's the way back too.
+    const back = el("button", { class: "btn secondary small battle-back", type: "button" }, "← Back to the hub");
+    back.addEventListener("click", () => { location.hash = "hub"; });
+    container.appendChild(back);
     container.appendChild(el("h1", { class: "view-title" }, "Battle"));
   }
 

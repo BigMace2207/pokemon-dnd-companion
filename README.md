@@ -14,6 +14,9 @@
 ## Features
 
 **For players**
+- The Hub: a shared whiteboard every player lands on, with notes, drawings and everyone's cursor live (in each player's
+  own colour, picked in Settings > Appearance, with their name above it). The DM drags encounter buttons onto it, and
+  they are the only way into the Battle screen
 - Pokédex and Move Dex covering 1301 Pokémon, with forms, evolutions and stats
 - Stat and Damage calculators that load your saved Pokémon
 - My Team, Bag and Trainer Sheet built from the rulebook, with named saves
@@ -21,13 +24,15 @@
 
 **For the DM**
 - Control Centre with directives, NPC and wild libraries, messaging and logs
+- Hub encounter buttons: an NPC trainer or wild Pokémon from the libraries, or an encounter rolled in the Campaign
+  Planner. Hovering shows the first Pokémon's level, with its sprite or a question mark (the DM chooses); the DM's click
+  starts that battle with every online trainer's lead Pokémon and opens Battle Control
 - Per-campaign invite code and DM password
 
 **Dungeons & Dragons 5e** (pick it when you create a campaign)
 - Character builder and a full sheet: abilities, skills, saves, HP and death saves, spell slots and spellbooks, inventory and encumbrance, features and choices, level-up and rests, multiclassing
 - SRD 5.1 (2014) and SRD 5.2 (2024) compendia: spells, monsters, equipment, magic items, classes, races/species, backgrounds, feats and rules text
 - Dice roller with macros; live party view; initiative and combat tracker the DM can publish to players
-- Pokémon D&D has its own look: every page is a town or route on a pixel overworld linked like the Hoenn map, with a route that scrolls as you read and a screen shake with falling Poké Balls when you click the page you are on. The shared sign-in and campaign screens are plain "D&D Companion"
 - The DM can share a map with the table, reveal places one by one and place the players on it; whiteboard nodes link to places on maps, and each session can be viewed on its own
 - The D&D rules version (2014 or 2024) is chosen by the campaign owner for the whole table (when creating the campaign, or in Settings > Campaign), so players never end up on different books
 - Rule keywords anywhere (conditions, skills, damage types, racial traits...) link to their Rules entry with a hover card, and are coloured and bold on the Rules page; the character builder saves your progress so you can continue later
@@ -35,12 +40,16 @@
 
 **Everywhere**
 - Campaign Planner (both games): one full-screen whiteboard, no tower behind it. A slim rail on the left adds nodes (notes, checklists, stickies, expandable dungeons with per-room notes, and every generator: Pokémon wild encounters, trainers, gym leaders, routes; D&D NPCs, encounters, taverns, loot...). Drag them around an endless board that grows as you near its edge, change or upload the background, and circle groups of nodes (box or freehand) into colour-coded "Session N" regions; a node can be in several sessions. The Notebook drawer holds searchable Markdown notes that can also be NPCs, quests (with status), locations and session recaps, with an export to Markdown (it replaces the old Campaign Notes page and imports its notes once). Maps, scenarios (DM) and party plans (DM) open as drawers. Players share their boards, notes and checklists with the DM automatically
-- Library: add your own PDF, EPUB, Word, text, Markdown and HTML books and read them in a built-in e-reader (they stay on your device)
+- Library: add your own PDF, EPUB, Word, text, Markdown and HTML books and read them in a built-in e-reader (they stay on your device; accounts the admin allows keep them on the server, private, on every device they sign in on)
+- Maps are stored on the server, so they follow you to every device: up to 10 per campaign (15 MB each) for everyone, unlimited (100 MB each) for accounts the admin allows
 - Lava Tower theme (flame button in the top bar, or Settings → Appearance): grey brick tower, lava drips, cracks of light and crumbling stone; "Calm" turns the motion off
 - Pokémon D&D Rulebook page, rendered from the Obsidian vault
 
 **Online**
 - Accounts with email, Google or Apple sign-in; campaigns appear after login
+- Signing in with a password on a new device asks for a 4-digit code sent to the account's email
+- Admin console for the site owner: every account and campaign, storage and disk use, permission switches, and a
+  command line (`grant`, `revoke`, `perms`, `signout`, `who`)
 - Autosave, hourly backups and automatic recovery
 - Trainers Online with live presence
 

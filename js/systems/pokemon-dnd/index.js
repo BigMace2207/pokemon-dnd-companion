@@ -11,6 +11,7 @@ import { renderTypeChart } from "../../views/typechart.js";
 import { renderTierGuide } from "../../views/tierguide.js";
 import { renderRulebook } from "../../views/rulebook.js";
 import { renderBattleView } from "../../views/battleview.js";
+import { renderHub } from "../../views/hub.js";
 import { renderTeam } from "../../views/team.js";
 import { renderBag } from "../../views/bag.js";
 import { renderTrainer } from "../../views/trainer.js";
@@ -29,9 +30,10 @@ export default {
     favicon: "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2245%22 fill=%22%23e3350d%22/><rect y=%2245%22 width=%22100%22 height=%2210%22 fill=%22%23222%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22white%22 stroke=%22%23222%22 stroke-width=%228%22/></svg>",
   },
   credit: "All Pokémon art is provided by PokeAPI and originates from Nintendo, Game Freak and The Pokémon Company. This is an unofficial fan project and is not affiliated with or endorsed by them.",
-  defaultView: "pokedex",
+  defaultView: "hub",
   nav: [
     { label: null, views: [
+      { id: "hub", label: "Hub", render: renderHub },
       { id: "pokedex", label: "Pokédex", render: renderPokedex },
       { id: "moves", label: "Move Dex", render: renderMoves },
     ] },
@@ -40,7 +42,6 @@ export default {
       { id: "damagecalc", label: "Damage Calculator", render: renderDamageCalc },
     ] },
     { label: "Trainer", views: [
-      { id: "battleview", label: "Battle", render: renderBattleView },
       { id: "team", label: "My Team", render: renderTeam },
       { id: "bag", label: "Bag", render: renderBag },
       { id: "trainer", label: "Trainer Sheet", render: renderTrainer },
@@ -57,6 +58,8 @@ export default {
   ],
   // Views that show this player's own save data: re-rendered when a DM
   // directive (or any save change) lands while one is open.
+  // Not in the sidebar: the Battle screen opens only from an encounter button on the hub.
+  gatedViews: [{ id: "battleview", label: "Battle", render: renderBattleView }],
   directiveViews: ["team", "trainer", "battleview", "bag"],
   loadData,
   mount(state) { mountQuickConsole(state); },

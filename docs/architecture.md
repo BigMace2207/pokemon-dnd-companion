@@ -53,6 +53,7 @@ export default {
   brand: { title: "My Companion", logo: "assets/logo.png" },
   defaultView: "home",
   nav: [{ label: null, views: [{ id: "home", label: "Home", render: (container, state) => {} }] }],
+  gatedViews: [],                // pages not in the sidebar that only open from inside the app (see "The Pokémon hub")
   directiveViews: [],            // views to re-render when a DM directive lands
   async loadData() { return {}; },        // becomes `state` passed to every view
   mount(state) {},                        // one-time floating tools etc.
@@ -116,7 +117,9 @@ Campaigns that predate this have no edition and keep the old per-player switch u
 
 ## Library and reader
 
-Books are stored only in the browser (IndexedDB), never on the server. `js/library/formats.js` turns
+Books are stored in the browser (IndexedDB). Accounts with the `cloudLibrary` permission (admins have it) also upload
+each book to the server as a private file (`/api/files`, kind `book`), so it appears on every device and downloads the
+first time it is opened there. `js/library/formats.js` turns
 EPUB, DOCX, text, Markdown, HTML, images and CBZ into one chapter model; `sanitize.js` rebuilds untrusted
 markup from an allow-list (the CSP forbids anything else anyway). PDFs use the vendored PDF.js with
 `isEvalSupported:false` and `disableFontFace:true` to stay inside the CSP. PDF.js renders with
@@ -167,16 +170,54 @@ Node-tested (`tests/js`), as is the board geometry (`board.test.mjs`). The serve
 The shared sign-in and campaign screens say "D&D Companion" and show nothing Pokémon; the Pokémon artwork credit is in
 Settings > Appearance inside the Pokémon area.
 
+## Uploaded files
+
+Map images and cloud Library books are files on the server, not part of the save file: `POST /api/files/upload?kind=..`
+streams the raw body to `UPLOAD_DIR/<account id>/<file id>.bin` (`PKDND_UPLOAD_DIR`, default `uploads/` next to the save),
+and only a small record (owner, campaign, name, type, size, SHA-256) goes in the save. Limits come from the account's
+permissions (`account_limits`): 10 maps of 15 MB per campaign for everyone; `unlimitedMaps` lifts the count to none and
+the size to 100 MB; `cloudLibrary` allows books up to 300 MB. Uploads are refused when the disk would drop under 2 GB
+free. Images must really be PNG, JPEG, WebP or GIF (checked from the bytes); PDFs must start with `%PDF`.
+`GET /api/files/<id>` answers with an `ETag` (the file's hash), so an unchanged map is never sent twice; the client shows
+images through `blob:` URLs (`img-src` allows `blob:` for this), since the request needs the session header. You can read
+your own files, and campaign members can read the file the DM shares as the party map. Deleting moves the bytes to
+`_deleted/` instead of erasing them.
+
+## Accounts: sign-in codes and admins
+
+Each browser keeps a random device key (`account.js`). A password sign-in from a device the account hasn't used before
+answers `needCode` and emails a 4-digit code (`mailer.py`; `PKDND_MAIL_PROVIDER` brevo, resend or outbox for testing);
+`POST /api/auth/verify` finishes it and remembers the device. Codes expire after 10 minutes and five wrong tries. A device
+that already holds a valid session is remembered the first time it asks `/api/auth/me`, so nobody is asked for a code on
+a device they were already using. Without a mail provider configured, sign-in works as before (no codes). Google and
+Apple sign-ins don't need a code.
+
+The admin is whoever's confirmed address is in `PKDND_ADMIN_EMAILS` on the server (an address is confirmed by a code
+sent to it, or by Google). Admins see the Admin page (`js/views/admin.js`, `/api/admin/*`, which answers 404 to anyone
+else) and can grant `admin`, `cloudLibrary` and `unlimitedMaps` to any account.
+
+## The Pokémon hub
+
+`js/views/hub.js` is the Pokémon system's default page: one shared board per campaign (`state.hub`, server.py "The
+Pokémon hub"). The page calls `POST /api/hub/sync` a few times a second while open with its own cursor and gets back
+everyone else's (kept in memory only, gone after 6 seconds) and the board when its revision changed. `POST /api/hub/op`
+puts, deletes or clears items: notes, text and drawings belong to whoever made them; encounter buttons need the DM token.
+A button's hover card is computed by the server from the DM's NPC and Wild libraries (`hub_button_preview`), so it
+shows the lead Pokémon's level and only names it when the DM allowed the sprite. The Battle screen is a gated view
+(`gatedViews` in the system manifest): the router only opens it when the hub asks (`app-open-view` event), and a typed
+`#battleview` lands on the hub.
+
 ## The party map
 
-The DM can share one map with the table: `POST /api/partymap` (DM token) stores the image (shrunk to a JPEG), the labelled places
+The DM can share one map with the table: `POST /api/partymap` (DM token) stores the uploaded map file's id (older clients send the image inline), the labelled places
 and the players' tokens; `GET /api/partymap` returns it to any member with **only the places the DM has revealed** (the server
 filters; hidden places and their notes are never sent to players). Dragging a token or revealing a place uses `/partymap/live`,
 which carries just pins and tokens. Whiteboard nodes can be linked to a place on a map (`node.mapLink`, `planner/mapLink.js`).
 
 ## Fonts
 
-Loaded from Google Fonts (the only font host the CSP allows), set as variables in `css/style.css`:
+Loaded from Google Fonts (the only font host the CSP allows), set as variables in `css/style.css`. The hub and
+the admin console use Space Grotesk with Instrument Serif headings (`css/hub.css`, `css/admin.css`). The rest:
 `--font-title` and `--font-display` Cinzel (page titles, menus, buttons, headings),
 `--font-body` Alegreya Sans (UI text), `--font-lore` Alegreya (rules, spells, notes, the e-reader's serif).
 Inter was dropped as too generic. If you add a family, add it to the `<link>` in `index.html` too.

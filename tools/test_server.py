@@ -6,10 +6,13 @@ completely separate from real saves.
     python tools/test_server.py ../some-fork       # another checkout (a fork, a branch worktree)
     python tools/test_server.py --lan              # also reachable from your phone on the same Wi-Fi
     python tools/test_server.py --port 8870 --reset
+    python tools/test_server.py --admin you@example.com   # that account gets the admin console once its email is confirmed
 
 The test copy keeps its accounts and campaigns in ~/.pkdnd-test/<folder name>
 (never the real save file), listens only on this computer unless you pass
---lan, and shows an obvious "TEST" marker in the console. Create a fresh
+--lan, and shows an obvious "TEST" marker in the console. Emails (sign-in codes)
+are never sent: each one is written as a .txt file into the test data's outbox
+folder, and the code is printed in the console. Create a fresh
 account and campaign inside it; --reset wipes just that test data.
 """
 import argparse
@@ -26,6 +29,7 @@ def main():
     ap.add_argument("--port", type=int, default=8860)
     ap.add_argument("--lan", action="store_true", help="let other devices on your network connect")
     ap.add_argument("--reset", action="store_true", help="delete this test copy's saved data first")
+    ap.add_argument("--admin", default="", help="comma-separated emails that get the admin console")
     args = ap.parse_args()
 
     checkout = Path(args.checkout).resolve()
@@ -37,12 +41,15 @@ def main():
     data_dir.mkdir(parents=True, exist_ok=True)
 
     env = dict(os.environ, PKDND_DATA_DIR=str(data_dir), PKDND_BIND="0.0.0.0" if args.lan else "127.0.0.1")
-    for var in ("PKDND_GOOGLE_CLIENT_ID", "PKDND_APPLE_CLIENT_ID", "PKDND_LEGACY_DM_PASSWORD", "PKDND_TRUST_PROXY", "PKDND_BACKUP_DIR"):
-        env.pop(var, None)  # a test copy never inherits real sign-in config or backup folders
+    for var in ("PKDND_GOOGLE_CLIENT_ID", "PKDND_APPLE_CLIENT_ID", "PKDND_LEGACY_DM_PASSWORD", "PKDND_TRUST_PROXY", "PKDND_BACKUP_DIR",
+                "PKDND_MAIL_API_KEY", "PKDND_MAIL_FROM", "PKDND_UPLOAD_DIR", "PKDND_ADMIN_EMAILS"):
+        env.pop(var, None)  # a test copy never inherits real sign-in config, mail keys or backup folders
+    env.update(PKDND_MAIL_PROVIDER="outbox", PKDND_MAIL_OUTBOX=str(data_dir / "outbox"), PKDND_ADMIN_EMAILS=args.admin)
 
     print("=" * 60)
     print(f" TEST SERVER for {checkout}")
     print(f" http://localhost:{args.port}   (data: {data_dir})")
+    print(f" Sign-in code emails land in {data_dir / 'outbox'}")
     print(" Not the live site. Ctrl+C to stop.")
     print("=" * 60)
     try:

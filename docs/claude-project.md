@@ -1,6 +1,6 @@
 # Using this with Claude on any device
 
-The app itself already works on any device: open https://pokemon-dnd.duckdns.org
+The app itself already works on any device: open https://fluxdev.org
 in a browser (iPhone, tablet, desktop) and sign in. This page is about working
 *on* the app with Claude from anywhere.
 
@@ -23,7 +23,7 @@ pushes, deploy from your PC with Claude Code, or ask it there to deploy.
 
 > You are helping with the Pokémon D&D Companion, a tabletop web app: a
 > standard-library Python server plus a vanilla-JS front end, live at
-> pokemon-dnd.duckdns.org. Follow CLAUDE.md. Players use 1920x1080 and
+> fluxdev.org. Follow CLAUDE.md. Players use 1920x1080 and
 > 3440x1440 monitors and iPhones, so keep layouts compact, calm and quick to
 > use. Never suggest deleting or overwriting save data, and never trust ids sent
 > by the browser for permissions. When I describe a bug or idea, ask for what

@@ -7,6 +7,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { ctxFor } from "../tests/js/_data.mjs";
 import { presenceSummary } from "../js/systems/dnd5e/engine/character.js";
 
@@ -33,7 +34,9 @@ async function api(method, p, body, token) {
 const players = [];
 for (const key of keys) {
   const nid = `${prefix}-${key}`;
-  const { token } = await api("POST", "/api/auth/login", { email: `${key}@${domain}`, password, networkId: nid });
+  // the same device key the seed script registered with, so no sign-in code is needed
+  const deviceKey = `seed-device-${createHash("sha256").update(`${password}:${nid}`).digest("hex").slice(0, 32)}`;
+  const { token } = await api("POST", "/api/auth/login", { email: `${key}@${domain}`, password, networkId: nid, deviceKey });
   const camp = (await api("GET", `/api/campaigns?networkId=${nid}`, null, token)).campaigns.find((c) => c.name === "The Sundered Crown");
   if (!camp) { console.error(`Run tools/${showcase ? "seed_showcase.py" : "seed_test_campaign.py"} first.`); process.exit(1); }
   const save = (await api("GET", `/api/playersave?id=${nid}&campaignId=${camp.id}`, null, token)).current;

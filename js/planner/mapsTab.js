@@ -1,12 +1,30 @@
 // Maps: import your own map images and label them in the app. Pan with a drag, zoom with the wheel, the buttons or a
 // pinch; add a label with "+ Label" (or double-click the map), drag labels to move them, click one to edit its text,
-// icon, colour and note. Images stay on this device (mapStore.js); a map's name and labels are saved with the plan, and
-// Export / Import map pack moves a whole map (image and labels) to another device or to a friend.
+// icon, colour and note. Images are uploaded to the server (one file per map, in this campaign: 10 maps of up to 15 MB
+// for most accounts, no limit for accounts the admin allows), so they follow you to every device you sign in on; a
+// map's name and labels are saved with the plan. Maps made before that kept their image on the device (mapStore.js)
+// and offer to upload it. Export / Import map pack still moves a whole map to a friend.
 
 import { el, btn, chip, textInput, selectEl, field, toast, confirmDialog, promptDialog, modal, download, pickFile, checkbox } from "../systems/dnd5e/ui.js";
 import { getPlan, mutatePlan, newMap, uid } from "./store.js";
-import { readAsDataUrl, imageSize, putImage, getImage, deleteImage } from "./mapStore.js";
+import { readAsDataUrl, imageSize, getImage, deleteImage } from "./mapStore.js";
 import { getDmToken } from "../systems/dnd5e/dmAccess.js";
+import { uploadFile, fileUrl, fileBlob, deleteFile, listFiles } from "../network.js";
+
+// Upload an image (a File or Blob) as a map file in this campaign. Resolves to the file record, or throws with the
+// server's reason (a full quota, a file over the size limit, ...).
+async function uploadMap(blob, name) {
+  const res = await uploadFile("map", blob, { name: name || "map" });
+  if (res.error) throw new Error(res.error);
+  return res.file;
+}
+const dataUrlToBlob = async (url) => (await fetch(url)).blob();
+
+// The image to show for a map: its server file, or (older maps) the copy on this device.
+async function mapImageUrl(m) {
+  if (m.fileId) return fileUrl(m.fileId);
+  return getImage(m.id).catch(() => null);
+}
 import { getAllPlans, publishPartyMap, updatePartyMapLive, clearPartyMap } from "../network.js";
 
 // Shrink a map image so it is small enough to share with the table (a JPEG up to 1600 px on its longest side).
@@ -50,10 +68,11 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
       const url = await readAsDataUrl(file);
       const { w, h } = await imageSize(url);
       const m = newMap(file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " "));
-      m.w = w; m.h = h; m.hasImage = true;
-      await putImage(m.id, url);
+      toast("Uploading the map…");
+      const rec = await uploadMap(file, file.name);
+      m.w = w; m.h = h; m.hasImage = true; m.fileId = rec.id;
       mutatePlan((p) => { p.maps.unshift(m); });
-      selected = m.id; imageUrl = url;
+      selected = m.id; imageUrl = await fileUrl(rec.id) || url; drawUsage();
       drawList(); drawViewer();
       toast(`Imported ${m.name} (${w}×${h}).`, "good");
     } catch (err) { toast(err.message || "Couldn't import that file.", "bad"); }
@@ -65,16 +84,17 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
     const m = newMap(String(data.map.name || "Imported map").slice(0, 80));
     m.w = Number(data.map.w) || 0; m.h = Number(data.map.h) || 0; m.hasImage = true;
     m.pins = (Array.isArray(data.map.pins) ? data.map.pins : []).slice(0, 500).map((p) => ({ id: uid(), x: clamp01(p.x), y: clamp01(p.y), label: String(p.label || "").slice(0, 80), note: String(p.note || "").slice(0, 2000), icon: String(p.icon || "●").slice(0, 2), color: /^#[0-9a-f]{6}$/i.test(p.color) ? p.color : "#ff4a22" }));
-    await putImage(m.id, data.image);
+    m.fileId = (await uploadMap(await dataUrlToBlob(data.image), `${m.name}.png`)).id;
     mutatePlan((p) => { p.maps.unshift(m); });
-    selected = m.id; imageUrl = data.image;
+    selected = m.id; imageUrl = data.image; drawUsage();
     drawList(); drawViewer();
     toast(`Imported the map pack "${m.name}".`, "good");
   }
 
   async function exportPack(m) {
-    const image = await getImage(m.id);
-    if (!image) { toast("This device doesn't have that map's image.", "bad"); return; }
+    const blob = m.fileId ? (await fileBlob(m.fileId))?.blob : null;
+    const image = blob ? await readAsDataUrl(blob) : await getImage(m.id).catch(() => null);
+    if (!image) { toast("Couldn't get that map's image.", "bad"); return; }
     download(`${m.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "map"}.map.json`, JSON.stringify({ kind: "pokemon-dnd-map-v1", map: { name: m.name, w: m.w, h: m.h, pins: m.pins }, image }));
   }
 
@@ -109,15 +129,29 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
       viewerHost.replaceChildren(el("div", { class: "pl-map-empty" }, [el("h4", {}, "Maps"), el("p", { class: "view-sub" }, "Import a map of your world, a dungeon, a town or a route. You can then label places on it, and the labels stay put as you zoom."), btn("Import a map", () => pickFile("image/*,.json").then(importFile), "btn")]));
       return;
     }
-    if (!imageUrl) { try { imageUrl = await getImage(m.id); } catch { imageUrl = null; } }
+    if (!imageUrl) imageUrl = await mapImageUrl(m);
     if (!imageUrl) {
-      viewerHost.replaceChildren(el("div", { class: "pl-map-empty" }, [el("h4", {}, m.name), el("p", { class: "view-sub" }, "This map's image isn't on this device (images aren't synced). Your labels are safe. Import the image again, or an exported map pack."), btn("Re-import the image", async () => {
+      viewerHost.replaceChildren(el("div", { class: "pl-map-empty" }, [el("h4", {}, m.name), el("p", { class: "view-sub" }, m.fileId ? "Couldn't load this map's image from the server. Check your connection, or upload the image again." : "This map's image was kept on another device before maps were stored on the server. Your labels are safe: upload the image again and it will be on every device."), btn("Upload the image", async () => {
         const f = await pickFile("image/*"); if (!f) return;
-        const url = await readAsDataUrl(f); const sz = await imageSize(url);
-        await putImage(m.id, url); patchMap(m.id, (x) => { x.w = sz.w; x.h = sz.h; x.hasImage = true; }); imageUrl = url; drawViewer();
+        try {
+          const url = await readAsDataUrl(f); const sz = await imageSize(url);
+          const rec = await uploadMap(f, f.name);
+          patchMap(m.id, (x) => { x.w = sz.w; x.h = sz.h; x.hasImage = true; x.fileId = rec.id; }); imageUrl = url; drawViewer(); drawUsage();
+        } catch (err) { toast(err.message || "Couldn't upload it.", "bad"); }
       }, "btn")]));
       drawPins(m);
       return;
+    }
+    if (!m.fileId) {
+      // An older map whose image is only on this device: move it to the server so other devices get it too.
+      setTimeout(async () => {
+        try {
+          const rec = await uploadMap(await dataUrlToBlob(imageUrl), `${m.name}.png`);
+          patchMap(m.id, (x) => { x.fileId = rec.id; });
+          deleteImage(m.id).catch(() => {});
+          drawUsage();
+        } catch { /* over the limit or offline: it stays on this device for now */ }
+      }, 0);
     }
     const wrap = el("div", { class: "pl-map-wrap" });
     const stage = el("div", { class: "pl-map-stage", style: `width:${m.w}px;height:${m.h}px` });
@@ -139,9 +173,18 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
         el("strong", {}, `${m.name}`),
         el("div", { class: "dnd-row tight" }, [
           btn("Rename", async () => { const n = await promptDialog("Rename map", "Name", m.name); if (n) { patchMap(m.id, (x) => { x.name = n.trim().slice(0, 80) || x.name; }); drawList(); drawViewer(); } }, "btn secondary tiny"),
-          btn("Replace image", async () => { const f = await pickFile("image/*"); if (!f) return; const url = await readAsDataUrl(f); const sz = await imageSize(url); await putImage(m.id, url); patchMap(m.id, (x) => { x.w = sz.w; x.h = sz.h; }); imageUrl = url; drawViewer(); }, "btn secondary tiny"),
+          btn("Replace image", async () => {
+            const f = await pickFile("image/*"); if (!f) return;
+            try {
+              const url = await readAsDataUrl(f); const sz = await imageSize(url);
+              const old = m.fileId, rec = await uploadMap(f, f.name);
+              patchMap(m.id, (x) => { x.w = sz.w; x.h = sz.h; x.fileId = rec.id; });
+              if (old) deleteFile(old);
+              imageUrl = url; drawViewer();
+            } catch (err) { toast(err.message || "Couldn't upload it.", "bad"); }
+          }, "btn secondary tiny"),
           btn("Export pack", () => exportPack(m), "btn secondary tiny"),
-          btn("Delete", async () => { if (await confirmDialog(`Delete the map "${m.name}" and its ${m.pins.length} labels?`, { ok: "Delete", danger: true })) { await deleteImage(m.id).catch(() => {}); mutatePlan((p) => { p.maps = p.maps.filter((x) => x.id !== m.id); }); selected = maps()[0]?.id || null; imageUrl = null; drawList(); drawViewer(); } }, "btn danger tiny"),
+          btn("Delete", async () => { if (await confirmDialog(`Delete the map "${m.name}" and its ${m.pins.length} labels?`, { ok: "Delete", danger: true })) { await deleteImage(m.id).catch(() => {}); if (m.fileId) await deleteFile(m.fileId); mutatePlan((p) => { p.maps = p.maps.filter((x) => x.id !== m.id); }); drawUsage(); selected = maps()[0]?.id || null; imageUrl = null; drawList(); drawViewer(); } }, "btn danger tiny"),
         ]),
       ]),
       dm ? shareBar(m) : null,
@@ -295,9 +338,14 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
             btn(mm.shared ? "Update shared image" : "Share with players", async () => {
               if (!token) { toast("Unlock DM tools first.", "bad"); return; }
               try {
-                const image = await getImage(mm.id);
-                if (!image) { toast("This device doesn't have that map's image.", "bad"); return; }
-                await publishPartyMap(token, { name: mm.name, image: await shrinkImage(image), w: mm.w, h: mm.h, pins: mm.pins, tokens: mm.tokens || [] });
+                let shared = null;
+                if (mm.fileId) shared = await publishPartyMap(token, { name: mm.name, fileId: mm.fileId, w: mm.w, h: mm.h, pins: mm.pins, tokens: mm.tokens || [] });
+                else {
+                  const image = await getImage(mm.id).catch(() => null);
+                  if (!image) { toast("This device doesn't have that map's image.", "bad"); return; }
+                  shared = await publishPartyMap(token, { name: mm.name, image: await shrinkImage(image), w: mm.w, h: mm.h, pins: mm.pins, tokens: mm.tokens || [] });
+                }
+                if (!shared) { toast("Couldn't share it. Check that DM tools are unlocked.", "bad"); return; }
                 mutatePlan((p) => { p.maps.forEach((x) => { x.shared = x.id === mm.id; }); });
                 toast("Shared. Players see only the places you reveal.", "good"); drawShare(); drawList();
               } catch (err) { toast(`Couldn't share it: ${err.message || err}`, "bad"); }
@@ -359,6 +407,17 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
   }
 
   // ------------------------------------------------------------ layout
+  // How many maps this account keeps in the campaign, against its limit.
+  const usageHost = el("p", { class: "pl-banner" }, "Map images are stored on the server, so they're on every device you sign in on.");
+  async function drawUsage() {
+    const res = await listFiles("map");
+    if (!res) return;
+    const cap = res.limits.mapsPerCampaign, mb = Math.round(res.limits.mapBytes / 1048576);
+    usageHost.textContent = cap == null
+      ? `Map images are stored on the server and follow you to every device. ${res.files.length} map${res.files.length === 1 ? "" : "s"} here, no limit, up to ${mb} MB each.`
+      : `Map images are stored on the server and follow you to every device. ${res.files.length} of ${cap} maps used in this campaign, up to ${mb} MB each.`;
+  }
+  drawUsage();
   const importBtn = btn("+ Import map", async () => importFile(await pickFile("image/*,.json")), "btn small");
   const drop = el("div", { class: "pl-drop", role: "button", tabindex: "0", "aria-label": "Import a map: click, or drop an image here" }, [el("strong", {}, "Drop a map image here"), el("span", { class: "dnd-small dnd-muted" }, "PNG, JPG, WebP or a map pack (.json)")]);
   drop.addEventListener("click", async () => importFile(await pickFile("image/*,.json")));
@@ -367,7 +426,7 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
   drop.addEventListener("drop", (e) => importFile(e.dataTransfer.files[0]));
 
   panel.append(
-    el("p", { class: "pl-banner" }, "Map images stay on this device. Labels are saved with your plan. Use “Export pack” to move a map to another device."),
+    usageHost,
     el("div", { class: "pl-map-layout" }, [
       el("div", { class: "pl-map-side" }, [el("div", { class: "card" }, [el("div", { class: "dnd-row between" }, [el("h4", {}, "Your maps"), importBtn]), listHost, drop]), pinsHost]),
       viewerHost,

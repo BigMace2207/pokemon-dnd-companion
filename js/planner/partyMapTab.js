@@ -2,7 +2,7 @@
 // everyone; unrevealed places are never sent to a player's device at all (the server filters them). Refreshes while open.
 
 import { el, chip } from "../systems/dnd5e/ui.js";
-import { getPartyMap } from "../network.js";
+import { getPartyMap, fileUrl, cachedFileUrl } from "../network.js";
 
 export function renderPartyMapTab(panel) {
   const host = el("div", { class: "pl-party-map" });
@@ -14,7 +14,7 @@ export function renderPartyMapTab(panel) {
   async function load() {
     let map = null;
     try { map = await getPartyMap(null); } catch { map = null; }
-    const sig = JSON.stringify([map?.updated, map?.name]);
+    const sig = JSON.stringify([map?.updated, map?.name, map?.fileId]);
     if (sig === last && host.childElementCount) return;   // nothing new: keep the view where the player left it
     last = sig;
     draw(map);
@@ -24,7 +24,9 @@ export function renderPartyMapTab(panel) {
     if (!map) { host.replaceChildren(el("p", { class: "view-sub" }, "Your DM hasn't shared a map yet. When they do, it appears here, and places show up as they reveal them.")); return; }
     const wrap = el("div", { class: "pl-map-wrap" });
     const stage = el("div", { class: "pl-map-stage", style: `width:${map.w}px;height:${map.h}px` });
-    const img = el("img", { src: map.image, alt: map.name, draggable: "false" });
+    // A shared map file is fetched once and then only checked for changes (the server answers "not modified").
+    const img = el("img", { src: map.image || (map.fileId && cachedFileUrl(map.fileId)) || "", alt: map.name, draggable: "false" });
+    if (map.fileId && !img.getAttribute("src")) fileUrl(map.fileId).then((url) => { if (url) img.src = url; });
     img.style.cssText = "width:100%;height:100%;display:block;user-select:none;pointer-events:none";
     stage.append(img);
     for (const p of map.pins) {

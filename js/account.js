@@ -8,8 +8,22 @@
 import { loadSave, switchNetworkId } from "./storage.js";
 import { getSessionToken as readToken, setSessionToken as writeToken } from "./session.js";
 
+// A random key that identifies this browser to the account. Signing in with a password on a browser the account
+// hasn't seen before needs a 4-digit code from the account's email (see server.py's "Trusted devices").
+const DEVICE_KEY = "pokemon-dnd-device-key";
+export function deviceKey() {
+  try {
+    let k = localStorage.getItem(DEVICE_KEY);
+    if (!k) {
+      k = [...crypto.getRandomValues(new Uint8Array(24))].map((b) => b.toString(16).padStart(2, "0")).join("");
+      localStorage.setItem(DEVICE_KEY, k);
+    }
+    return k;
+  } catch { return ""; }
+}
+
 async function api(method, path, body) {
-  const headers = { "Content-Type": "application/json" };
+  const headers = { "Content-Type": "application/json", "X-Device-Key": deviceKey() };
   const token = readToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   try {
@@ -54,14 +68,17 @@ export async function fetchMe() {
 // the device is switched onto it (safely -- see storage.js's
 // switchNetworkId) and `switched` is true: the caller should reload the page
 // so the whole app restarts under the new identity.
+// A password sign-in on a new device answers { needCode, challenge, sentTo } instead: the caller asks for the code
+// and finishes with verifyCode().
 async function finish(result) {
   if (!result.ok) return { error: result.data?.error || "Something went wrong — try again." };
+  if (result.data?.needCode) return { needCode: true, challenge: result.data.challenge, sentTo: result.data.sentTo };
   writeToken(result.data.token);
   const switched = switchNetworkId(result.data.account.networkId);
   return { account: result.data.account, switched };
 }
 
-const device = () => ({ networkId: loadSave().networkId });
+const device = () => ({ networkId: loadSave().networkId, deviceKey: deviceKey() });
 
 export async function register(email, password) {
   return finish(await api("POST", "/api/auth/register", { email, password, ...device() }));
@@ -83,6 +100,24 @@ export async function signInWithProvider(provider, credential) {
 export async function setPassword(password) {
   const { ok, data } = await api("POST", "/api/auth/set-password", { password });
   return ok ? { account: data.account } : { error: data?.error || "Something went wrong — try again." };
+}
+
+// The 4-digit code from the email: finishes a new-device sign-in ({ account, switched }), or confirms the signed-in
+// account's address ({ account }).
+export async function verifyCode(challenge, code) {
+  const result = await api("POST", "/api/auth/verify", { challenge, code });
+  if (result.ok && !result.data.token) return { account: result.data.account };
+  return finish(result);
+}
+
+export async function resendCode(challenge) {
+  return finish(await api("POST", "/api/auth/resend", { challenge }));
+}
+
+// Signed in: emails a code to confirm the account's address (an admin needs a confirmed address).
+export async function startEmailVerify() {
+  const { ok, data } = await api("POST", "/api/auth/verify-email", {});
+  return ok ? { needCode: true, challenge: data.challenge, sentTo: data.sentTo } : { error: data?.error || "Couldn't send the code." };
 }
 
 export async function logout() {

@@ -1,12 +1,30 @@
 // Library: the user's own books and rulebooks (PDF, EPUB, Word, text, Markdown, HTML, images,
-// comic zips), kept privately on this device, with a full e-reader. Nothing is uploaded: files live
-// in this browser's IndexedDB, so they're never shared with the campaign or the server.
+// comic zips), with a full e-reader. For most accounts nothing is uploaded: files live in this
+// browser's IndexedDB and are never shared with the campaign or the server. Accounts the admin
+// allows (the cloudLibrary permission, which admins have) also keep each book on the server, private
+// to that account, so it shows up on every device they sign in on; it's downloaded once per device.
 
 import { el, btn, chip, toast, confirmDialog, modal, field, selectEl, textInput } from "../systems/dnd5e/ui.js";
 import { listBooks, addBook, updateBook, deleteBook, usage, persist } from "../library/store.js";
 import { detectFormat, FORMATS, openEpub, openDocx, thumb } from "../library/formats.js";
 import { openReader } from "../library/reader.js";
 import { getViewState, setViewState } from "../viewState.js";
+import { fetchMe } from "../account.js";
+import { listFiles, uploadFile, setFileMeta, deleteFile, fileBlob } from "../network.js";
+
+const CLOUD_FORMATS = new Set(["pdf", "epub", "docx", "txt", "md", "html", "cbz"]);
+const EXT_FOR = { pdf: "pdf", epub: "epub", docx: "docx", txt: "txt", md: "md", html: "html", cbz: "cbz" };
+
+// Copies a book to the server (cloud accounts only). Resolves to the file id, or null.
+async function uploadBook(meta, buffer) {
+  if (!CLOUD_FORMATS.has(meta.format)) return null;
+  const res = await uploadFile("book", new Blob([buffer]), { name: `${meta.title}.${EXT_FOR[meta.format]}` });
+  if (res.error) { toast(`${meta.title}: kept on this device only (${res.error})`, "bad"); return null; }
+  const info = { title: meta.title, author: meta.author || "", format: meta.format, shelf: meta.shelf || "", pages: meta.pages || 0, cover: meta.cover || "" };
+  if (JSON.stringify(info).length > 55000) info.cover = "";   // a big cover isn't worth refusing the details over
+  await setFileMeta(res.file.id, { meta: info });
+  return res.file.id;
+}
 
 const SHELVES = ["Pokémon D&D", "D&D 5e", "Homebrew", "Other"];
 const fmtBytes = (n) => (n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`);
@@ -25,9 +43,9 @@ export function renderLibrary(container) {
   const st = getViewState("library:ui", { q: "", shelf: "", format: "", sort: "recent" });
   const remember = () => setViewState("library:ui", st);
 
-  const head = el("div", { class: "lib-head" }, [
-    el("div", {}, [el("h1", { class: "view-title" }, "Library"), el("p", { class: "view-sub" }, "Your own books and rulebooks, with a built-in reader. Files stay on this device — nothing is uploaded.")]),
-  ]);
+  let cloud = false;   // does this account keep books on the server?
+  const sub = el("p", { class: "view-sub" }, "Your own books and rulebooks, with a built-in reader. Files stay on this device — nothing is uploaded.");
+  const head = el("div", { class: "lib-head" }, [el("div", {}, [el("h1", { class: "view-title" }, "Library"), sub])]);
   const input = el("input", { type: "file", multiple: "", accept: ".pdf,.epub,.docx,.txt,.md,.markdown,.html,.htm,.png,.jpg,.jpeg,.gif,.webp,.cbz", hidden: "" });
   const addBtn = btn("+ Add books", () => input.click(), "btn");
   const drop = el("div", { class: "lib-drop", role: "button", tabindex: "0", "aria-label": "Add books: click or drop files here" }, [
@@ -73,6 +91,10 @@ export function renderLibrary(container) {
         } else if (format === "image") {
           meta.cover = await thumb(URL.createObjectURL ? await fileToDataUrl(file) : "");
         }
+        if (cloud) {
+          status.textContent = `Uploading ${file.name} to your cloud library…`;
+          meta.fileId = await uploadBook(meta, buffer);
+        }
         await addBook(meta, buffer);
         ok++;
       } catch (err) {
@@ -92,6 +114,15 @@ export function renderLibrary(container) {
       shelfHost.replaceChildren(el("div", { class: "card" }, el("p", { class: "view-sub" }, `The library isn't available in this browser: ${err.message}`)));
       return;
     }
+    // Books on the server that aren't on this device yet show up too; they download when opened.
+    const remote = cloud ? (await listFiles("book"))?.files || [] : [];
+    const here = new Set(books.map((b) => b.fileId).filter(Boolean));
+    for (const f of remote) {
+      if (here.has(f.id)) continue;
+      const m = f.meta || {};
+      books.push({ id: `cloud-${f.id}`, fileId: f.id, cloudOnly: true, title: m.title || f.name, author: m.author || "", format: m.format || "pdf", shelf: m.shelf || "",
+        cover: m.cover || "", pages: m.pages || 0, size: f.size, added: f.created * 1000, lastRead: 0, progress: 0 });
+    }
     // toolbar
     const q = el("input", { type: "search", placeholder: "Search your library…", value: st.q, "aria-label": "Search your library", autocomplete: "off" });
     q.addEventListener("input", () => { st.q = q.value; remember(); drawShelf(books); });
@@ -103,7 +134,9 @@ export function renderLibrary(container) {
     drawShelf(books);
     const u = await usage();
     const total = books.reduce((n, b) => n + (b.size || 0), 0);
-    meter.textContent = `${books.length} book${books.length === 1 ? "" : "s"} · ${fmtBytes(total)} on this device${u?.quota ? ` · browser storage ${Math.round((u.used / u.quota) * 100)}% used` : ""}. Your files never leave this browser, so clearing site data deletes them — keep your originals.`;
+    meter.textContent = cloud
+      ? `${books.length} book${books.length === 1 ? "" : "s"} · ${remote.length} on the server, private to your account. Books open on any device you sign in on.`
+      : `${books.length} book${books.length === 1 ? "" : "s"} · ${fmtBytes(total)} on this device${u?.quota ? ` · browser storage ${Math.round((u.used / u.quota) * 100)}% used` : ""}. Your files never leave this browser, so clearing site data deletes them — keep your originals.`;
   }
 
   function drawShelf(books) {
@@ -126,7 +159,8 @@ export function renderLibrary(container) {
     const cover = book.cover ? el("img", { class: "lib-cover", src: book.cover, alt: "" }) : generatedCover(book);
     const pct = Math.round((book.progress || 0) * 100);
     const open = el("button", { type: "button", class: "lib-card-open", "aria-label": `Read ${book.title}` }, [
-      el("div", { class: "lib-cover-wrap" }, [cover, el("span", { class: "lib-badge" }, FORMATS[book.format] || book.format)]),
+      el("div", { class: "lib-cover-wrap" }, [cover, el("span", { class: "lib-badge" }, FORMATS[book.format] || book.format),
+        book.fileId ? el("span", { class: "lib-cloud", title: book.cloudOnly ? "On the server: downloads when you open it" : "Also kept on the server" }, book.cloudOnly ? "☁ Download" : "☁") : null].filter(Boolean)),
       el("div", { class: "lib-card-title" }, book.title),
       el("div", { class: "lib-card-author dnd-muted dnd-small" }, book.author || " "),
       el("div", { class: "lib-bar", role: "img", "aria-label": `${pct}% read` }, el("div", { style: `width:${pct}%` })),
@@ -137,7 +171,15 @@ export function renderLibrary(container) {
     return el("div", { class: "lib-card" }, [open, menu]);
   }
 
-  function openBook(book) {
+  async function openBook(book) {
+    if (book.cloudOnly) {
+      status.textContent = `Downloading ${book.title}…`;
+      const got = await fileBlob(book.fileId);
+      status.textContent = "";
+      if (!got) { toast("Couldn't download that book.", "bad"); return; }
+      const { id: _drop, cloudOnly: _c, ...meta } = book;
+      book = await addBook(meta, await got.blob.arrayBuffer());
+    }
     updateBook(book.id, { lastRead: Date.now() });
     openReader(container, book, { onClose: () => renderLibrary(container) });
   }
@@ -153,13 +195,31 @@ export function renderLibrary(container) {
       body: [field("Title", title), field("Author", author), field("Shelf", shelf), list,
         el("p", { class: "dnd-small dnd-muted" }, `${FORMATS[book.format]} · ${fmtBytes(book.size)}${book.pages ? ` · ${book.pages} pages` : ""} · added ${new Date(book.added).toLocaleDateString()}`)],
       actions: [
-        { label: "Delete", cls: "btn danger", onClick: () => { confirmDialog(`Remove "${book.title}" from this device? Your bookmarks and highlights go with it.`, { ok: "Remove", danger: true }).then(async (yes) => { if (yes) { await deleteBook(book.id); toast("Removed.", ""); draw(); } }); } },
+        { label: "Delete", cls: "btn danger", onClick: () => {
+          const where = book.fileId ? "from this device and the server" : "from this device";
+          confirmDialog(`Remove "${book.title}" ${where}? Your bookmarks and highlights go with it.`, { ok: "Remove", danger: true }).then(async (yes) => {
+            if (!yes) return;
+            if (book.fileId) await deleteFile(book.fileId);
+            if (!book.cloudOnly) await deleteBook(book.id);
+            toast("Removed.", ""); draw();
+          });
+        } },
+        ...(cloud && !book.fileId && CLOUD_FORMATS.has(book.format) ? [{ label: "Upload to server", onClick: async () => {
+          const { getBookData } = await import("../library/store.js");
+          const data = await getBookData(book.id);
+          const fileId = data ? await uploadBook(book, data) : null;
+          if (fileId) { await updateBook(book.id, { fileId }); toast("Uploaded. It's on every device you sign in on now.", "good"); draw(); }
+        } }] : []),
         { label: "Reset progress", onClick: async () => { await updateBook(book.id, { progress: 0, locator: null, label: "", lastRead: 0 }); draw(); } },
         { label: "Save", cls: "btn", onClick: async () => { await updateBook(book.id, { title: title.value.trim() || book.title, author: author.value.trim(), shelf: shelf.value.trim() }); draw(); } },
       ],
     });
   }
 
-  draw();
+  fetchMe().then((acc) => {
+    cloud = !!acc?.perms?.cloudLibrary;
+    if (cloud) sub.textContent = "Your own books and rulebooks, with a built-in reader. Your account keeps them on the server, private to you, so they're on every device you sign in on.";
+    draw();
+  });
   void chip;
 }

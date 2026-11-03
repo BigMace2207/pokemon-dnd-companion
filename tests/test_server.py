@@ -55,7 +55,11 @@ class ServerCase(unittest.TestCase):
         tmp = Path(self.tmp.name)
         server.STATE_FILE = tmp / ".server_state.dat"
         server.BACKUP_DIR = tmp / "backups"
-        server.CAMPAIGNS, server.ACCOUNTS, server.SESSIONS = {}, {}, {}
+        server.CAMPAIGNS, server.ACCOUNTS, server.SESSIONS, server.FILES = {}, {}, {}, {}
+        server.UPLOAD_DIR = tmp / "uploads"
+        server.CHALLENGES.clear()
+        server.HUB_CURSORS.clear()
+        server.mailer.PROVIDER, server.mailer.OUTBOX = "", ""   # no email codes unless a test turns them on
         server.CAMPAIGNS_DIRTY = False
         server.GOOGLE_CLIENT_ID = server.APPLE_CLIENT_ID = None
         auth._JWKS_CACHE.clear()
@@ -344,7 +348,7 @@ class Accounts(ServerCase):
         status, out = call(self.base, "POST", "/api/auth/google", {"credential": fx.GOOD, "networkId": "n"})
         self.assertEqual(status, 503)
         status, cfg = call(self.base, "GET", "/api/auth/config")
-        self.assertEqual(cfg, {"google": None, "apple": None})
+        self.assertEqual(cfg, {"google": None, "apple": None, "emailCodes": False})
 
     def test_google_signin_creates_then_reuses_an_account_and_rejects_forgeries(self):
         server.GOOGLE_CLIENT_ID = "test-google-client"

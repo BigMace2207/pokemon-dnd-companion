@@ -22,6 +22,7 @@ export const NAV_ICONS = {
   typechart: spriteIcon("sprites/icons/plate/zap.png"),
   tierguide: spriteIcon("sprites/icons/exp-candy/m.png"),
   settings: spriteIcon("sprites/icons/key-item/rule-book.png"),
+  hub: spriteIcon("sprites/icons/key-item/town-map.png"),
 };
 
 // Line icons for the D&D and shared pages (they follow the theme's text colour).
@@ -45,6 +46,7 @@ export const DND_ICONS = {
   dndEncounter: svg('<path d="M12 3v18M5 21h14M5 8h14"/><path d="M5 8l-3 7a3.5 3.5 0 0 0 6 0zM19 8l-3 7a3.5 3.5 0 0 0 6 0z"/>'),
   planner: svg('<path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><path d="M8 5H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2"/><path d="M9 11l1.6 1.6L13.5 9.5M9 16.5h6"/>'),
   library: svg('<path d="M4 4h4v16H4zM9 4h4v16H9z"/><path d="M14 6l4-1 3 14-4 1z"/>'),
+  admin: svg('<path d="M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6z"/><circle cx="12" cy="10.5" r="2.4"/><path d="M8.5 16.5a4 4 0 0 1 7 0"/>'),
   rulebook: svg('<path d="M5 3h12a2 2 0 0 1 2 2v16H7a2 2 0 0 1-2-2z"/><circle cx="12" cy="11" r="3.2"/><path d="M8.8 11h6.4"/>'),
 };
 Object.assign(NAV_ICONS, DND_ICONS);

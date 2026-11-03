@@ -3,7 +3,7 @@
 A tabletop companion web app (Pokédex, calculators, trainer sheets, live
 multi-campaign multiplayer with a DM Control Centre). Python standard-library
 server (`server.py`, `auth.py`) + a no-build vanilla-JS front end (ES modules,
-no bundler, no npm). Live at https://pokemon-dnd.duckdns.org. Read
+no bundler, no npm). Live at https://fluxdev.org. Read
 `docs/architecture.md` for the shell / game-system split and `README.md` for
 feature docs.
 
@@ -11,7 +11,8 @@ feature docs.
 
 ```
 python server.py [port]                    # default 8850; serves the app + /api
-python -m unittest discover -s tests -v    # ~45s, 59 tests, run before every commit
+python -m unittest discover -s tests -v    # ~50s, 72 tests, run before every commit
+python tools/test_server.py --admin you@example.com   # throwaway local copy on :8860; code emails go to an outbox folder
 node --test tests/js/*.test.mjs            # D&D rules engine, <1s (use the glob, not the folder)
 ```
 
@@ -22,11 +23,14 @@ touch real save data.
 Server environment variables: `PKDND_BIND` (listen address; `127.0.0.1` on a
 public server), `PKDND_TRUST_PROXY=1` (only safe when bound to loopback behind
 a proxy), `PKDND_BACKUP_DIR`, `PKDND_BACKUP_INTERVAL`, `PKDND_GOOGLE_CLIENT_ID`,
-`PKDND_APPLE_CLIENT_ID`, `PKDND_LEGACY_DM_PASSWORD`.
+`PKDND_APPLE_CLIENT_ID`, `PKDND_LEGACY_DM_PASSWORD`, `PKDND_UPLOAD_DIR` (map and book files),
+`PKDND_ADMIN_EMAILS` (the site owner's address), `PKDND_MAIL_PROVIDER` / `PKDND_MAIL_API_KEY` /
+`PKDND_MAIL_FROM` (sign-in code emails; `mailer.py`). Keys and addresses go in the systemd drop-in, never the repo.
 
 ## Where things are
 
-- `server.py` all API routes, campaigns, accounts/sessions, autosave, hourly backups.
+- `server.py` all API routes, campaigns, accounts/sessions, device codes, admin console, uploaded files, the hub,
+  autosave, hourly backups. `mailer.py` sends the sign-in codes.
 - `auth.py` password hashing and Google/Apple ID-token verification (stdlib RSA).
 - `js/app.js` router + login/campaign gates; `js/network.js` API client;
   `js/storage.js` local save mirrored to the server; `js/views/*` pages;
@@ -35,6 +39,8 @@ a proxy), `PKDND_BACKUP_DIR`, `PKDND_BACKUP_INTERVAL`, `PKDND_GOOGLE_CLIENT_ID`,
   sit beside it. `data/` rules JSON. `sprites/` images.
 - `js/systems/dnd5e/` the D&D 5e system (engine is DOM-free, tested in `tests/js`); `js/library/` the
   e-reader; `js/lavaTheme.js` the lava theme's ambient layer. See docs/architecture.md.
+- `js/views/hub.js` the Pokémon hub (shared board, live cursors, the DM's encounter buttons; the only way into Battle);
+  `js/views/admin.js` the admin console (admins only).
 - `js/views/planner.js` + `js/planner/` the Campaign Planner (players share notes/checklists with the DM via `/api/plan`;
   only the DM token reads `/api/plans`).
 - `tests/test_server.py` the server test suite (static-file lockdown, backups,
@@ -54,7 +60,9 @@ fetches in `storage.js` add it by hand).
 
 **Static files are an allowlist** (`static_path_allowed`): only `index.html`,
 `manifest.json` and `css js data sprites sfx assets`. The save file
-(`.server_state.dat`) must never be reachable. There are no inline scripts and
+(`.server_state.dat`) and the `uploads/` folder must never be reachable: uploaded
+files are only served by `/api/files/<id>` after the ownership check. Big things
+(maps, books) never go in the save file: it is rewritten whole every few seconds. There are no inline scripts and
 the CSP forbids them: put scripts in files.
 
 **Never delete or overwrite save data.** Anything that touches accounts or
@@ -70,8 +78,9 @@ sizes that way, with a 12px minimum for text. Layouts must work at 1920x1080,
 
 **Lava theme / reader motion:** the lava ambient effects intentionally break the "<0.25s" rule (the user asked
 for them), so keep them on the non-re-rendering `#lavaFx` layer, opacity/transform only, and off for
-`prefers-reduced-motion` and `data-lava-fx="calm"`. The Library stores books in IndexedDB only (never upload
-them). CSP: `img-src` has no `blob:`, so reader images are data: URIs; PDF.js needs `isEvalSupported:false`.
+`prefers-reduced-motion` and `data-lava-fx="calm"`. The hub and admin console's entrances (styled after vvd.world, at the
+user's request) run up to 0.7s, once when the page opens, never on a sync or refresh. The Library stores books in IndexedDB;
+only accounts with the `cloudLibrary` permission also upload them (private to that account). CSP: `img-src` allows `blob:` only so map images fetched with the session can be shown; PDF.js needs `isEvalSupported:false`.
 
 **Quirks:** `css/style.css` has mixed LF/CRLF line endings, so match either when
 doing text replacements. Polling views re-render often; do not animate or reset
@@ -79,9 +88,11 @@ scroll in a re-render. The page scrolls inside `<main>`, not the window.
 
 ## Deployment (production is one Oracle VM)
 
-Static files (`css/ js/ index.html`) are just copied over; no restart. `server.py`
-or `auth.py` changes need the service restarted. The VM runs Python 3.10
-(systemd unit `pokemon-dnd`, Caddy for HTTPS, app bound to 127.0.0.1:8850,
+Static files (`css/ js/ index.html`) are just copied over; no restart. `server.py`,
+`auth.py` or `mailer.py` changes need the service restarted. Never overwrite or delete
+the server's `uploads/` folder when deploying. The VM runs Python 3.10
+(systemd unit `pokemon-dnd`, Caddy for HTTPS (`fluxdev.org`; `www.` and `pokemon.` redirect to it; the old
+`pokemon-dnd.duckdns.org` redirects there too, and remains the SSH host name), app bound to 127.0.0.1:8850,
 backups in `~/pokemon-dnd-backups`). The routine that has worked every time:
 take a copy of the save file first, upload to a staging folder, `py_compile` and
 run the test suite on the VM, install, restart, then verify. Deploying needs

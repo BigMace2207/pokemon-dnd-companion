@@ -9,6 +9,7 @@ sessions (three played, nine prepared) tied together with connections. Safe to r
 The accounts' shared password is generated on the first run and kept in <test data folder>/seed-accounts.txt,
 never in the repo. Refuses to run against anything but a local address.
 """
+import hashlib
 import argparse
 import json
 import secrets
@@ -42,6 +43,12 @@ def node(script):
     return json.loads(out.stdout)
 
 
+def device_key(pw, nid):
+    """The same made-up device every run, so once sign-in codes are on (server.py "Trusted devices") these
+    scripted sign-ins never wait for an email: the device an account was registered from is trusted."""
+    return "seed-device-" + hashlib.sha256(f"{pw}:{nid}".encode()).hexdigest()[:32]
+
+
 def password():
     f = DATA_DIR / "seed-accounts.txt"
     if f.exists():
@@ -58,9 +65,9 @@ def password():
 
 def sign_in(base, key, pw):
     email, nid = f"{key}@seed.example.com", f"seed-{key}"
-    status, out = call(base, "POST", "/api/auth/login", {"email": email, "password": pw, "networkId": nid})
+    status, out = call(base, "POST", "/api/auth/login", {"email": email, "password": pw, "networkId": nid, "deviceKey": device_key(pw, nid)})
     if status == 401:   # first run: the account doesn't exist yet
-        status, out = call(base, "POST", "/api/auth/register", {"email": email, "password": pw, "networkId": nid})
+        status, out = call(base, "POST", "/api/auth/register", {"email": email, "password": pw, "networkId": nid, "deviceKey": device_key(pw, nid)})
     if status != 200:
         sys.exit(f"sign-in failed for {key}: {status} {out}")
     return out["token"], out["account"]["networkId"]
