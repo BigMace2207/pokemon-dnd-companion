@@ -896,6 +896,16 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     const sel = selectEl(list.map((b) => [b.id, b.name]), board?.id || "", (id) => openBoard(id));
     sel.setAttribute("aria-label", "Board"); sel.classList.add("pl-board-select");
     const left = el("div", { class: "pl-group" }, [sel]);
+    if (full) {
+      // the app's top bar is hidden on the full-screen planner (like the hub), so its menu button lives here
+      const home = document.documentElement.classList.contains("no-sidebar");   // no sidebar: this button goes back to the hub
+      const menuBtn = el("button", { type: "button", class: "pl-round", "aria-label": home ? "Back to the hub" : "Menu", title: home ? "Back to the hub" : "Menu" });
+      menuBtn.innerHTML = home
+        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10"/></svg>'
+        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+      menuBtn.addEventListener("click", () => document.getElementById("navToggle")?.click());
+      left.prepend(menuBtn);
+    }
     if (!readonly) left.append(el("div", { class: "pl-seg" }, [
       ibtn("plus", "New board", () => { const nb = newBoard(`Board ${list.length + 1}`); mutatePlan((p) => { p.boards.push(nb); }); openBoard(nb.id); }),
       ibtn("edit", "Rename board", renameBoard),

@@ -14,3 +14,12 @@ export function widgetDock() {
   }
   return dock;
 }
+
+// A line icon for a dock button. The button keeps its text too; the Cosmic theme shows the icon instead (css/cosmic.css).
+export function dockIcon(d) {
+  const span = document.createElement("span");
+  span.className = "dock-icon";
+  span.setAttribute("aria-hidden", "true");
+  span.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
+  return span;
+}

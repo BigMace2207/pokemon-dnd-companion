@@ -16,6 +16,8 @@ function ensureTooltip() {
     // A hidden scroll ancestor moving out from under an open tooltip looks
     // broken (it stays pinned to stale coordinates), so just close it.
     document.addEventListener("scroll", () => hideTooltip(), true);
+    // and a page change takes its anchor away without a mouseleave, so close it then too
+    window.addEventListener("hashchange", () => hideTooltip());
   }
   return tooltipEl;
 }

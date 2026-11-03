@@ -290,6 +290,30 @@ class Hub(Base):
         self.op(self.owner, "id-owner", op="activate", itemId=bid, token=self.dm)
         self.assertEqual(self.sync(self.member, "id-member", since=out["rev"])[1]["activeButton"], bid)
 
+    def test_the_dm_sets_a_map_behind_the_hub_and_members_can_see_it(self):
+        from test_features import upload, fetch, PNG
+        fid = upload(self.base, self.owner, PNG, kind="map", campaignId=self.cid, name="world.png")[1]["file"]["id"]
+        mine = upload(self.base, self.member, PNG, kind="map", campaignId=self.cid, name="mine.png")[1]["file"]["id"]
+        self.assertEqual(fetch(self.base, f"/api/files/{fid}", self.member)[0], 404, "private until it's the backdrop")
+        self.assertEqual(self.op(self.member, "id-member", op="backdrop", fileId=fid)[0], 403)
+        self.assertEqual(self.op(self.owner, "id-owner", op="backdrop", fileId=mine, token=self.dm)[0], 400, "only the DM's own uploads")
+        self.assertEqual(self.op(self.owner, "id-owner", op="backdrop", fileId=fid, blur=99, dim=30, token=self.dm)[0], 200)
+        bd = self.sync(self.member, "id-member")[1]["backdrop"]
+        self.assertEqual((bd["fileId"], bd["blur"], bd["dim"]), (fid, 40, 30))
+        self.assertEqual(fetch(self.base, f"/api/files/{fid}", self.member)[0], 200)
+        call(self.base, "POST", f"/api/files/{fid}/delete", {}, token=self.owner)
+        self.assertIsNone(self.sync(self.member, "id-member")[1]["backdrop"], "deleting the map takes it off the hub")
+
+    def test_pokedex_and_move_cards_and_pings_on_them(self):
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={"type": "mon", "id": "c1", "x": 3, "y": 4, "name": "Pikachu", "dex": 25})[0], 200)
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={"type": "move", "id": "c2", "name": "Thunderbolt", "open": True})[0], 200)
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={"type": "mon", "id": "c3", "name": ""})[0], 400)
+        items = {i["id"]: i for i in self.sync(self.owner, "id-owner", since=-1)[1]["items"]}
+        self.assertEqual((items["c1"]["name"], items["c1"]["dex"]), ("Pikachu", 25))
+        self.assertTrue(items["c2"]["open"])
+        self.sync(self.member, "id-member", cursor={"x": 0, "y": 0, "name": "Mia", "color": "#ff0000"}, ping={"x": 3, "y": 4, "item": "c1"})
+        self.assertEqual(self.sync(self.owner, "id-owner")[1]["pings"][0]["item"], "c1")
+
     def test_pings_reach_everyone_and_fade(self):
         self.sync(self.member, "id-member", cursor={"x": 1, "y": 1, "name": "Mia", "color": "#ff0000"}, ping={"x": 40, "y": -20})
         out = self.sync(self.owner, "id-owner")[1]

@@ -212,7 +212,30 @@ where nobody can reach it; `restore` puts it back unchanged.
 `js/views/hub.js` is the Pokémon system's default page: one shared board per campaign (`state.hub`, server.py "The
 Pokémon hub"). The page calls `POST /api/hub/sync` a few times a second while open with its own cursor and gets back
 everyone else's (kept in memory only, gone after 6 seconds) and the board when its revision changed. Pings ride on the same
-call (`ping`, in memory for 4 seconds, at most 3 per player at once), and a cursor's `down` flag shows a click ripple. `POST /api/hub/op`
+call (`ping`, in memory for 4 seconds, at most 3 per player at once), and a cursor's `down` flag shows a click ripple.
+The DM's backdrop (`op: "backdrop"`, `hub.backdrop = {fileId, blur, dim}`) must be one of the DM's own map uploads in the
+campaign; campaign members may then read that file, like the shared party map. It sits under the dot grid (`.hub-dots`)
+and fades in; with none, the hub is "cosmic": four repeating star patterns (`.hub-starfield`) under the dots that pan and zoom with the board and fade in and out on their own rhythms. The board has an edge (`clampView`, `updateBounds`): you can pan
+and zoom out only as far as `EDGE_PAD` board units round everything on it (at least `BASE_AREA`), so the edge moves out as
+content is placed near it; bumping into it lights a glow on that side. A system's `onHub` list (Pokémon: settings,
+planner, library) keeps those pages routable but out of the sidebar, as buttons on the hub, and `hiddenViews` are routable pages that aren't in the sidebar (Pokémon: the
+Pokédex and Move Dex, which are pull-outs on the hub, `js/hubDex.js`). Hub items `mon` and `move` are cards that store
+only a name (and dex number); `hubDex.js fillCard` draws them from the rules data. A ping may carry `item`, the id of the
+thing it points at, and is drawn as frames round that item. Other players' cursors are inside `.hub-world` (board
+coordinates), so they stay on the same spot of the board while you zoom or pan; `--ik` (1/zoom) keeps their arrow and
+name at screen size.
+
+A system's `theme` (Pokémon: "cosmic", `css/cosmic.css`) is forced while its campaign is open
+(`deviceSettings.js setForcedTheme`, remembered for the next load by `theme-init.js`); the device's own choice still
+applies to other systems. Cosmic redefines the colour and font variables in `style.css` and restyles cards, buttons,
+fields, tables and the battle screen, so new pages pick it up without extra work.
+
+A system with `noSidebar: true` (Pokémon) has no sidebar at all: `html.no-sidebar` hides it, the top bar's menu button
+becomes a home button, and the system's own home page provides the way to every page (the hub's LEFT_PAGES and
+RIGHT_PAGES). `nav` still lists every page so the router knows them.
+
+Pull tabs (`js/logDrawer.js`): LOG is always on the right edge; a system adds more with `pullTabs: [{ id, label, title,
+render, wide }]` (Pokémon: RULES and TYPES). A tab's page is rendered once, the first time it opens, and kept. `POST /api/hub/op`
 puts, deletes or clears items: notes, text and drawings belong to whoever made them; encounter buttons need the DM token.
 A button's hover card is computed by the server from the DM's NPC and Wild libraries (`hub_button_preview`), so it
 shows the lead Pokémon's level and only names it when the DM allowed the sprite. The Battle screen is a gated view
@@ -229,7 +252,7 @@ which carries just pins and tokens. Whiteboard nodes can be linked to a place on
 ## Fonts
 
 Loaded from Google Fonts (the only font host the CSP allows), set as variables in `css/style.css`. The hub and
-the admin console use Space Grotesk with Instrument Serif headings (`css/hub.css`, `css/admin.css`). The rest:
+the admin console use Space Grotesk with Fraunces headings (--font-head) (`css/hub.css`, `css/admin.css`). The rest:
 `--font-title` and `--font-display` Cinzel (page titles, menus, buttons, headings),
 `--font-body` Alegreya Sans (UI text), `--font-lore` Alegreya (rules, spells, notes, the e-reader's serif).
 Inter was dropped as too generic. If you add a family, add it to the `<link>` in `index.html` too.

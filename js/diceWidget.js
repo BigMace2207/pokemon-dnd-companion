@@ -4,14 +4,14 @@
 // just need a quick roll outside of an actual attack.
 
 import { el } from "./components.js";
-import { widgetDock } from "./widgetDock.js";
+import { widgetDock, dockIcon } from "./widgetDock.js";
 
 const DICE_SIDES = [4, 6, 8, 10, 12, 20];
 
 export function mountDiceWidget() {
   if (document.getElementById("diceWidgetBtn")) return; // already mounted
 
-  const btn = el("button", { id: "diceWidgetBtn", class: "dice-widget-btn", title: "Dice Tray" }, "⚅");
+  const btn = el("button", { id: "diceWidgetBtn", class: "dice-widget-btn", title: "Dice Tray", "aria-label": "Dice tray" }, [el("span", { class: "dock-text" }, "⚅"), dockIcon("M12 2.5l8.2 4.75v9.5L12 21.5l-8.2-4.75v-9.5zM12 2.5v9.5M3.8 7.25L12 12l8.2-4.75M8 14.5h.01M16 14.5h.01M12 17.5h.01")]);
   const panel = el("div", { class: "dice-widget-panel" });
   panel.style.display = "none";
   document.body.appendChild(panel);

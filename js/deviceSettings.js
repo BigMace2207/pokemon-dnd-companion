@@ -21,6 +21,17 @@ const DEFAULT_HIDDEN_VIEWS = ["statcalc", "damagecalc", "tierguide", "controlcen
 
 // ---------------- Theme ----------------
 
+// A game system can insist on its own theme (Pokémon D&D: "cosmic", the hub's look on every page). It wins over the
+// device's choice while that campaign is open, and is remembered so the next page load paints it straight away
+// (js/theme-init.js reads the same key).
+const FORCED_THEME_KEY = "pokemon-dnd-forced-theme";
+let forcedTheme = (() => { try { return localStorage.getItem(FORCED_THEME_KEY); } catch { return null; } })();
+export function setForcedTheme(theme) {
+  forcedTheme = theme || null;
+  try { if (forcedTheme) localStorage.setItem(FORCED_THEME_KEY, forcedTheme); else localStorage.removeItem(FORCED_THEME_KEY); } catch { /* ignore */ }
+}
+export const getForcedTheme = () => forcedTheme;
+
 export function getTheme() {
   try {
     const v = localStorage.getItem(THEME_KEY);
@@ -57,9 +68,9 @@ export function setLavaFx(mode) {
 // off of ("lava" is styled by css/lava.css). "system" removes the attribute
 // entirely, falling back to the existing prefers-color-scheme media query.
 export function applyTheme() {
-  const theme = getTheme();
+  const theme = forcedTheme || getTheme();
   const root = document.documentElement;
-  if (theme === "light" || theme === "dark" || theme === "lava") root.setAttribute("data-theme", theme);
+  if (theme === "light" || theme === "dark" || theme === "lava" || theme === "cosmic") root.setAttribute("data-theme", theme);
   else root.removeAttribute("data-theme");
   if (getLavaFx() === "calm") root.setAttribute("data-lava-fx", "calm");
   else root.removeAttribute("data-lava-fx");

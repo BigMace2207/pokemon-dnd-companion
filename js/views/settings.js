@@ -1,5 +1,5 @@
 import { el, field } from "../components.js";
-import { getTheme, setTheme, getLavaFx, setLavaFx, getHiddenViews, setViewHidden, getSelectedCampaignId, clearSelectedCampaignId } from "../deviceSettings.js";
+import { getForcedTheme, getTheme, setTheme, getLavaFx, setLavaFx, getHiddenViews, setViewHidden, getSelectedCampaignId, clearSelectedCampaignId } from "../deviceSettings.js";
 import {
   getCampaign, renameCampaign, setCampaignEdition, regenerateInviteCode, regenerateDmPassword,
   removeCampaignMember, transferCampaignOwnership, deleteCampaign, listTrainers,
@@ -103,6 +103,12 @@ export function renderSettings(container) {
 
   // ---------------- Appearance & display ----------------
   function appearanceCard() {
+    if (getForcedTheme() === "cosmic") {
+      return el("div", { class: "card" }, [
+        el("h4", {}, "Appearance"),
+        el("p", { class: "view-sub" }, "Pokémon D&D campaigns use the Cosmic theme on every page: deep space, glass and white pills. Your theme choice below still applies to D&D campaigns."),
+      ]);
+    }
     const group = pillGroup(
       [["system", "System"], ["light", "Light"], ["dark", "Dark"], ["lava", "Lava Tower"]],
       getTheme(),
@@ -291,7 +297,7 @@ export function renderSettings(container) {
         if (credit) panel.appendChild(el("p", { class: "art-credit" }, credit));
       },
     },
-    { id: "pages", label: "Sidebar", render: (panel) => panel.appendChild(pagesCard()) },
+    ...(activeSystem()?.noSidebar ? [] : [{ id: "pages", label: "Sidebar", render: (panel) => panel.appendChild(pagesCard()) }]),
   ];
 
   const tabBar = el("div", { class: "settings-tabs", role: "tablist" });

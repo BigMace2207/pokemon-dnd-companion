@@ -128,7 +128,7 @@ export function edgePoints(a, b) {
 
 // Backgrounds drawn with CSS only (see planner.css, .pl-bg-<id>), so they cost nothing to store or share.
 export const BACKGROUNDS = [
-  ["parchment", "Parchment"], ["grid", "Grid paper"], ["dots", "Dot grid"], ["slate", "Dark slate"],
+  ["cosmic", "Cosmic"], ["parchment", "Parchment"], ["grid", "Grid paper"], ["dots", "Dot grid"], ["slate", "Dark slate"],
   ["blueprint", "Blueprint"], ["stone", "Dungeon stone"], ["forest", "Forest floor"], ["ocean", "Sea chart"], ["lava", "Ember"], ["plain", "Plain"],
 ];
 export const isPreset = (id) => BACKGROUNDS.some(([k]) => k === id);
@@ -219,7 +219,7 @@ export function normalizeBoard(b) {
   return {
     id: str(b?.id, 40),
     name: str(b?.name || "Board", 80),
-    bg: { kind: b?.bg?.kind === "image" ? "image" : "preset", id: str(b?.bg?.id || "parchment", 20), fit: b?.bg?.fit === "fill" ? "fill" : "tile" },
+    bg: { kind: b?.bg?.kind === "image" ? "image" : "preset", id: str(b?.bg?.id || "cosmic", 20), fit: b?.bg?.fit === "fill" ? "fill" : "tile" },
     bounds: { x: num(bb.x, d.x), y: num(bb.y, d.y), w: clamp(num(bb.w, d.w), BASE_W, MAX_SPAN + GROW), h: clamp(num(bb.h, d.h), BASE_H, MAX_SPAN + GROW) },
     view: { x: num(b?.view?.x, 0), y: num(b?.view?.y, 0), z: clamp(num(b?.view?.z, 0.8), 0.15, 2.5) },
     nodes,

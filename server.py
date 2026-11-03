@@ -268,7 +268,7 @@ def default_campaign_state():
         "playerSaves": {},   # networkId -> {"current": <save object>, "named": {slotName: <save object>}}
         "partyMap": None,    # the one map the DM shares with the table: {name, image, w, h, pins[{..., revealed}], tokens[], updated}
         "plans": {},         # networkId -> {name, updated, plan} -- each player's planning notes and checklists; the DM can read them
-        "hub": {"items": [], "rev": 0, "activeButton": None},  # the Pokémon hub whiteboard everyone shares (see the Hub section)
+        "hub": {"items": [], "rev": 0, "activeButton": None, "backdrop": None},  # the Pokémon hub whiteboard everyone shares (see the Hub section); backdrop: {fileId, blur, dim}
     }
 
 
@@ -899,7 +899,7 @@ HUB_CURSOR_TTL = 6
 HUB_CURSORS = {}   # campaignId -> {networkId: {name, color, x, y, t, down}}
 HUB_PING_TTL = 4
 HUB_PINGS = {}     # campaignId -> [{id, x, y, color, name, t}] -- "look here" ripples, gone after a few seconds
-HUB_TYPES = ("note", "stroke", "text", "button")
+HUB_TYPES = ("note", "stroke", "text", "button", "mon", "move")   # mon / move: a Pokédex or Move Dex card dragged onto the board
 HUB_SOURCES = ("npc", "wild", "plan")
 
 
@@ -924,6 +924,13 @@ def clean_hub_item(raw, owner, is_dm):
         item.update({"text": _text(raw.get("text"), 2000), "w": _num(raw.get("w"), 120, 900) or 220, "h": _num(raw.get("h"), 80, 900) or 160})
     elif kind == "text":
         item.update({"text": _text(raw.get("text"), 400), "size": _num(raw.get("size"), 12, 120) or 28})
+    elif kind in ("mon", "move"):
+        item["name"] = _text(raw.get("name"), 40)
+        if not item["name"]:
+            return None
+        if kind == "mon":
+            item["dex"] = int(_num(raw.get("dex"), 0, 5000))
+        item["open"] = raw.get("open") is True   # the card shows its details
     elif kind == "stroke":
         pts = raw.get("pts") if isinstance(raw.get("pts"), list) else []
         item.update({"pts": [[_num(p[0]), _num(p[1])] for p in pts[:600] if isinstance(p, list) and len(p) == 2],
@@ -1481,8 +1488,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return True
         if rec["kind"] == "map":
             entry = self._campaign(rec.get("campaignId"))
-            pm = entry["state"].get("partyMap") if entry else None
-            return bool(pm and pm.get("fileId") == rec["id"] and self._member_account(entry))
+            if not entry or not self._member_account(entry):
+                return False
+            pm = entry["state"].get("partyMap")
+            bd = (entry["state"].get("hub") or {}).get("backdrop")
+            return bool((pm and pm.get("fileId") == rec["id"]) or (bd and bd.get("fileId") == rec["id"]))
         return False
 
     def _files_get(self, parts, qs):
@@ -1551,6 +1561,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     pm = entry["state"].get("partyMap")
                     if pm and pm.get("fileId") == rec["id"]:
                         entry["state"]["partyMap"] = None
+                    hub = entry["state"].get("hub") or {}
+                    if (hub.get("backdrop") or {}).get("fileId") == rec["id"]:
+                        hub["backdrop"] = None
+                        hub["rev"] = hub.get("rev", 0) + 1
                 mark_dirty()
                 return self._send_json({"ok": True})
         return self._send_json({"error": "not found"}, 404)
@@ -2168,12 +2182,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 if isinstance(ping, dict) and sum(1 for pg in pings if pg["by"] == nid) < 3:
                     who = cursors.get(nid) or {}
                     pings.append({"id": secrets.token_hex(5), "by": nid, "x": _num(ping.get("x")), "y": _num(ping.get("y")),
+                                  "item": _text(ping.get("item"), 40),   # ripples round that thing on the board instead of a spot
                                   "color": who.get("color", "#5aa8f0"), "name": who.get("name", "Player"), "t": now})
                 HUB_PINGS[cid] = pings
                 hub = state["hub"]
-                out = {"rev": hub["rev"], "activeButton": hub.get("activeButton"),
+                out = {"rev": hub["rev"], "activeButton": hub.get("activeButton"), "backdrop": hub.get("backdrop"),
                        "cursors": [{"id": k, **{f: c[f] for f in ("name", "color", "x", "y", "down")}} for k, c in cursors.items() if k != nid],
-                       "pings": [{f: pg[f] for f in ("id", "by", "x", "y", "color", "name")} for pg in pings]}
+                       "pings": [{f: pg.get(f) for f in ("id", "by", "x", "y", "item", "color", "name")} for pg in pings]}
                 if data.get("since") != hub["rev"]:
                     out["items"] = [{**it, "preview": hub_button_preview(state, it)} if it["type"] == "button" else it for it in hub["items"]]
                 return self._send_json(out)
@@ -2217,6 +2232,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 elif op == "clearDrawings":
                     # Anyone can wipe their own drawings; the DM wipes everyone's.
                     hub["items"] = [it for it in hub["items"] if it["type"] != "stroke" or (not is_dm and it["owner"] not in mine)]
+                elif op == "backdrop":
+                    # DM only: a map (one of the DM's uploads in this campaign) shown blurred behind the board, or none
+                    if not is_dm:
+                        return self._send_json({"error": "DM only"}, 403)
+                    file_id = data.get("fileId")
+                    if file_id is None:
+                        hub["backdrop"] = None
+                    else:
+                        rec = FILES.get(file_id) if isinstance(file_id, str) else None
+                        if not rec or rec.get("deleted") or rec["kind"] != "map" or rec.get("campaignId") != cid or rec["owner"] != acc["id"]:
+                            return self._send_json({"error": "upload the map first"}, 400)
+                        hub["backdrop"] = {"fileId": file_id, "blur": int(_num(data.get("blur"), 0, 40)), "dim": round(_num(data.get("dim"), 0, 90))}
                 elif op == "activate":
                     if not is_dm:
                         return self._send_json({"error": "DM only"}, 403)

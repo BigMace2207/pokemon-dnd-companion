@@ -21,7 +21,7 @@ import { NAV_ICONS } from "./navIcons.js";
 import { mountLavaToggle, goToFloor } from "./lavaTheme.js";
 import {
   applyTheme, getTheme, setTheme, getHiddenViews, onHiddenViewsChanged,
-  getSelectedCampaignId, setSelectedCampaignId, clearSelectedCampaignId,
+  getSelectedCampaignId, setSelectedCampaignId, clearSelectedCampaignId, setForcedTheme,
 } from "./deviceSettings.js";
 
 // The router's lookup table, rebuilt for whichever game system the active
@@ -80,10 +80,13 @@ function playViewEnter() {
 // Settings page), so a different game system gets its own pages.
 function buildNav(system) {
   sideNav.innerHTML = "";
-  const appViews = [{ id: "planner", label: "Campaign Planner", render: renderPlanner }, { id: "library", label: "Library", render: renderLibrary }, { id: "settings", label: "Settings", render: renderSettings }];
+  // a system can move these out of the sidebar (system.onHub: the Pokémon hub has buttons for them instead); they stay reachable
+  const shared = [{ id: "planner", label: "Campaign Planner", render: renderPlanner }, { id: "library", label: "Library", render: renderLibrary }, { id: "settings", label: "Settings", render: renderSettings }];
+  const onHub = new Set(system.onHub || []);
+  const appViews = shared.filter((v) => !onHub.has(v.id));
   if (signedInAccount?.perms?.admin) appViews.push({ id: "admin", label: "Admin", render: renderAdmin });   // the server checks too
-  const groups = [...system.nav, { label: "App", views: appViews }];
-  VIEWS = viewsOf({ nav: [...groups, { label: null, views: system.gatedViews || [] }] });
+  const groups = [...system.nav, ...(appViews.length ? [{ label: "App", views: appViews }] : [])];
+  VIEWS = viewsOf({ nav: [...groups, { label: null, views: [...(system.gatedViews || []), ...(system.hiddenViews || []), ...shared.filter((v) => onHub.has(v.id))] }] });
   GATED_VIEWS = new Set((system.gatedViews || []).map((v) => v.id));
   DIRECTIVE_SENSITIVE_VIEWS = new Set(system.directiveViews || []);
   let floor = 0;
@@ -111,6 +114,11 @@ function buildNav(system) {
       sideNav.appendChild(btn);
     }
   }
+  // A system without a sidebar (Pokémon: everything is on its hub) turns the menu button into a "back to the hub" button.
+  document.documentElement.classList.toggle("no-sidebar", !!system.noSidebar);
+  navToggle.innerHTML = system.noSidebar ? '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10"/></svg>' : "☰";
+  navToggle.setAttribute("aria-label", system.noSidebar ? "Back to the hub" : "Toggle navigation");
+  navToggle.title = system.noSidebar ? "Back to the hub" : "";
   const brandText = document.querySelector(".brand-text");
   if (brandText && system.brand?.title) brandText.textContent = system.brand.title;
   const brandLogo = document.querySelector(".brand-logo");
@@ -128,6 +136,7 @@ function buildNav(system) {
 const NAV_KEY = "pokemon-dnd-nav-collapsed";
 try { if (localStorage.getItem(NAV_KEY) === "1") document.documentElement.classList.add("nav-collapsed"); } catch { /* storage blocked */ }
 navToggle.addEventListener("click", () => {
+  if (activeSystem()?.noSidebar) { setView(activeSystem().defaultView); return; }   // no sidebar: this is the way home
   if (window.innerWidth > 780) {   // desktop: fold the menu away or bring it back
     const on = document.documentElement.classList.toggle("nav-collapsed");
     try { localStorage.setItem(NAV_KEY, on ? "1" : "0"); } catch { /* storage blocked */ }
@@ -209,7 +218,7 @@ async function init() {
   if (campaignId) {
     setActiveCampaign(campaignId);
     const check = await getCampaign(campaignId, save.networkId);
-    if (check?.id) { setActiveSystem(check.system); activeSystem()?.applyCampaign?.(check); applyTheme(); }
+    if (check?.id) { setActiveSystem(check.system); activeSystem()?.applyCampaign?.(check); setForcedTheme(activeSystem()?.theme); applyTheme(); }
     if (!check?.id) {
       // Deleted, or this device was removed as a member -- don't get stuck
       // pointed at a campaign that no longer accepts it.
@@ -226,6 +235,7 @@ async function init() {
       const picked = await getCampaign(chosenId, save.networkId);
       setActiveSystem(picked?.system);
       activeSystem()?.applyCampaign?.(picked);
+      setForcedTheme(activeSystem()?.theme);
       applyTheme();
       appEl.classList.remove("gate-mode");
       await startApp();
@@ -260,7 +270,7 @@ async function startApp() {
   // Log/Battle Log), and the dice tray all live outside the router —
   // mounted once, present no matter which view is open.
   system.mount?.(state);
-  mountLogDrawer(document.body);
+  mountLogDrawer(document.body, { tabs: system.pullTabs || [], state });   // LOG plus the system's own pull tabs
   mountDiceWidget();
   mountShortcuts();
   startTrainerPresenceWatcher(loadSave().networkId);

@@ -34,8 +34,6 @@ export default {
   nav: [
     { label: null, views: [
       { id: "hub", label: "Hub", render: renderHub },
-      { id: "pokedex", label: "Pokédex", render: renderPokedex },
-      { id: "moves", label: "Move Dex", render: renderMoves },
     ] },
     { label: "Calculators", views: [
       { id: "statcalc", label: "Stat Calculator", render: renderStatCalc },
@@ -60,6 +58,19 @@ export default {
   // directive (or any save change) lands while one is open.
   // Not in the sidebar: the Battle screen opens only from an encounter button on the hub.
   gatedViews: [{ id: "battleview", label: "Battle", render: renderBattleView }],
+  onHub: ["settings", "planner", "library"],   // buttons on the hub (top right) instead of sidebar pages
+  // No sidebar at all: every page is a button on the hub (js/views/hub.js) or a pull tab, and the top bar's menu
+  // button takes you back to the hub. `nav` below still lists the pages so the router knows them.
+  noSidebar: true,
+  theme: "cosmic",   // every page in the hub's look (css/cosmic.css), whatever theme the device is set to
+  // pull tabs on the right edge, beside LOG: the rulebook and the type chart, open over any page
+  pullTabs: [
+    { id: "rules", label: "RULES", title: "Rulebook", render: (host) => renderRulebook(host), wide: true },
+    { id: "types", label: "TYPES", title: "Type Chart", render: (host, state) => renderTypeChart(host, state), wide: true },
+    { id: "tiers", label: "TIERS", title: "Move Tier Guide", render: (host, state) => renderTierGuide(host, state), wide: true },
+  ],
+  // pages that aren't in the sidebar but can still be opened (the hub's Pokédex and Move Dex pull-outs link to them)
+  hiddenViews: [{ id: "pokedex", label: "Pokédex", render: renderPokedex }, { id: "moves", label: "Move Dex", render: renderMoves }],
   directiveViews: ["team", "trainer", "battleview", "bag"],
   loadData,
   mount(state) { mountQuickConsole(state); },

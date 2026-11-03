@@ -12,6 +12,13 @@
 // the others; notes can be recoloured and resized; the corner buttons zoom and fit the board; clicking someone's
 // avatar jumps to their cursor; Ctrl+Z takes back the last thing you added. Shortcuts: V move, N note, D draw,
 // T text, E erase, P ping, F fit, Esc closes menus.
+//
+// The hub is a full-screen page: the app's top bar is hidden here and its controls (menu, theme, settings, account) are
+// buttons along the top of the board. The DM can put one of their uploaded maps behind the board as a blurred backdrop
+// that fades in under the dot grid (Backdrop button); without one, the hub is "cosmic": white stars twinkle behind the
+// dots. Text is typed straight onto the board where you click. The Pokédex and Move Dex slide out from the left (the
+// buttons under the menu); drag a Pokémon or a move from them onto the board as a card. With Ping, hovering something on
+// the board highlights it and clicking it sends ripples round it for everyone.
 
 import { el } from "../components.js";
 import { loadSave } from "../storage.js";
@@ -20,6 +27,16 @@ import {
   dmLogin, checkDmToken, getActiveCampaign,
 } from "../network.js";
 import { cursorColorOf } from "../cursorColor.js";
+import { listFiles, uploadFile, fileUrl } from "../network.js";
+import { fetchMe, logout } from "../account.js";
+import { getForcedTheme } from "../deviceSettings.js";
+import { dexPanel, makeCard, fillCard, CARD_MIME } from "../hubDex.js";
+import { NAV_ICONS } from "../navIcons.js";
+
+// The pages that used to be in the sidebar, as buttons on the hub: [view, label]. Left column (under the Pokédex and
+// Move Dex pull-outs): your trainer and the calculators. Right column (under the account button): the shared tools.
+const LEFT_PAGES = [["team", "My Team"], ["bag", "Bag"], ["trainer", "Trainer Sheet"], ["trainersOnline", "Trainers Online"], ["statcalc", "Stat Calculator"], ["damagecalc", "Damage Calculator"]];
+const RIGHT_PAGES = [["planner", "Campaign Planner"], ["library", "Library"], ["controlcentre", "Control Centre"]];
 import { getPlan } from "../planner/store.js";
 import { spriteUrl } from "../sprites.js";
 import { setViewState } from "../viewState.js";
@@ -32,6 +49,10 @@ const PEN_WIDTHS = [3, 6, 12];
 const uid = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const SHORTCUTS = { v: "move", n: "note", d: "pen", t: "text", e: "erase", p: "ping" };
+// The board's edge: you can pan (and zoom out) only as far as a margin around everything on it, and never less than the
+// base area round the middle. Put something near the edge and the edge moves out with it.
+const BASE_AREA = { x0: -1400, y0: -900, x1: 1400, y1: 900 };
+const EDGE_PAD = 900;   // board units of open space kept round the content
 const typing = (t) => t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
 
 // Opens a page the router only allows from here (the Battle screen). js/app.js listens for this.
@@ -54,29 +75,67 @@ export function renderHub(container, state) {
   let rev = -1, activeButton = null;
   let tool = "move", penColor = me.color, penWidth = PEN_WIDTHS[0], noteColor = NOTE_COLORS[0];
   const view = { x: 0, y: 0, k: 1 };
+  let bounds = { ...BASE_AREA };
   let pointerWorld = null;        // where my cursor is on the board (null when it's off the board)
   let lastSent = 0, dirtyCursor = false, inFlight = false, again = false, alive = true;
   let pendingPing = null, clicked = false;   // sent with the next sync
   const seenPings = new Set(), knownStrokes = new Set(), knownPeople = new Set();
   const undoStack = [];                      // ids of things I added, newest last
+  let backdrop = null, shownBackdrop = "";   // the DM's map behind the board: {fileId, blur, dim}
+  let welcomeGone = false;
 
   // ------------------------------------------------------------------ layout
   const root = el("div", { class: "hub", style: `--me:${me.color}` });
+  const backdropLayer = el("div", { class: "hub-backdrop", "aria-hidden": "true" });
+  const dots = el("div", { class: "hub-dots", "aria-hidden": "true" });
+  // The starfield belongs to the board, like the dots: four repeating star patterns (css/hub.css .hub-starfield) whose
+  // position and size follow the pan and zoom, each fading in and out on its own rhythm so the stars twinkle.
+  const stars = el("div", { class: "hub-stars", "aria-hidden": "true" }, [1, 2, 3, 4].map((n) => el("div", { class: `hub-starfield s${n}` })));
   const stage = el("div", { class: "hub-stage", tabindex: "0", "aria-label": "Shared hub board" });
+  const edgeGlow = el("div", { class: "hub-edge", "aria-hidden": "true" }, ["left", "right", "top", "bottom"].map((side) => el("span", { class: `hub-edge-${side}` })));
   const world = el("div", { class: "hub-world" });
   const ink = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   ink.setAttribute("class", "hub-ink");
   const itemLayer = el("div", { class: "hub-items" });
-  world.append(ink, itemLayer);
+  // Other players' cursors sit on the board itself (world coordinates), like everything else people put there, so they
+  // stay exactly over the same spot while you zoom or pan; only their arrow and name are kept at screen size.
   const cursorLayer = el("div", { class: "hub-cursors", "aria-hidden": "true" });
+  world.append(ink, itemLayer, cursorLayer);
   const myTag = el("div", { class: "hub-mytag", "aria-hidden": "true" }, me.name);
-  stage.append(world, cursorLayer, myTag);
+  stage.append(world, myTag);
   stage.style.cursor = cursorCss(me.color);
 
   const people = el("div", { class: "hub-people" });
+  const glyph = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+  const roundBtn = (label, d, fn, cls = "") => {
+    const b = el("button", { type: "button", class: `hub-round ${cls}`, "aria-label": label, title: label });
+    b.innerHTML = glyph(d);
+    b.addEventListener("click", fn);
+    return b;
+  };
+  const themeBtn = roundBtn("Lava Tower theme", "M12 3c1 3 4 4.5 4 8.5a4 4 0 0 1-8 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-5 0-7.5zM8 19h8", () => {
+    document.getElementById("themeToggle")?.click();
+    setTimeout(syncTheme, 50);
+  });
+  const syncTheme = () => themeBtn.classList.toggle("on", document.documentElement.dataset.theme === "lava");
+  const settingsBtn = roundBtn("Settings", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z", () => openFromHub("settings"), "hub-gear");
+  const accountBtn = el("button", { type: "button", class: "hub-round hub-account", "aria-label": "Account", title: "Account" }, "?");
+  accountBtn.addEventListener("click", () => openAccountMenu());
+  fetchMe().then((acc) => { if (acc) { accountBtn.textContent = (acc.email || "?")[0].toUpperCase(); accountBtn.dataset.email = acc.email || ""; } });
+  // the Campaign Planner and the Library: buttons down the right-hand side, under the account button
+  // a page button: the page's own icon (the same sprites the sidebar used), its name sliding out on hover
+  const pageBtn = (view, label) => {
+    const b = el("button", { type: "button", class: "hub-round hub-page-btn", "aria-label": label, title: label });
+    b.innerHTML = `<span class="hub-page-icon">${NAV_ICONS[view] || ""}</span>`;
+    b.append(el("span", { class: "hub-page-label" }, label));
+    b.addEventListener("click", () => openFromHub(view));
+    return b;
+  };
+  const appBtns = el("div", { class: "hub-apps" }, RIGHT_PAGES.map(([v, l]) => pageBtn(v, l)));
+  fetchMe().then((acc) => { if (acc?.perms?.admin) appBtns.append(pageBtn("admin", "Admin")); });
   const topbar = el("div", { class: "hub-top" }, [
-    el("div", { class: "hub-title" }, [el("span", { class: "hub-eyebrow" }, "Pokémon D&D"), el("strong", {}, "Hub")]),
-    people,
+    el("div", { class: "hub-top-left" }, [el("div", { class: "hub-title" }, [el("span", { class: "hub-eyebrow" }, "Pokémon D&D"), el("strong", {}, "Hub")])]),
+    el("div", { class: "hub-top-right" }, [people, ...(getForcedTheme() ? [] : [themeBtn]), settingsBtn, accountBtn]),   // a campaign's own theme has no toggle
   ]);
   const toolbar = el("div", { class: "hub-toolbar", role: "toolbar", "aria-label": "Board tools" });
   const subbar = el("div", { class: "hub-subbar" });
@@ -94,7 +153,45 @@ export function renderHub(container, state) {
     zoomBtn("−", "Zoom out", () => zoomAt(1 / 1.25)), zoomLabel, zoomBtn("+", "Zoom in", () => zoomAt(1.25)),
     zoomBtn("⤢", "Fit everything (F)", () => fitAll()),
   ]);
-  root.append(stage, empty, topbar, subbar, toolbar, zoomBar, drawer, hover, menu, toast);
+  // the Pokédex and Move Dex pull-outs (buttons under the menu button)
+  const sideBtns = el("div", { class: "hub-side" });
+  const dexHost = el("div", { class: "hub-dex-host" });
+  let dexOpen = null, dexEl = null;
+  function toggleDex(kind) {
+    if (dexOpen === kind) { closeDex(); return; }
+    dexOpen = kind;
+    const panel = dexPanel(state, kind, {
+      onClose: closeDex,
+      openFull: () => openFromHub(kind === "pokemon" ? "pokedex" : "moves"),
+      onPlace: (card) => { const r = stage.getBoundingClientRect(); placeCard(card, toWorld(r.left + r.width / 2, r.top + r.height / 2)); },
+    });
+    dexHost.replaceChildren(panel);
+    dexEl = panel;
+    void panel.offsetWidth;   // lay it out closed first, so it slides in
+    panel.classList.add("open");
+    panel.focusSearch();
+    sideBtns.querySelectorAll(".hub-round").forEach((b) => b.classList.toggle("on", b.dataset.kind === kind));
+  }
+  function closeDex() {
+    dexOpen = null;
+    const old = dexEl; dexEl = null;
+    old?.classList.remove("open");
+    setTimeout(() => { if (old && !old.classList.contains("open")) old.remove(); }, 300);
+    sideBtns.querySelectorAll(".hub-round").forEach((b) => b.classList.remove("on"));
+  }
+  const dexBtn = (kind, label, d) => { const b = roundBtn(label, d, () => toggleDex(kind)); b.dataset.kind = kind; return b; };
+  sideBtns.append(
+    dexBtn("pokemon", "Pokédex", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h6m6 0h6M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"),
+    dexBtn("moves", "Move Dex", "M13 2L4 14h7l-1 8 9-12h-7z"),
+    el("span", { class: "hub-side-gap", "aria-hidden": "true" }),
+    ...LEFT_PAGES.map(([v, l]) => pageBtn(v, l)),
+  );
+  sideBtns.querySelectorAll(".hub-page-label").forEach((x) => x.classList.add("right"));   // the left column's names slide out to the right
+  root.append(backdropLayer, stars, dots, stage, edgeGlow, empty, topbar, sideBtns, appBtns, dexHost, subbar, toolbar, zoomBar, drawer, hover, menu, toast);
+  root.classList.add("cosmic");
+  syncTheme();
+  // the welcome goes away the first time anyone clicks anywhere on the hub
+  root.addEventListener("pointerdown", () => { if (!welcomeGone) { welcomeGone = true; empty.classList.add("gone"); } }, { capture: true });
   container.append(root);
 
   let toastTimer = null;
@@ -106,14 +203,61 @@ export function renderHub(container, state) {
   }
 
   // ------------------------------------------------------------------ view (pan / zoom)
-  function applyView() {
+  // Keeps the view inside the board's edge. When the edge is bigger than the screen you can pan up to it; when it's
+  // smaller (zoomed far out) it's centred. Returns the sides it had to stop at.
+  function clampView() {
+    const r = stage.getBoundingClientRect();
+    const W = r.width, H = r.height;
+    if (!W || !H) return [];
+    const kMin = clamp(Math.min(W / (bounds.x1 - bounds.x0), H / (bounds.y1 - bounds.y0)), 0.25, 1);
+    view.k = clamp(view.k, kMin, 3);
+    const hit = [];
+    const fit = (pos, size, lo, hi, a, b) => {
+      const span = (hi - lo) * view.k;
+      if (span <= size) return [(size - (lo + hi) * view.k) / 2, null];
+      const min = size - hi * view.k, max = -lo * view.k;
+      if (pos > max) return [max, a];
+      if (pos < min) return [min, b];
+      return [pos, null];
+    };
+    let side;
+    [view.x, side] = fit(view.x, W, bounds.x0, bounds.x1, "left", "right"); if (side) hit.push(side);
+    [view.y, side] = fit(view.y, H, bounds.y0, bounds.y1, "top", "bottom"); if (side) hit.push(side);
+    return hit;
+  }
+  let glowTimer = null;
+  function bump(sides) {
+    if (!sides.length) return;
+    for (const side of sides) edgeGlow.querySelector(`.hub-edge-${side}`)?.classList.add("on");
+    clearTimeout(glowTimer);
+    glowTimer = setTimeout(() => edgeGlow.querySelectorAll("span").forEach((x) => x.classList.remove("on")), 450);
+  }
+  // the edge follows the content: a margin round everything on the board, at least the base area
+  function updateBounds() {
+    const b = { ...BASE_AREA };
+    for (const it of items) {
+      if (it.type === "stroke") for (const [x, y] of it.pts) { b.x0 = Math.min(b.x0, x - EDGE_PAD); b.x1 = Math.max(b.x1, x + EDGE_PAD); b.y0 = Math.min(b.y0, y - EDGE_PAD); b.y1 = Math.max(b.y1, y + EDGE_PAD); }
+      else {
+        const w = it.w || 260, h = it.h || 120;
+        b.x0 = Math.min(b.x0, it.x - EDGE_PAD); b.x1 = Math.max(b.x1, it.x + w + EDGE_PAD);
+        b.y0 = Math.min(b.y0, it.y - EDGE_PAD); b.y1 = Math.max(b.y1, it.y + h + EDGE_PAD);
+      }
+    }
+    bounds = b;
+  }
+
+  function applyView(gesture = false) {
+    const hit = clampView();
+    if (gesture) bump(hit);
     world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`;
+    world.style.setProperty("--ik", String(1 / view.k));   // undoes the zoom for things that keep their size (cursors)
     stage.style.setProperty("--k", String(view.k));
     root.style.setProperty("--grid", `${28 * view.k}px`);
+    root.style.setProperty("--zk", String(view.k));   // the starfield's tiles scale with the board
     root.style.setProperty("--gx", `${view.x}px`);
     root.style.setProperty("--gy", `${view.y}px`);
     zoomLabel.textContent = `${Math.round(view.k * 100)}%`;
-    placeCursors();
+    backdropLayer.style.transform = `translate(${(view.x * 0.03).toFixed(1)}px, ${(view.y * 0.03).toFixed(1)}px)`;
   }
   // a smooth move for jumps (zoom buttons, fit, going to a player); dragging and the wheel stay instant
   let glideTimer = null;
@@ -146,7 +290,6 @@ export function renderHub(container, state) {
     const r = stage.getBoundingClientRect();
     return { x: (cx - r.left - view.x) / view.k, y: (cy - r.top - view.y) / view.k };
   };
-  const toScreen = (wx, wy) => ({ x: wx * view.k + view.x, y: wy * view.k + view.y });
   function centre() {
     const r = stage.getBoundingClientRect();
     view.x = r.width / 2; view.y = r.height / 2;
@@ -159,7 +302,7 @@ export function renderHub(container, state) {
     view.k = clamp(view.k * Math.exp(-e.deltaY * 0.0015), 0.25, 3);
     view.x = e.clientX - r.left - before.x * view.k;
     view.y = e.clientY - r.top - before.y * view.k;
-    applyView();
+    applyView(true);
   }, { passive: false });
 
   // ------------------------------------------------------------------ toolbar
@@ -203,7 +346,10 @@ export function renderHub(container, state) {
       const b = el("button", { type: "button", class: `hub-tool hub-dm${drawer.classList.contains("open") ? " on" : ""}`, title: "Encounters" });
       b.innerHTML = icon("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h6m6 0h6M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z") + "<span>Encounters</span>";
       b.addEventListener("click", () => { drawer.classList.toggle("open"); if (drawer.classList.contains("open")) drawDrawer(); drawToolbar(); });
-      return b;
+      const bd = el("button", { type: "button", class: "hub-tool", title: "Backdrop: a map behind the board" });
+      bd.innerHTML = icon("M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14") + "<span>Backdrop</span>";
+      bd.addEventListener("click", () => openBackdropMenu(bd));
+      return el("span", { class: "hub-dm-tools" }, [b, bd]);
     }
     const b = el("button", { type: "button", class: "hub-tool", title: "I'm the DM" });
     b.innerHTML = icon("M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6zM9.5 12l2 2 3.5-4") + "<span>DM</span>";
@@ -213,7 +359,7 @@ export function renderHub(container, state) {
   function drawSubbar() {
     subbar.replaceChildren();
     subbar.classList.toggle("show", tool === "pen" || tool === "note" || tool === "erase" || tool === "ping");
-    if (tool === "ping") subbar.append(el("span", { class: "hub-hint" }, "Click the board to point something out to everyone (Alt+click works with any tool)"));
+    if (tool === "ping") subbar.append(el("span", { class: "hub-hint" }, "Hover a note, card or button and click to ripple round it, or click anywhere to mark the spot (Alt+click works with any tool)"));
     if (tool === "pen") {
       subbar.append(...[me.color, "#f4f4f5", "#ff5a4e", "#ffd23f", "#6fdc6a", "#4ea8ff", "#e36bff"].map((c) => {
         const s = el("button", { type: "button", class: `hub-swatch${penColor === c ? " on" : ""}`, style: `--c:${c}`, "aria-label": `Pen colour ${c}` });
@@ -240,6 +386,7 @@ export function renderHub(container, state) {
   }
 
   async function askDmPassword() {
+    menu.classList.remove("wide");
     menu.replaceChildren();
     const pw = el("input", { type: "password", class: "hub-input", placeholder: "DM password", autocomplete: "current-password" });
     const go = el("button", { type: "button", class: "hub-pill solid" }, "Unlock");
@@ -292,6 +439,7 @@ export function renderHub(container, state) {
       seenPings.add(pg.id);
       if (pg.by !== me.id) showPing(pg);
     }
+    if ("backdrop" in res) setBackdrop(res.backdrop);
     if (res.items) { items = res.items; rev = res.rev; activeButton = res.activeButton; drawItems(); }
     else if (res.activeButton !== activeButton) { activeButton = res.activeButton; drawItems(); }
   }
@@ -310,7 +458,7 @@ export function renderHub(container, state) {
       seen.add(c.id);
       let node = cursorEls.get(c.id);
       if (!node) {
-        node = el("div", { class: "hub-cursor" }, [el("span", { class: "hub-cursor-arrow" }), el("span", { class: "hub-cursor-name" })]);
+        node = el("div", { class: "hub-cursor" }, el("div", { class: "hub-cursor-inner" }, [el("span", { class: "hub-cursor-arrow" }), el("span", { class: "hub-cursor-name" })]));
         cursorLayer.append(node);
         cursorEls.set(c.id, node);
       }
@@ -325,8 +473,7 @@ export function renderHub(container, state) {
     for (const c of cursorData) {
       const node = cursorEls.get(c.id);
       if (!node) continue;
-      const p = toScreen(c.x, c.y);
-      node.style.transform = `translate(${p.x}px, ${p.y}px)`;
+      node.style.transform = `translate(${c.x}px, ${c.y}px)`;
     }
   }
   function drawPeople(list) {
@@ -349,7 +496,9 @@ export function renderHub(container, state) {
   const canEdit = (it) => !!dmToken || (mine(it) && it.type !== "button");
 
   function drawItems() {
-    empty.classList.toggle("gone", items.length > 0);
+    updateBounds();
+    applyView();
+    empty.classList.toggle("gone", welcomeGone || items.length > 0);
     // drawings go in the SVG
     const strokes = items.filter((it) => it.type === "stroke");
     ink.replaceChildren(...strokes.map((s) => {
@@ -368,7 +517,7 @@ export function renderHub(container, state) {
       let node = itemEls.get(it.id);
       const fresh = !node;
       if (fresh) {
-        node = it.type === "note" ? makeNote(it) : it.type === "text" ? makeText(it) : makeButton(it);
+        node = it.type === "note" ? makeNote(it) : it.type === "text" ? makeText(it) : it.type === "mon" || it.type === "move" ? makeCard() : makeButton(it);
         node.dataset.id = it.id;
         node.classList.add("hub-enter");
         itemLayer.append(node);
@@ -387,7 +536,9 @@ export function renderHub(container, state) {
         node.querySelector(".hub-note-by").textContent = it.byName || "";
       } else if (it.type === "text") {
         node.style.color = it.color; node.style.fontSize = `${it.size}px`;
-        node.textContent = it.text;
+        if (!node.isContentEditable) node.textContent = it.text;
+      } else if (it.type === "mon" || it.type === "move") {
+        fillCard(node, it, state);
       } else {
         fillButton(node, it);
       }
@@ -433,8 +584,136 @@ export function renderHub(container, state) {
     node.setAttribute("aria-label", `${it.label}: ${activeButton === it.id ? "battle in progress, open it" : dmToken ? "start this battle" : "open the battle"}`);
   }
 
+  // ------------------------------------------------------------------ backdrop (the DM's map, blurred, behind the dots)
+  async function setBackdrop(bd) {
+    backdrop = bd || null;
+    const key = backdrop ? `${backdrop.fileId}|${backdrop.blur}|${backdrop.dim}` : "";
+    if (key === shownBackdrop) return;
+    shownBackdrop = key;
+    backdropLayer.style.setProperty("--blur", `${backdrop?.blur ?? 12}px`);
+    backdropLayer.style.setProperty("--dim", String((backdrop?.dim ?? 35) / 100));
+    const current = backdropLayer.querySelector("img.in");
+    if (current && current.dataset.file === backdrop?.fileId) return;   // only the blur or dim changed
+    const old = [...backdropLayer.querySelectorAll("img")];
+    const retire = () => old.forEach((img) => { img.classList.remove("in"); setTimeout(() => img.remove(), 1600); });
+    root.classList.toggle("cosmic", !backdrop);
+    if (!backdrop) { retire(); return; }
+    const url = await fileUrl(backdrop.fileId);
+    if (!url || shownBackdrop !== key) return;
+    const img = el("img", { class: "hub-backdrop-img", alt: "", "data-file": backdrop.fileId, src: url });
+    img.addEventListener("load", () => { requestAnimationFrame(() => { img.classList.add("in"); retire(); }); }, { once: true });
+    backdropLayer.append(img);
+  }
+
+  async function openBackdropMenu(anchor) {
+    const list = el("div", { class: "hub-bd-list" }, el("p", { class: "hub-menu-note" }, "Loading your maps…"));
+    const blur = el("input", { type: "range", min: "0", max: "30", value: String(backdrop?.blur ?? 12), "aria-label": "Blur" });
+    const dim = el("input", { type: "range", min: "0", max: "80", value: String(backdrop?.dim ?? 35), "aria-label": "Darken" });
+    const file = el("input", { type: "file", accept: "image/*", hidden: "" });
+    let chosen = backdrop?.fileId || null, timer = null;
+    const send = () => { clearTimeout(timer); timer = setTimeout(() => op(chosen ? { op: "backdrop", fileId: chosen, blur: Number(blur.value), dim: Number(dim.value) } : { op: "backdrop", fileId: null }), 250); };
+    blur.addEventListener("input", () => { backdropLayer.style.setProperty("--blur", `${blur.value}px`); if (chosen) send(); });
+    dim.addEventListener("input", () => { backdropLayer.style.setProperty("--dim", String(dim.value / 100)); if (chosen) send(); });
+    const upload = el("button", { type: "button", class: "hub-pill" }, "Upload a map…");
+    upload.addEventListener("click", () => file.click());
+    file.addEventListener("change", async () => {
+      const f = file.files[0]; if (!f) return;
+      upload.textContent = "Uploading…"; upload.disabled = true;
+      const res = await uploadFile("map", f, { name: f.name });
+      upload.textContent = "Upload a map…"; upload.disabled = false;
+      if (res.error) { say(res.error); return; }
+      chosen = res.file.id; send(); drawList();
+    });
+    async function drawList() {
+      const res = await listFiles("map");
+      const files = res?.files || [];
+      const cosmic = el("button", { type: "button", class: `hub-bd-pick cosmic${chosen ? "" : " on"}`, "aria-label": "Cosmic: twinkling stars, no map" }, el("span", {}, "Cosmic"));
+      cosmic.addEventListener("click", () => { chosen = null; send(); list.querySelectorAll(".hub-bd-pick").forEach((x) => x.classList.toggle("on", x === cosmic)); });
+      list.replaceChildren(cosmic, ...(files.length ? files.map((f) => {
+        const b = el("button", { type: "button", class: `hub-bd-pick${f.id === chosen ? " on" : ""}`, title: f.name, "aria-label": `Use ${f.name}` }, el("span", {}, f.name.replace(/\.[^.]+$/, "")));
+        fileUrl(f.id).then((url) => { if (url) b.style.backgroundImage = `url("${url}")`; });
+        b.addEventListener("click", () => { chosen = f.id; send(); list.querySelectorAll(".hub-bd-pick").forEach((x) => x.classList.toggle("on", x === b)); });
+        return b;
+      }) : [el("p", { class: "hub-menu-note" }, "No maps yet. Upload one, or add them in the Campaign Planner's Maps.")]));
+    }
+    menu.replaceChildren(
+      el("p", { class: "hub-menu-title" }, "Backdrop"),
+      el("p", { class: "hub-menu-note" }, "Cosmic stars, or one of your maps blurred behind the board. Everyone sees it."),
+      list,
+      el("label", { class: "hub-range" }, [el("span", {}, "Blur"), blur]),
+      el("label", { class: "hub-range" }, [el("span", {}, "Darken"), dim]),
+      el("div", { class: "hub-menu-row" }, [upload]), file,
+    );
+    menu.classList.add("wide");
+    const r = anchor.getBoundingClientRect(), rr = root.getBoundingClientRect();
+    openMenuAt(r.left - rr.left - 120, r.top - rr.top - 470);
+    drawList();
+  }
+
+  function openAccountMenu() {
+    const item = (label, fn, cls = "") => { const b = el("button", { type: "button", class: `hub-menu-item ${cls}` }, label); b.addEventListener("click", () => { closeMenu(); fn(); }); return b; };
+    menu.classList.remove("wide");
+    menu.replaceChildren(
+      el("p", { class: "hub-menu-title" }, accountBtn.dataset.email || "Account"),
+      item("Settings", () => openFromHub("settings")),
+      item("Sign out", async () => { await logout(); location.reload(); }, "danger"),
+    );
+    const r = accountBtn.getBoundingClientRect(), rr = root.getBoundingClientRect();
+    openMenuAt(r.right - rr.left - 260, r.bottom - rr.top + 8);
+  }
+
+  // ------------------------------------------------------------------ text, typed where you click
+  function editText(node, onDone) {
+    node.contentEditable = "plaintext-only";
+    if (node.contentEditable !== "plaintext-only") node.contentEditable = "true";   // older browsers
+    node.classList.add("editing");
+    node.focus();
+    const range = document.createRange(); range.selectNodeContents(node); range.collapse(false);
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
+    let done = false;
+    const finish = (keep) => {
+      if (done) return; done = true;
+      node.contentEditable = "false"; node.classList.remove("editing");
+      onDone(keep ? node.innerText.replace(/\n$/, "").trim().slice(0, 400) : null);
+    };
+    node.addEventListener("keydown", function keys(e) {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); node.removeEventListener("keydown", keys); node.blur(); }
+      else if (e.key === "Escape") { e.preventDefault(); node.removeEventListener("keydown", keys); finish(false); node.blur(); }
+      e.stopPropagation();
+    });
+    node.addEventListener("blur", () => finish(true), { once: true });
+  }
+  function newTextAt(p) {
+    const node = el("div", { class: "hub-text draft", style: `left:${Math.round(p.x)}px;top:${Math.round(p.y - 16)}px;color:${me.color};font-size:28px` });
+    itemLayer.append(node);
+    editText(node, async (text) => {
+      node.remove();
+      if (text) await op({ op: "put", item: { type: "text", id: uid(), x: Math.round(p.x), y: Math.round(p.y - 16), text, size: 28, color: me.color } });
+    });
+  }
+  function editExistingText(node) {
+    const it = node.__item;
+    editText(node, async (text) => {
+      if (text === null) { node.textContent = it.text; return; }
+      if (text === it.text) return;
+      await op(text ? { op: "put", item: { ...it, text } } : { op: "delete", itemId: it.id });
+    });
+  }
+
   // ------------------------------------------------------------------ pings
   function showPing(pg) {
+    const box = pg.item ? boxOf(pg.item) : null;
+    if (box) {
+      const ring = el("div", { class: "hub-ping-box", style: `left:${box.x}px;top:${box.y}px;width:${box.w}px;height:${box.h}px;--c:${pg.color}` }, [
+        el("span", { class: "hub-ping-frame" }), el("span", { class: "hub-ping-frame f2" }), el("span", { class: "hub-ping-frame f3" }),
+        el("span", { class: "hub-ping-name" }, pg.name),
+      ]);
+      itemLayer.append(ring);
+      box.node?.classList.add("pinged");
+      box.node?.style.setProperty("--pc", pg.color);
+      setTimeout(() => { ring.remove(); box.node?.classList.remove("pinged"); }, 2600);
+      return;
+    }
     const node = el("div", { class: "hub-ping", style: `left:${pg.x}px;top:${pg.y}px;--c:${pg.color}` }, [
       el("span", { class: "hub-ping-ring" }), el("span", { class: "hub-ping-ring r2" }), el("span", { class: "hub-ping-dot" }),
       el("span", { class: "hub-ping-name" }, pg.name),
@@ -442,10 +721,34 @@ export function renderHub(container, state) {
     itemLayer.append(node);
     setTimeout(() => node.remove(), 2400);
   }
-  function ping(at) {
-    pendingPing = { x: Math.round(at.x), y: Math.round(at.y) };
+  function ping(at, target = null) {
+    pendingPing = { x: Math.round(at.x), y: Math.round(at.y), ...(target ? { item: target } : {}) };
     showPing({ ...pendingPing, color: me.color, name: me.name });
     sync(true);
+  }
+  // what a ping would point at under the pointer: a note, text, card, encounter button or drawing
+  function pingTargetOf(t) {
+    const node = t?.closest?.(".hub-note, .hub-text, .hub-btn, .hub-card");
+    if (node && itemLayer.contains(node)) return node.dataset.id;
+    return t?.closest?.(".hub-ink path")?.dataset?.id || null;
+  }
+  let lit = null;
+  function highlight(id) {
+    const node = id ? itemEls.get(id) || ink.querySelector(`path[data-id="${CSS.escape(id)}"]`) : null;
+    if (node === lit) return;
+    lit?.classList.remove("ping-target");
+    lit = node;
+    lit?.classList.add("ping-target");
+  }
+  // the world-space box round an item, for ripples that hug it
+  function boxOf(id) {
+    const node = itemEls.get(id);
+    if (node) return { x: node.offsetLeft, y: node.offsetTop, w: node.offsetWidth, h: node.offsetHeight, node };
+    const it = items.find((x) => x.id === id && x.type === "stroke");
+    if (!it) return null;
+    const xs = it.pts.map((p) => p[0]), ys = it.pts.map((p) => p[1]);
+    const pad = it.width / 2 + 4;
+    return { x: Math.min(...xs) - pad, y: Math.min(...ys) - pad, w: Math.max(...xs) - Math.min(...xs) + pad * 2, h: Math.max(...ys) - Math.min(...ys) + pad * 2, node: ink.querySelector(`path[data-id="${CSS.escape(id)}"]`) };
   }
 
   // ------------------------------------------------------------------ hover card on encounter buttons
@@ -482,7 +785,7 @@ export function renderHub(container, state) {
   function closeMenu() { menu.classList.remove("show"); }
   document.addEventListener("pointerdown", function outside(e) {
     if (!document.body.contains(root)) { document.removeEventListener("pointerdown", outside); return; }
-    if (!menu.contains(e.target) && !e.target.closest(".hub-btn") && !e.target.closest(".hub-tool")) closeMenu();
+    if (!menu.contains(e.target) && !e.target.closest(".hub-btn") && !e.target.closest(".hub-tool") && !e.target.closest(".hub-account")) closeMenu();
   });
 
   function buttonClicked(node) {
@@ -490,6 +793,7 @@ export function renderHub(container, state) {
     hideHover();
     if (!dmToken) { openFromHub("battleview"); return; }
     const row = (label, fn, cls = "") => { const b = el("button", { type: "button", class: `hub-menu-item ${cls}` }, label); b.addEventListener("click", () => { closeMenu(); fn(); }); return b; };
+    menu.classList.remove("wide");
     menu.replaceChildren(...[
       el("p", { class: "hub-menu-title" }, it.label),
       row(activeButton === it.id ? "Restart this battle" : "Start this battle", () => startBattle(it), "primary"),
@@ -604,8 +908,18 @@ export function renderHub(container, state) {
     await op({ op: "put", item: { type: "button", id: uid(), x, y, label: payload.label.slice(0, 60), reveal: "hidden", source: payload.source } });
     say("Encounter placed. Players can hover it to see the level.");
   }
-  stage.addEventListener("dragover", (e) => { if (dmToken && e.dataTransfer.types.includes("application/x-hub-button")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } });
+  async function placeCard(card, at) {
+    let x = Math.round(at.x - 110), y = Math.round(at.y - 40);
+    while (items.some((it) => (it.type === "mon" || it.type === "move") && Math.abs(it.x - x) < 30 && Math.abs(it.y - y) < 30)) { x += 28; y += 28; }
+    await op({ op: "put", item: { ...card, id: uid(), x, y, open: false } });
+  }
+  stage.addEventListener("dragover", (e) => {
+    const t = e.dataTransfer.types;
+    if (t.includes(CARD_MIME) || (dmToken && t.includes("application/x-hub-button"))) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }
+  });
   stage.addEventListener("drop", (e) => {
+    const card = e.dataTransfer.getData(CARD_MIME);
+    if (card) { e.preventDefault(); try { placeCard(JSON.parse(card), toWorld(e.clientX, e.clientY)); } catch { /* not ours */ } return; }
     const raw = e.dataTransfer.getData("application/x-hub-button");
     if (!raw || !dmToken) return;
     e.preventDefault();
@@ -615,16 +929,18 @@ export function renderHub(container, state) {
   // ------------------------------------------------------------------ pointer: pan, drag, draw, place
   let gesture = null;
   let liveStroke = null;
+  const capture = (id) => { try { stage.setPointerCapture(id); } catch { /* that pointer is already gone */ } };
   stage.addEventListener("pointermove", (e) => {
     const r = stage.getBoundingClientRect();
     pointerWorld = toWorld(e.clientX, e.clientY);
     dirtyCursor = true;
     myTag.style.transform = `translate(${e.clientX - r.left}px, ${e.clientY - r.top}px)`;
     myTag.classList.add("show");
+    highlight(tool === "ping" || e.altKey ? pingTargetOf(e.target) : null);
     if (!gesture) return;
     const dx = e.clientX - gesture.sx, dy = e.clientY - gesture.sy;
     if (Math.hypot(dx, dy) > 4) gesture.moved = true;
-    if (gesture.kind === "pan") { view.x = gesture.ox + dx; view.y = gesture.oy + dy; applyView(); }
+    if (gesture.kind === "pan") { view.x = gesture.ox + dx; view.y = gesture.oy + dy; applyView(true); }
     else if (gesture.kind === "resize") {
       gesture.node.style.width = `${clamp(gesture.iw + dx / view.k, 140, 900)}px`;
       gesture.node.style.minHeight = `${clamp(gesture.ih + dy / view.k, 100, 900)}px`;
@@ -642,17 +958,17 @@ export function renderHub(container, state) {
     if (e.button !== 0 && e.button !== 1) return;
     closeMenu();
     clicked = true; dirtyCursor = true;
-    if (e.button === 0 && (tool === "ping" || e.altKey)) { ping(toWorld(e.clientX, e.clientY)); return; }
-    if (e.target.closest(".hub-note-tools")) return;
-    const itemNode = e.target.closest(".hub-note, .hub-text, .hub-btn");
+    if (e.button === 0 && (tool === "ping" || e.altKey)) { ping(toWorld(e.clientX, e.clientY), pingTargetOf(e.target)); return; }
+    if (e.target.closest(".hub-note-tools") || e.target.isContentEditable) return;
+    const itemNode = e.target.closest(".hub-note, .hub-text, .hub-btn, .hub-card");
     if (e.target.classList.contains("hub-note-resize") && itemNode && canEdit(itemNode.__item)) {
       gesture = { sx: e.clientX, sy: e.clientY, moved: false, kind: "resize", node: itemNode, iw: itemNode.__item.w, ih: itemNode.__item.h };
-      stage.setPointerCapture(e.pointerId);
+      capture(e.pointerId);
       return;
     }
     const strokeId = e.target.closest?.("path")?.dataset?.id;
     const start = { sx: e.clientX, sy: e.clientY, moved: false, id: e.pointerId };
-    if (e.button === 1) { gesture = { ...start, kind: "pan", ox: view.x, oy: view.y }; stage.setPointerCapture(e.pointerId); return; }
+    if (e.button === 1) { gesture = { ...start, kind: "pan", ox: view.x, oy: view.y }; capture(e.pointerId); return; }
     if (tool === "erase") {
       const id = itemNode?.dataset.id || strokeId;
       const it = items.find((x) => x.id === id);
@@ -666,7 +982,7 @@ export function renderHub(container, state) {
       liveStroke = document.createElementNS("http://www.w3.org/2000/svg", "path");
       liveStroke.setAttribute("stroke", penColor); liveStroke.setAttribute("stroke-width", String(penWidth));
       ink.append(liveStroke);
-      stage.setPointerCapture(e.pointerId);
+      capture(e.pointerId);
       return;
     }
     if (itemNode && e.target.tagName === "TEXTAREA" && !e.target.readOnly) return;   // typing in a note
@@ -674,12 +990,12 @@ export function renderHub(container, state) {
       const it = itemNode.__item;
       const movable = it && (it.type === "button" ? !!dmToken : canEdit(it));
       gesture = { ...start, kind: movable ? "drag" : "click", node: itemNode, ix: it.x, iy: it.y };
-      stage.setPointerCapture(e.pointerId);
+      capture(e.pointerId);
       return;
     }
     if (tool === "note" || tool === "text") { gesture = { ...start, kind: tool }; return; }
     gesture = { ...start, kind: "pan", ox: view.x, oy: view.y };
-    stage.setPointerCapture(e.pointerId);
+    capture(e.pointerId);
   });
 
   stage.addEventListener("pointerup", async (e) => {
@@ -700,11 +1016,8 @@ export function renderHub(container, state) {
     if ((g.kind === "drag" || g.kind === "click") && !g.moved) {
       if (g.node.classList.contains("hub-btn")) buttonClicked(g.node);
       else if (g.node.classList.contains("hub-note")) g.node.querySelector("textarea").focus();
-      else if (g.node.classList.contains("hub-text") && canEdit(g.node.__item)) {
-        const it = g.node.__item;
-        const text = prompt("Edit the text", it.text);
-        if (text !== null) await op(text.trim() ? { op: "put", item: { ...it, text: text.trim() } } : { op: "delete", itemId: it.id });
-      }
+      else if (g.node.classList.contains("hub-text") && canEdit(g.node.__item)) editExistingText(g.node);
+      else if (g.node.classList.contains("hub-card") && canEdit(g.node.__item)) await op({ op: "put", item: { ...g.node.__item, open: !g.node.__item.open } });
       return;
     }
     if (g.kind === "drag" && g.moved) {
@@ -720,20 +1033,7 @@ export function renderHub(container, state) {
       if (res) { setTool("move"); setTimeout(() => itemEls.get(id)?.querySelector("textarea")?.focus(), 400); }
       return;
     }
-    if (g.kind === "text" && !g.moved) {
-      const text = prompt("Text to put on the board");
-      const p = toWorld(e.clientX, e.clientY);
-      if (text && text.trim()) await op({ op: "put", item: { type: "text", id: uid(), x: Math.round(p.x), y: Math.round(p.y), text: text.trim().slice(0, 400), size: 28, color: me.color } });
-    }
-  });
-
-  // double-click empty board: a note right there
-  stage.addEventListener("dblclick", async (e) => {
-    if (tool !== "move" || e.target.closest(".hub-note, .hub-text, .hub-btn")) return;
-    const p = toWorld(e.clientX, e.clientY);
-    const id = uid();
-    const res = await op({ op: "put", item: { type: "note", id, x: Math.round(p.x - 110), y: Math.round(p.y - 30), w: 220, h: 160, text: "", color: noteColor } });
-    if (res) setTimeout(() => itemEls.get(id)?.querySelector("textarea")?.focus(), 400);
+    if (g.kind === "text" && !g.moved) newTextAt(toWorld(e.clientX, e.clientY));
   });
 
   // shortcuts anywhere on the page while the hub is open (never while typing)
@@ -751,7 +1051,7 @@ export function renderHub(container, state) {
     const k = e.key.toLowerCase();
     if (SHORTCUTS[k]) { setTool(SHORTCUTS[k]); e.preventDefault(); }
     else if (k === "f") { fitAll(); e.preventDefault(); }
-    else if (k === "escape") { closeMenu(); drawer.classList.remove("open"); hideHover(); }
+    else if (k === "escape") { closeMenu(); drawer.classList.remove("open"); hideHover(); closeDex(); }
   });
 
   function simplify(pts) {
@@ -772,7 +1072,7 @@ export function renderHub(container, state) {
     else if (e.key === "-") view.k = clamp(view.k / 1.15, 0.25, 3);
     else if (e.key === "0") { view.k = 1; centre(); return; }
     else return;
-    e.preventDefault(); applyView();
+    e.preventDefault(); applyView(true);
   });
 
   // ------------------------------------------------------------------ start

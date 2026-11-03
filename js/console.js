@@ -9,7 +9,7 @@
 
 import { monWithLevel } from "./battleLabels.js";
 import { el, field, makeCombo } from "./components.js";
-import { widgetDock } from "./widgetDock.js";
+import { widgetDock, dockIcon } from "./widgetDock.js";
 import { loadSave, writeSave, addBagItem, useBagItem, bagEntries } from "./storage.js";
 import { calcAllStats, BALL_TYPES } from "./calc.js";
 import { HEAL_ITEMS, STATUS_HEAL_ITEMS } from "./battleItems.js";
@@ -32,7 +32,7 @@ const monLabel = monWithLevel;
 export function mountQuickConsole(state) {
   if (document.getElementById("quickConsoleBtn")) return; // already mounted (e.g. hot-reload)
 
-  const btn = el("button", { id: "quickConsoleBtn", class: "quick-console-btn", title: "Quick Console" }, "BAG");
+  const btn = el("button", { id: "quickConsoleBtn", class: "quick-console-btn", title: "Quick Console", "aria-label": "Bag and quick console" }, [el("span", { class: "dock-text" }, "BAG"), dockIcon("M6 8h12l1 12H5zM9 8V6a3 3 0 0 1 6 0v2M9 12h6")]);
   const panel = el("div", { class: "quick-console-panel" });
   panel.style.display = "none";
   document.body.appendChild(panel);
@@ -44,6 +44,7 @@ export function mountQuickConsole(state) {
   function toggle() {
     open = !open;
     panel.style.display = open ? "block" : "none";
+    btn.classList.toggle("open", open);
     if (open) render();
   }
   btn.addEventListener("click", toggle);

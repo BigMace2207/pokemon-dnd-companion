@@ -1,0 +1,94 @@
+/* ===========================================================================
+   The Campaign Planner in the hub's look (css/hub.css): near-black glass panels, white pill states, hairline borders,
+   soft shadows, Space Grotesk with Fraunces headings (--font-head). Loaded after whiteboard.css and overrides its chrome and
+   nodes; board backgrounds (planner-board.css) are unchanged, plus a "cosmic" one that matches the hub.
+   =========================================================================== */
+
+.pl-wb {
+  --p-glass: rgba(24, 24, 27, .82); --p-solid: #18181b; --p-line: rgba(255, 255, 255, .09); --p-line-2: rgba(255, 255, 255, .16);
+  --p-text: #fafafa; --p-dim: #a1a1aa; --p-faint: #71717a; --p-ease: cubic-bezier(.32, .72, 0, 1);
+  font-family: "Space Grotesk", system-ui, sans-serif;
+}
+/* the app's top bar gives way on the full-screen planner, like on the hub (the planner's own bar has the menu button) */
+html.planner-full { --topbar-h: 0px; }
+html.planner-full .topbar { display: none; }
+html.planner-full body { background: #09090b; }
+
+/* every floating piece: glass, hairline border, soft shadow */
+.pl-wb .pl-seg, .pl-wb .pl-board-select, .pl-wb .pl-rail, .pl-wb .pl-fly, .pl-wb .pl-bgpanel, .pl-wb .pl-legend, .pl-wb .pl-drawer, .pl-wb .pl-tbtn.solo, .pl-wb .pl-focusbar {
+  border: 1px solid var(--p-line); background: var(--p-glass); color: var(--p-text); border-radius: 999px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .45); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+}
+.pl-wb .pl-fly, .pl-wb .pl-bgpanel, .pl-wb .pl-legend, .pl-wb .pl-drawer { border-radius: calc(20px * var(--s)); }
+.pl-wb .pl-rail { border-radius: 28px; padding: 6px; }
+.pl-wb .pl-seg { padding: 3px; gap: 2px; }
+
+/* buttons: quiet until hovered; the active one is a white pill */
+.pl-wb .pl-tbtn { color: var(--p-dim); border-radius: 999px; font-weight: 600; min-height: 34px; transition: color .15s, background-color .15s, transform .15s var(--p-ease); }
+.pl-wb .pl-seg .pl-tbtn + .pl-tbtn { border-left: 0; }
+.pl-wb .pl-tbtn:hover, .pl-wb .pl-tbtn:focus-visible { color: var(--p-text); background: rgba(255, 255, 255, .07); }
+.pl-wb .pl-tbtn:active { transform: scale(.96); }
+.pl-wb .pl-tbtn.active { background: #fff; color: #0b0b0c; }
+.pl-wb .pl-seg-label { border-left: 0; color: var(--p-faint); }
+.pl-wb .pl-board-select { font-family: var(--font-head); font-weight: 400; font-size: calc(22px * var(--s)); padding: 0 16px; background-color: var(--p-glass); color: var(--p-text); }
+.pl-wb .pl-board-select option { background: #18181b; color: #fafafa; font-family: "Space Grotesk", system-ui, sans-serif; font-size: 14px; }
+.pl-wb .pl-round { width: 40px; height: 40px; display: grid; place-items: center; padding: 0; border-radius: 50%; border: 1px solid var(--p-line); background: var(--p-glass); color: var(--p-dim); cursor: pointer; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); transition: color .15s, background-color .15s, transform .15s var(--p-ease); }
+.pl-wb .pl-round:hover { color: var(--p-text); transform: translateY(-1px); }
+.pl-wb .pl-round svg { width: 18px; height: 18px; }
+
+/* the left rail */
+.pl-wb .pl-rail-btn { color: var(--p-dim); border: 0; border-radius: 18px; font-weight: 600; transition: color .15s, background-color .15s, transform .15s var(--p-ease); }
+.pl-wb .pl-rail-btn:hover, .pl-wb .pl-rail-btn:focus-visible { color: var(--p-text); background: rgba(255, 255, 255, .07); }
+.pl-wb .pl-rail-btn:active { transform: scale(.95); }
+.pl-wb .pl-rail-btn.active { background: #fff; color: #0b0b0c; }
+.pl-wb .pl-fly h5, .pl-wb .pl-bgpanel h5 { font-family: var(--font-head); font-weight: 400; font-size: calc(24px * var(--s)); }
+.pl-wb .pl-pal { background: rgba(255, 255, 255, .04); color: var(--p-text); border: 1px solid var(--p-line); border-radius: 12px; font-weight: 500; transition: background-color .12s, transform .12s var(--p-ease); }
+.pl-wb .pl-pal:hover, .pl-wb .pl-pal:focus-visible { background: #fff; color: #0b0b0c; }
+.pl-wb .pl-pal:active { transform: scale(.98); }
+.pl-wb .pl-fly .dnd-muted, .pl-wb .pl-fly .dnd-tiny { color: var(--p-faint); }
+
+/* drawers (maps, scenarios, party plans) */
+.pl-wb .pl-drawer-head { background: transparent; color: var(--p-text); border-bottom: 1px solid var(--p-line); padding: 12px 16px; }
+.pl-wb .pl-drawer-head h3 { font-family: var(--font-head); font-weight: 400; font-size: calc(28px * var(--s)); }
+.pl-wb .pl-drawer-body { color: var(--p-text); }
+
+/* the canvas outside the paper: the hub's dark dotted space */
+.pl-wb .pl-viewport { background-color: #09090b; background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, .1) 1px, transparent 1.4px); background-size: 28px 28px; }
+.pl-wb .pl-paper { border: 1px dashed rgba(255, 255, 255, .18); border-radius: 18px; box-shadow: 0 30px 90px rgba(0, 0, 0, .6); }
+.pl-wb .pl-hint { border: 1px solid var(--p-line-2); border-radius: 999px; background: var(--p-glass); color: var(--p-dim); backdrop-filter: blur(14px); padding: 10px 20px; }
+.pl-wb .pl-viewport.drop { outline: 2px dashed rgba(255, 255, 255, .5); }
+
+/* nodes: dark glass cards with a coloured header strip, like the hub's cards */
+.pl-wb .pl-node { background: rgba(24, 24, 27, .94); color: var(--p-text); border: 1px solid color-mix(in srgb, var(--k) 45%, rgba(255, 255, 255, .1)); border-radius: 16px; box-shadow: 0 16px 40px rgba(0, 0, 0, .45); font-family: "Space Grotesk", system-ui, sans-serif; transition: box-shadow .2s var(--p-ease); }
+.pl-wb .pl-node:hover { box-shadow: 0 22px 54px rgba(0, 0, 0, .55); }
+.pl-wb .pl-node.dragging { box-shadow: 0 30px 70px rgba(0, 0, 0, .6); }
+.pl-wb .pl-node { --text: #fafafa; --panel: #18181b; --panel-alt: #232327; --border: rgba(255, 255, 255, .14); }
+.pl-wb .pl-node-head { border-radius: 15px 15px 0 0; padding: 6px 8px 6px 12px; }
+.pl-wb .pl-node-title { font-family: "Space Grotesk", system-ui, sans-serif; font-weight: 600; }
+.pl-wb .pl-node-kind { letter-spacing: .1em; }
+.pl-wb .pl-node-text { color: var(--p-text); font-family: "Space Grotesk", system-ui, sans-serif; }
+.pl-wb .pl-node-body h5 { color: #f0b45a; }
+.pl-wb .pl-resize { background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, .35) 50%); border-radius: 0 0 15px 0; }
+.pl-wb .pl-pill { border: 1px solid var(--p-line-2); background: rgba(255, 255, 255, .06); }
+/* stickies stay paper-coloured */
+.pl-wb .pl-node.type-text { background: var(--sticky, #f6e27a); color: #2a2208; border-color: transparent; }
+.pl-wb .pl-node.type-text .pl-node-text { color: #2a2208; }
+/* sessions and links */
+.pl-wb .pl-session-tag { border: 0; border-radius: 999px; padding: 3px 10px; }
+.pl-wb .pl-legend { border-radius: 16px; }
+.pl-wb .pl-swatch { border: 0; border-radius: 50%; }
+
+/* the "cosmic" board background: the hub's starfield */
+.pl-bg-cosmic { background-color: #0b0a12;
+  background-image: radial-gradient(circle at 12% 18%, #fff 0 1px, transparent 1.6px), radial-gradient(circle at 63% 72%, rgba(255, 255, 255, .8) 0 1px, transparent 1.5px), radial-gradient(circle at 38% 46%, rgba(255, 255, 255, .6) 0 .8px, transparent 1.3px), radial-gradient(circle at 86% 29%, #fff 0 1.2px, transparent 1.8px), radial-gradient(circle at 1px 1px, rgba(255, 255, 255, .1) 1px, transparent 1.4px), radial-gradient(ellipse at 30% 20%, #1b1830, #0b0a12 70%);
+  background-size: 260px 260px, 340px 340px, 180px 180px, 420px 420px, 28px 28px, 100% 100%; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .pl-wb .pl-fly:not([hidden]), .pl-wb .pl-bgpanel:not([hidden]) { animation: pl-pop .25s var(--p-ease) both; }
+  .pl-wb .pl-drawer:not([hidden]) { animation: pl-slide .32s var(--p-ease) both; }
+  .pl-wb .pl-top, .pl-wb .pl-rail { animation: pl-rise .6s var(--p-ease) both; }
+  .pl-wb .pl-rail { animation-delay: .06s; }
+}
+@keyframes pl-pop { from { opacity: 0; transform: scale(.97) translateX(-6px); } to { opacity: 1; transform: none; } }
+@keyframes pl-slide { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+@keyframes pl-rise { from { opacity: 0; translate: 0 10px; } to { opacity: 1; translate: 0 0; } }

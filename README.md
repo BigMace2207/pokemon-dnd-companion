@@ -14,11 +14,21 @@
 ## Features
 
 **For players**
+- Pokémon campaigns have no sidebar: the Hub is home, every page is a round button on it (trainer pages and calculators
+  down the left, the planner, library, Control Centre and admin down the right), the Pokédex and Move Dex slide out,
+  the Rulebook, Type Chart and Move Tier Guide are pull tabs beside the log, and the top bar's home button comes back
 - The Hub: a shared whiteboard every player lands on, with notes, drawings and everyone's cursor live (in each player's
   own colour, picked in Settings > Appearance, with their name above it). The DM drags encounter buttons onto it, and
   they are the only way into the Battle screen. Pings (P or Alt+click) point something out to everyone, notes can be
   recoloured and resized, the corner buttons zoom and fit the board, clicking a player's avatar jumps to them, and
-  Ctrl+Z takes back what you last added
+  Ctrl+Z takes back what you last added. The board has a soft edge a little way past its content, which moves out as
+  things are placed near it, so you can't get lost in empty space. Text is typed straight onto the board. The DM can fade in one of their maps,
+  blurred, as the hub's backdrop. On the hub the app's top bar becomes round buttons (menu, theme, Settings, account),
+  and Settings lives behind the gear there rather than in the Pokémon sidebar. Without a backdrop the hub is "cosmic",
+  with twinkling stars. The Pokédex and Move Dex slide out from the hub's left edge, and any Pokémon or move can be
+  dragged onto the board as a card. Pinging can target a note, card or button: hover to highlight it, click to ripple
+  round it. The Campaign Planner and Library are buttons down the hub's right-hand side, and the planner shares the
+  hub's dark glass look (new boards start on the "Cosmic" background)
 - Pokédex and Move Dex covering 1301 Pokémon, with forms, evolutions and stats
 - Stat and Damage calculators that load your saved Pokémon
 - My Team, Bag and Trainer Sheet built from the rulebook, with named saves
@@ -44,8 +54,10 @@
 - Campaign Planner (both games): one full-screen whiteboard, no tower behind it. A slim rail on the left adds nodes (notes, checklists, stickies, expandable dungeons with per-room notes, and every generator: Pokémon wild encounters, trainers, gym leaders, routes; D&D NPCs, encounters, taverns, loot...). Drag them around an endless board that grows as you near its edge, change or upload the background, and circle groups of nodes (box or freehand) into colour-coded "Session N" regions; a node can be in several sessions. The Notebook drawer holds searchable Markdown notes that can also be NPCs, quests (with status), locations and session recaps, with an export to Markdown (it replaces the old Campaign Notes page and imports its notes once). Maps, scenarios (DM) and party plans (DM) open as drawers. Players share their boards, notes and checklists with the DM automatically. In Pokémon campaigns, trainer, gym leader and wild encounter nodes have Trainer and Team slots like Scratch blocks: bring the DM's NPC trainers and wild Pokémon in with the Libraries button and drag them in (a trainer gives the node its name, sprite and team; Pokémon join the team, up to six, and can be dragged to reorder or back out). The hub battles those exact teams
 - Library: add your own PDF, EPUB, Word, text, Markdown and HTML books and read them in a built-in e-reader (they stay on your device; accounts the admin allows keep them on the server, private, on every device they sign in on)
 - Maps are stored on the server, so they follow you to every device: up to 10 per campaign (15 MB each) for everyone, unlimited (100 MB each) for accounts the admin allows
-- Lava Tower theme (flame button in the top bar, or Settings → Appearance): grey brick tower, lava drips, cracks of light and crumbling stone; "Calm" turns the motion off
-- Pokémon D&D Rulebook page, rendered from the Obsidian vault
+- Cosmic theme: every Pokémon D&D page uses the hub's look (deep space, glass cards, white pill buttons); D&D campaigns keep the device's theme choice
+- Lava Tower theme for D&D campaigns (flame button in the top bar, or Settings → Appearance): grey brick tower, lava drips, cracks of light and crumbling stone; "Calm" turns the motion off
+- Pokémon D&D Rulebook page, rendered from the Obsidian vault. In Pokémon campaigns the Rulebook and the Type Chart are
+  also pull tabs (RULES, TYPES) on the right edge beside LOG, so they open over any page
 
 **Online**
 - Accounts with email, Google or Apple sign-in; campaigns appear after login
