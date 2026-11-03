@@ -110,3 +110,28 @@ html.admin-full body { background: #0b0b0c; }
 .cursor-preview { display: inline-flex; align-items: flex-start; gap: 2px; margin-top: calc(6px * var(--s)); }
 .cursor-preview-arrow { width: 16px; height: 20px; background: var(--c); clip-path: polygon(0 0, 100% 62%, 52% 64%, 34% 100%); }
 .cursor-preview-name { margin-top: 14px; font-size: calc(12px * var(--s)); font-weight: 600; color: #111; background: var(--c); padding: 2px 8px; border-radius: 999px; }
+
+/* deleting and restoring campaigns */
+.adm-camps .adm-tr { grid-template-columns: minmax(0, 2fr) 1fr minmax(0, 1.6fr) .7fr .7fr .6fr auto; }
+.adm-chip.ghost { background: transparent; color: var(--a-dim); border: 1px solid var(--a-line-2); }
+.adm-chip.ghost:hover { color: var(--a-text); border-color: rgba(255, 255, 255, .3); }
+.adm-chip.danger:hover { color: #fecaca; border-color: rgba(248, 113, 113, .6); background: rgba(248, 113, 113, .08); }
+.adm-chip:disabled { opacity: .5; cursor: default; transform: none; }
+.adm-quick.end { justify-content: flex-end; margin-top: calc(14px * var(--s)); }
+.adm-danger { font: inherit; font-size: calc(14px * var(--s)); font-weight: 600; color: #fff; background: #dc2626; border: 0; border-radius: 999px; padding: calc(8px * var(--s)) calc(16px * var(--s)); cursor: pointer; transition: opacity .15s, transform .15s var(--a-ease); }
+.adm-danger:disabled { opacity: .35; cursor: default; }
+.adm-danger:not(:disabled):active { transform: scale(.97); }
+.adm-dialog { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 16px; background: rgba(0, 0, 0, .6); opacity: 0; transition: opacity .2s var(--a-ease); }
+.adm-dialog[hidden] { display: none; }
+.adm-dialog.open { opacity: 1; }
+.adm-dialog-card { width: min(460px, 100%); background: var(--a-card); border: 1px solid var(--a-line-2); border-radius: calc(20px * var(--s)); padding: calc(22px * var(--s)); box-shadow: 0 30px 80px rgba(0, 0, 0, .6); transform: scale(.96) translateY(8px); transition: transform .25s var(--a-ease); }
+.adm-dialog.open .adm-dialog-card { transform: none; }
+.adm-dialog-card h2 { margin: 0 0 calc(8px * var(--s)); font-family: "Instrument Serif", Georgia, serif; font-weight: 400; font-size: calc(30px * var(--s)); }
+.adm-dialog-card label { display: grid; gap: 6px; }
+.adm-dialog-card label .adm-search { width: 100%; box-sizing: border-box; }
+.adm-card[hidden] { display: none; }
+@media (max-width: 700px) {
+  .adm-camps .adm-tr { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .adm-camps .adm-tr > :nth-child(n + 2) { display: none; }
+  .adm-camps .adm-tr > :nth-child(5), .adm-camps .adm-tr > :nth-child(7) { display: block; }
+}

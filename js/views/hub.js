@@ -7,6 +7,11 @@
 //
 // The board lives on the server (server.py "The Pokémon hub"); this page syncs a few times a second while it's open,
 // sending its own cursor and receiving everyone else's, and the board itself only when it changed.
+//
+// Extras: Ping (or Alt+click) sends a "look here" ripple everyone sees; a click shows as a ripple on your cursor for
+// the others; notes can be recoloured and resized; the corner buttons zoom and fit the board; clicking someone's
+// avatar jumps to their cursor; Ctrl+Z takes back the last thing you added. Shortcuts: V move, N note, D draw,
+// T text, E erase, P ping, F fit, Esc closes menus.
 
 import { el } from "../components.js";
 import { loadSave } from "../storage.js";
@@ -22,10 +27,12 @@ import { getDmToken, DM_TOKEN_KEY } from "../systems/dnd5e/dmAccess.js";
 
 const SYNC_MS = 140;          // how often the page reports its cursor while the mouse is moving
 const IDLE_SYNC_MS = 1500;    // and how often it checks in when nothing is moving
-const NOTE_COLORS = ["#ffe58a", "#ffb4a2", "#b5f0c4", "#a8d8ff", "#e2c4ff", "#f4f4f5"];
+const NOTE_COLORS = ["#fff6c2", "#ffe0d6", "#dcf8e4", "#dcefff", "#efe3ff", "#ffffff"];   // light, so notes stand out on the dark board
 const PEN_WIDTHS = [3, 6, 12];
 const uid = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+const SHORTCUTS = { v: "move", n: "note", d: "pen", t: "text", e: "erase", p: "ping" };
+const typing = (t) => t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
 
 // Opens a page the router only allows from here (the Battle screen). js/app.js listens for this.
 export function openFromHub(view) {
@@ -49,6 +56,9 @@ export function renderHub(container, state) {
   const view = { x: 0, y: 0, k: 1 };
   let pointerWorld = null;        // where my cursor is on the board (null when it's off the board)
   let lastSent = 0, dirtyCursor = false, inFlight = false, again = false, alive = true;
+  let pendingPing = null, clicked = false;   // sent with the next sync
+  const seenPings = new Set(), knownStrokes = new Set(), knownPeople = new Set();
+  const undoStack = [];                      // ids of things I added, newest last
 
   // ------------------------------------------------------------------ layout
   const root = el("div", { class: "hub", style: `--me:${me.color}` });
@@ -78,7 +88,13 @@ export function renderHub(container, state) {
     el("h2", {}, "Welcome to the hub"),
     el("p", {}, "Everyone in the campaign is here. Leave notes, draw, and watch for the DM's encounter buttons: they're your way into battle."),
   ]);
-  root.append(stage, empty, topbar, subbar, toolbar, drawer, hover, menu, toast);
+  const zoomLabel = el("span", { class: "hub-zoom-label", "aria-live": "polite" }, "100%");
+  const zoomBtn = (label, aria, fn) => { const b = el("button", { type: "button", class: "hub-zoom-btn", "aria-label": aria, title: aria }, label); b.addEventListener("click", fn); return b; };
+  const zoomBar = el("div", { class: "hub-zoom" }, [
+    zoomBtn("−", "Zoom out", () => zoomAt(1 / 1.25)), zoomLabel, zoomBtn("+", "Zoom in", () => zoomAt(1.25)),
+    zoomBtn("⤢", "Fit everything (F)", () => fitAll()),
+  ]);
+  root.append(stage, empty, topbar, subbar, toolbar, zoomBar, drawer, hover, menu, toast);
   container.append(root);
 
   let toastTimer = null;
@@ -96,7 +112,35 @@ export function renderHub(container, state) {
     root.style.setProperty("--grid", `${28 * view.k}px`);
     root.style.setProperty("--gx", `${view.x}px`);
     root.style.setProperty("--gy", `${view.y}px`);
+    zoomLabel.textContent = `${Math.round(view.k * 100)}%`;
     placeCursors();
+  }
+  // a smooth move for jumps (zoom buttons, fit, going to a player); dragging and the wheel stay instant
+  let glideTimer = null;
+  function glide(fn) {
+    root.classList.add("gliding");
+    fn(); applyView();
+    clearTimeout(glideTimer);
+    glideTimer = setTimeout(() => root.classList.remove("gliding"), 380);
+  }
+  function zoomAt(factor) {
+    const r = stage.getBoundingClientRect();
+    const c = toWorld(r.left + r.width / 2, r.top + r.height / 2);
+    glide(() => { view.k = clamp(view.k * factor, 0.25, 3); view.x = r.width / 2 - c.x * view.k; view.y = r.height / 2 - c.y * view.k; });
+  }
+  function lookAt(wx, wy, k = view.k) {
+    const r = stage.getBoundingClientRect();
+    glide(() => { view.k = k; view.x = r.width / 2 - wx * k; view.y = r.height / 2 - wy * k; });
+  }
+  function fitAll() {
+    const boxes = items.map((it) => it.type === "stroke"
+      ? it.pts.reduce((b, [x, y]) => [Math.min(b[0], x), Math.min(b[1], y), Math.max(b[2], x), Math.max(b[3], y)], [Infinity, Infinity, -Infinity, -Infinity])
+      : [it.x, it.y, it.x + (it.w || 200), it.y + (it.h || 60)]);
+    if (!boxes.length) { lookAt(0, 0, 1); return; }
+    const [x0, y0, x1, y1] = boxes.reduce((a, b) => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])]);
+    const r = stage.getBoundingClientRect();
+    const k = clamp(Math.min((r.width - 160) / Math.max(1, x1 - x0), (r.height - 220) / Math.max(1, y1 - y0)), 0.25, 1.5);
+    lookAt((x0 + x1) / 2, (y0 + y1) / 2, k);
   }
   const toWorld = (cx, cy) => {
     const r = stage.getBoundingClientRect();
@@ -125,16 +169,34 @@ export function renderHub(container, state) {
     ["pen", "Draw", "M4 20l4-1L19 8l-3-3L5 16zM14 7l3 3"],
     ["text", "Text", "M5 6V4h14v2M12 4v16M9 20h6"],
     ["erase", "Erase", "M7 20h12M5 15l8-8 6 6-5 5H9z"],
+    ["ping", "Ping", "M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M12 12m-6 0a6 6 0 1 0 12 0a6 6 0 1 0-12 0M12 12m-10 0a10 10 0 1 0 20 0"],
   ];
   const icon = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+  const thumb = el("span", { class: "hub-thumb", "aria-hidden": "true" });
+  function moveThumb(instant = false) {
+    const on = toolbar.querySelector(`.hub-tool[data-tool="${tool}"]`);
+    if (!on) return;
+    thumb.classList.toggle("instant", instant);
+    thumb.style.width = `${on.offsetWidth}px`;
+    thumb.style.transform = `translateX(${on.offsetLeft}px)`;
+  }
+  function setTool(id) {
+    tool = id;
+    toolbar.querySelectorAll(".hub-tool[data-tool]").forEach((b) => { b.classList.toggle("on", b.dataset.tool === id); b.setAttribute("aria-pressed", String(b.dataset.tool === id)); });
+    stage.dataset.tool = id;
+    moveThumb();
+    drawSubbar();
+  }
   function drawToolbar() {
-    toolbar.replaceChildren(...TOOLS.map(([id, label, d]) => {
-      const b = el("button", { type: "button", class: `hub-tool${tool === id ? " on" : ""}`, title: label, "aria-pressed": String(tool === id) });
+    toolbar.replaceChildren(thumb, ...TOOLS.map(([id, label, d]) => {
+      const key = Object.keys(SHORTCUTS).find((k) => SHORTCUTS[k] === id);
+      const b = el("button", { type: "button", class: `hub-tool${tool === id ? " on" : ""}`, "data-tool": id, title: `${label} (${key.toUpperCase()})`, "aria-pressed": String(tool === id) });
       b.innerHTML = icon(d) + `<span>${label}</span>`;
-      b.addEventListener("click", () => { tool = id; drawToolbar(); drawSubbar(); stage.dataset.tool = id; });
+      b.addEventListener("click", () => setTool(id));
       return b;
     }), el("span", { class: "hub-sep" }), dmButton());
     stage.dataset.tool = tool;
+    requestAnimationFrame(() => moveThumb(true));
   }
   function dmButton() {
     if (dmToken) {
@@ -150,7 +212,8 @@ export function renderHub(container, state) {
   }
   function drawSubbar() {
     subbar.replaceChildren();
-    subbar.classList.toggle("show", tool === "pen" || tool === "note" || tool === "erase");
+    subbar.classList.toggle("show", tool === "pen" || tool === "note" || tool === "erase" || tool === "ping");
+    if (tool === "ping") subbar.append(el("span", { class: "hub-hint" }, "Click the board to point something out to everyone (Alt+click works with any tool)"));
     if (tool === "pen") {
       subbar.append(...[me.color, "#f4f4f5", "#ff5a4e", "#ffd23f", "#6fdc6a", "#4ea8ff", "#e36bff"].map((c) => {
         const s = el("button", { type: "button", class: `hub-swatch${penColor === c ? " on" : ""}`, style: `--c:${c}`, "aria-label": `Pen colour ${c}` });
@@ -199,9 +262,11 @@ export function renderHub(container, state) {
 
   // ------------------------------------------------------------------ server
   async function op(body) {
+    const isNew = body.op === "put" && body.item && !items.some((it) => it.id === body.item.id);
     const res = await hubOp(me.id, body, dmToken);
     if (!res) { say("Couldn't save that. Check your connection."); return null; }
     if (res.error) { say(res.error); return null; }
+    if (isNew) { undoStack.push(body.item.id); if (undoStack.length > 40) undoStack.shift(); }
     rev = -1;   // pull the board again on the next sync
     sync(true);
     return res;
@@ -213,12 +278,20 @@ export function renderHub(container, state) {
     const now = Date.now();
     if (!force && !dirtyCursor && now - lastSent < IDLE_SYNC_MS) return;
     inFlight = true; dirtyCursor = false; lastSent = now;
-    const res = await hubSync(me.id, rev, pointerWorld ? { x: pointerWorld.x, y: pointerWorld.y, name: me.name, color: me.color } : null);
+    const cursor = pointerWorld ? { x: pointerWorld.x, y: pointerWorld.y, name: me.name, color: me.color, down: clicked } : null;
+    const ping = pendingPing;
+    clicked = false; pendingPing = null;
+    const res = await hubSync(me.id, rev, cursor, ping);
     inFlight = false;
     if (again) { again = false; rev = -1; setTimeout(() => sync(true), 0); }
     if (!res || !alive) return;
     drawPeople(res.cursors || []);
     drawCursors(res.cursors || []);
+    for (const pg of res.pings || []) {
+      if (seenPings.has(pg.id)) continue;
+      seenPings.add(pg.id);
+      if (pg.by !== me.id) showPing(pg);
+    }
     if (res.items) { items = res.items; rev = res.rev; activeButton = res.activeButton; drawItems(); }
     else if (res.activeButton !== activeButton) { activeButton = res.activeButton; drawItems(); }
   }
@@ -243,6 +316,7 @@ export function renderHub(container, state) {
       }
       node.style.setProperty("--c", c.color);
       node.querySelector(".hub-cursor-name").textContent = c.name;
+      if (c.down) { node.classList.remove("click"); void node.offsetWidth; node.classList.add("click"); }
     }
     for (const [id, node] of cursorEls) if (!seen.has(id)) { node.remove(); cursorEls.delete(id); }
     placeCursors();
@@ -257,7 +331,14 @@ export function renderHub(container, state) {
   }
   function drawPeople(list) {
     const all = [{ id: me.id, name: me.name, color: me.color, self: true }, ...list];
-    people.replaceChildren(...[...all.slice(0, 9).map((p) => el("span", { class: `hub-avatar${p.self ? " self" : ""}`, style: `--c:${p.color}`, title: p.self ? `${p.name} (you)` : p.name }, (p.name || "?").slice(0, 1).toUpperCase())),
+    const avatar = (p) => {
+      const isNew = !knownPeople.has(p.id);
+      knownPeople.add(p.id);
+      const b = el("button", { type: "button", class: `hub-avatar${p.self ? " self" : ""}${isNew ? " pop" : ""}`, style: `--c:${p.color}`, title: p.self ? `${p.name} (you)` : `Go to ${p.name}`, "aria-label": p.self ? `${p.name} (you)` : `Go to ${p.name}'s cursor` }, (p.name || "?").slice(0, 1).toUpperCase());
+      if (!p.self) b.addEventListener("click", () => lookAt(p.x, p.y));
+      return b;
+    };
+    people.replaceChildren(...[...all.slice(0, 9).map(avatar),
       all.length > 9 ? el("span", { class: "hub-avatar more" }, `+${all.length - 9}`) : null,
       el("span", { class: "hub-online" }, `${all.length} here`)].filter(Boolean));
   }
@@ -273,6 +354,7 @@ export function renderHub(container, state) {
     const strokes = items.filter((it) => it.type === "stroke");
     ink.replaceChildren(...strokes.map((s) => {
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      if (!knownStrokes.has(s.id)) { knownStrokes.add(s.id); if (rev > 0) path.classList.add("fresh"); }
       path.setAttribute("d", s.pts.map((p, i) => `${i ? "L" : "M"}${p[0]} ${p[1]}`).join(" "));
       path.setAttribute("stroke", s.color);
       path.setAttribute("stroke-width", String(s.width));
@@ -301,6 +383,8 @@ export function renderHub(container, state) {
         const ta = node.querySelector("textarea");
         if (document.activeElement !== ta) ta.value = it.text;
         ta.readOnly = !canEdit(it);
+        node.classList.toggle("editable", canEdit(it));
+        node.querySelector(".hub-note-by").textContent = it.byName || "";
       } else if (it.type === "text") {
         node.style.color = it.color; node.style.fontSize = `${it.size}px`;
         node.textContent = it.text;
@@ -308,7 +392,12 @@ export function renderHub(container, state) {
         fillButton(node, it);
       }
     }
-    for (const [id, node] of itemEls) if (!seen.has(id)) { node.remove(); itemEls.delete(id); }
+    for (const [id, node] of itemEls) {
+      if (seen.has(id)) continue;
+      itemEls.delete(id);
+      node.classList.add("hub-leave");
+      setTimeout(() => node.remove(), 220);
+    }
   }
 
   function makeNote(it) {
@@ -318,7 +407,18 @@ export function renderHub(container, state) {
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => { const cur = node.__item; op({ op: "put", item: { ...cur, text: ta.value } }); }, 500);
     });
-    const node = el("div", { class: "hub-note" }, [el("div", { class: "hub-note-grip", "aria-hidden": "true" }), ta]);
+    const dots = el("div", { class: "hub-note-tools" }, [
+      ...NOTE_COLORS.map((c) => {
+        const d = el("button", { type: "button", class: "hub-note-dot", style: `--c:${c}`, "aria-label": "Note colour", title: "Colour" });
+        d.addEventListener("click", (e) => { e.stopPropagation(); op({ op: "put", item: { ...node.__item, color: c } }); });
+        return d;
+      }),
+      (() => { const x = el("button", { type: "button", class: "hub-note-del", "aria-label": "Delete note", title: "Delete" }, "×"); x.addEventListener("click", (e) => { e.stopPropagation(); op({ op: "delete", itemId: node.__item.id }); }); return x; })(),
+    ]);
+    const node = el("div", { class: "hub-note" }, [
+      el("div", { class: "hub-note-grip" }, [el("span", { class: "hub-note-by" }), dots]),
+      ta, el("span", { class: "hub-note-resize", "aria-hidden": "true" }),
+    ]);
     void it;
     return node;
   }
@@ -331,6 +431,21 @@ export function renderHub(container, state) {
     node.className = `hub-btn kind-${it.source.kind}${activeButton === it.id ? " live" : ""}`;
     node.querySelector(".hub-btn-label").textContent = it.label;
     node.setAttribute("aria-label", `${it.label}: ${activeButton === it.id ? "battle in progress, open it" : dmToken ? "start this battle" : "open the battle"}`);
+  }
+
+  // ------------------------------------------------------------------ pings
+  function showPing(pg) {
+    const node = el("div", { class: "hub-ping", style: `left:${pg.x}px;top:${pg.y}px;--c:${pg.color}` }, [
+      el("span", { class: "hub-ping-ring" }), el("span", { class: "hub-ping-ring r2" }), el("span", { class: "hub-ping-dot" }),
+      el("span", { class: "hub-ping-name" }, pg.name),
+    ]);
+    itemLayer.append(node);
+    setTimeout(() => node.remove(), 2400);
+  }
+  function ping(at) {
+    pendingPing = { x: Math.round(at.x), y: Math.round(at.y) };
+    showPing({ ...pendingPing, color: me.color, name: me.name });
+    sync(true);
   }
 
   // ------------------------------------------------------------------ hover card on encounter buttons
@@ -416,17 +531,19 @@ export function renderHub(container, state) {
       return mon?.name ? [combatant("wild", src.id, mon.nickname || mon.name, mon, "B")] : [];
     }
     // A planner encounter: each Pokémon becomes a Wild Library entry, so damage and catches land somewhere real.
+    // A trainer or gym leader from the planner brings their whole team in the order the DM set; a wild group, all of it.
     const node = planEncounter(src.id);
     const mons = node?.mons?.length ? node.mons : src.mons;
+    const owner = node?.identity?.name || (node && node.gen !== "wild" ? node.title : "");
     const out = [];
     for (const m of mons || []) {
       const species = state?.pokemonByName?.get(m.name);
       const mon = {
-        id: crypto.randomUUID ? crypto.randomUUID() : uid(), dex: species?.dex ?? null, name: m.name, nickname: "", level: m.level || 5, currentHp: null,
-        item: "", ability: m.ability || "", status: "None", moves: [...(m.moves || []), "", "", "", ""].slice(0, 4),
+        id: crypto.randomUUID ? crypto.randomUUID() : uid(), dex: m.dex ?? species?.dex ?? null, name: m.name, nickname: m.nickname || "", level: m.level || 5, currentHp: null,
+        item: m.item || "", ability: m.ability || "", status: "None", moves: [...(m.moves || []), "", "", "", ""].slice(0, 4),
       };
       const res = await dmAction(dmToken, "wildSave", { mon });
-      if (res?.wildId) out.push(combatant("wild", res.wildId, `Wild ${m.name}`, { ...mon, id: res.wildId }, "B"));
+      if (res?.wildId) out.push(combatant("wild", res.wildId, owner || `Wild ${m.name}`, { ...mon, id: res.wildId }, "B"));
     }
     return out;
   }
@@ -476,7 +593,7 @@ export function renderHub(container, state) {
       el("div", { class: "hub-drawer-head" }, [el("strong", {}, "Encounters"), el("span", {}, "Drag one onto the board, or double-click it")]),
       group("NPC trainers", npcs.map((n) => entry(n.name || "NPC", `${n.partyCount} Pokémon`, "npc", { kind: "npc", id: n.id })), "Add trainers in Control Centre → NPC Library."),
       group("Wild Pokémon", wild.map((w) => entry(w.name || "Wild Pokémon", w.level ? `Lv. ${w.level}` : "", "wild", { kind: "wild", id: w.id })), "Add Pokémon in Control Centre → Wild Library."),
-      group("From your planner", plan.map(({ b, n }) => entry(n.title.replace(/^Wild encounter — /, "").slice(0, 48), `${n.genLabel || "Encounter"} · ${n.mons.length} Pokémon`, n.gen === "wild" ? "wild" : "npc",
+      group("From your planner", plan.map(({ b, n }) => entry((n.identity?.name || n.title.replace(/^Wild encounter — /, "")).slice(0, 48), `${n.genLabel || "Encounter"} · ${n.mons.length} Pokémon`, n.gen === "wild" ? "wild" : "npc",
         { kind: "plan", id: `${b.id}:${n.id}`, title: n.title, mons: n.mons.map((m) => ({ name: m.name, level: m.level })) })), "Roll a wild encounter, trainer or gym leader on a Campaign Planner whiteboard and it shows up here."),
     );
   }
@@ -508,7 +625,10 @@ export function renderHub(container, state) {
     const dx = e.clientX - gesture.sx, dy = e.clientY - gesture.sy;
     if (Math.hypot(dx, dy) > 4) gesture.moved = true;
     if (gesture.kind === "pan") { view.x = gesture.ox + dx; view.y = gesture.oy + dy; applyView(); }
-    else if (gesture.kind === "drag" && gesture.moved) {
+    else if (gesture.kind === "resize") {
+      gesture.node.style.width = `${clamp(gesture.iw + dx / view.k, 140, 900)}px`;
+      gesture.node.style.minHeight = `${clamp(gesture.ih + dy / view.k, 100, 900)}px`;
+    } else if (gesture.kind === "drag" && gesture.moved) {
       gesture.node.style.left = `${gesture.ix + dx / view.k}px`; gesture.node.style.top = `${gesture.iy + dy / view.k}px`;
       gesture.node.classList.add("dragging");
     } else if (gesture.kind === "pen") {
@@ -521,7 +641,15 @@ export function renderHub(container, state) {
   stage.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 && e.button !== 1) return;
     closeMenu();
+    clicked = true; dirtyCursor = true;
+    if (e.button === 0 && (tool === "ping" || e.altKey)) { ping(toWorld(e.clientX, e.clientY)); return; }
+    if (e.target.closest(".hub-note-tools")) return;
     const itemNode = e.target.closest(".hub-note, .hub-text, .hub-btn");
+    if (e.target.classList.contains("hub-note-resize") && itemNode && canEdit(itemNode.__item)) {
+      gesture = { sx: e.clientX, sy: e.clientY, moved: false, kind: "resize", node: itemNode, iw: itemNode.__item.w, ih: itemNode.__item.h };
+      stage.setPointerCapture(e.pointerId);
+      return;
+    }
     const strokeId = e.target.closest?.("path")?.dataset?.id;
     const start = { sx: e.clientX, sy: e.clientY, moved: false, id: e.pointerId };
     if (e.button === 1) { gesture = { ...start, kind: "pan", ox: view.x, oy: view.y }; stage.setPointerCapture(e.pointerId); return; }
@@ -564,6 +692,11 @@ export function renderHub(container, state) {
       liveStroke?.remove(); liveStroke = null;
       return;
     }
+    if (g.kind === "resize") {
+      const it = g.node.__item;
+      await op({ op: "put", item: { ...it, w: Math.round(clamp(g.iw + (e.clientX - g.sx) / view.k, 140, 900)), h: Math.round(clamp(g.ih + (e.clientY - g.sy) / view.k, 100, 900)) } });
+      return;
+    }
     if ((g.kind === "drag" || g.kind === "click") && !g.moved) {
       if (g.node.classList.contains("hub-btn")) buttonClicked(g.node);
       else if (g.node.classList.contains("hub-note")) g.node.querySelector("textarea").focus();
@@ -582,8 +715,9 @@ export function renderHub(container, state) {
     }
     if (g.kind === "note" && !g.moved) {
       const p = toWorld(e.clientX, e.clientY);
-      const res = await op({ op: "put", item: { type: "note", id: uid(), x: Math.round(p.x - 110), y: Math.round(p.y - 30), w: 220, h: 160, text: "", color: noteColor } });
-      if (res) { tool = "move"; drawToolbar(); drawSubbar(); }
+      const id = uid();
+      const res = await op({ op: "put", item: { type: "note", id, x: Math.round(p.x - 110), y: Math.round(p.y - 30), w: 220, h: 160, text: "", color: noteColor } });
+      if (res) { setTool("move"); setTimeout(() => itemEls.get(id)?.querySelector("textarea")?.focus(), 400); }
       return;
     }
     if (g.kind === "text" && !g.moved) {
@@ -591,6 +725,33 @@ export function renderHub(container, state) {
       const p = toWorld(e.clientX, e.clientY);
       if (text && text.trim()) await op({ op: "put", item: { type: "text", id: uid(), x: Math.round(p.x), y: Math.round(p.y), text: text.trim().slice(0, 400), size: 28, color: me.color } });
     }
+  });
+
+  // double-click empty board: a note right there
+  stage.addEventListener("dblclick", async (e) => {
+    if (tool !== "move" || e.target.closest(".hub-note, .hub-text, .hub-btn")) return;
+    const p = toWorld(e.clientX, e.clientY);
+    const id = uid();
+    const res = await op({ op: "put", item: { type: "note", id, x: Math.round(p.x - 110), y: Math.round(p.y - 30), w: 220, h: 160, text: "", color: noteColor } });
+    if (res) setTimeout(() => itemEls.get(id)?.querySelector("textarea")?.focus(), 400);
+  });
+
+  // shortcuts anywhere on the page while the hub is open (never while typing)
+  document.addEventListener("keydown", function keys(e) {
+    if (!document.body.contains(root)) { document.removeEventListener("keydown", keys); return; }
+    if (typing(e.target)) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+      while (undoStack.length) {
+        const id = undoStack.pop();
+        if (items.some((it) => it.id === id)) { e.preventDefault(); op({ op: "delete", itemId: id }); say("Undone."); return; }
+      }
+      return;
+    }
+    if (e.ctrlKey || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (SHORTCUTS[k]) { setTool(SHORTCUTS[k]); e.preventDefault(); }
+    else if (k === "f") { fitAll(); e.preventDefault(); }
+    else if (k === "escape") { closeMenu(); drawer.classList.remove("open"); hideHover(); }
   });
 
   function simplify(pts) {

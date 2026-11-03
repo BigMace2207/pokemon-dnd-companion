@@ -3,7 +3,7 @@
 // emails are set up, every campaign, and a small command line (grant / revoke / perms / signout / who / help).
 
 import { el } from "../components.js";
-import { adminOverview, adminSetPerm, adminCommand } from "../network.js";
+import { adminOverview, adminSetPerm, adminCommand, adminCampaign } from "../network.js";
 
 const KB = 1024, MB = KB * 1024, GB = MB * 1024;
 const trim = (x) => String(Number(x.toFixed(1)));
@@ -37,7 +37,40 @@ export function renderAdmin(container) {
   const accountsCard = el("section", { class: "adm-card" });
   const consoleCard = el("section", { class: "adm-card adm-console-card" });
   const campaignsCard = el("section", { class: "adm-card" });
-  root.append(head, tiles, el("div", { class: "adm-split" }, [accountsCard, consoleCard]), campaignsCard);
+  const archivedCard = el("section", { class: "adm-card" });
+  const dialog = el("div", { class: "adm-dialog", role: "dialog", "aria-modal": "true", hidden: "" });
+  root.append(head, tiles, el("div", { class: "adm-split" }, [accountsCard, consoleCard]), campaignsCard, archivedCard, dialog);
+
+  // Deleting a campaign asks you to type its name, so a stray click can't take a table away from its players.
+  function confirmDelete(c) {
+    const name = (c.name || "Untitled").trim();
+    const input = el("input", { class: "adm-search", type: "text", placeholder: name, "aria-label": "Type the campaign's name to confirm" });
+    const go = el("button", { type: "button", class: "adm-danger" }, "Delete campaign");
+    const cancel = el("button", { type: "button", class: "adm-chip ghost" }, "Cancel");
+    go.disabled = true;
+    input.addEventListener("input", () => { go.disabled = input.value.trim() !== name; });
+    const close = () => { dialog.classList.remove("open"); setTimeout(() => { dialog.hidden = true; }, 200); };
+    cancel.addEventListener("click", close);
+    dialog.onclick = (e) => { if (e.target === dialog) close(); };
+    input.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); if (e.key === "Enter" && !go.disabled) go.click(); });
+    go.addEventListener("click", async () => {
+      go.disabled = true;
+      const res = await adminCampaign(c.id, "archive");
+      close();
+      if (!res) { print("Couldn't reach the server.", "bad"); return; }
+      print(res.message);
+      data = res.overview; draw();
+    });
+    dialog.replaceChildren(el("div", { class: "adm-dialog-card" }, [
+      el("h2", {}, `Delete "${name}"?`),
+      el("p", { class: "adm-note" }, `Its ${c.members} member${c.members === 1 ? " loses" : "s lose"} access straight away and it leaves everyone's campaign list. Nothing is erased: it moves to Deleted campaigns, where you can restore it exactly as it was.`),
+      el("label", { class: "adm-note" }, ["Type the campaign's name to confirm", input]),
+      el("div", { class: "adm-quick end" }, [cancel, go]),
+    ]));
+    dialog.hidden = false;
+    requestAnimationFrame(() => dialog.classList.add("open"));
+    setTimeout(() => input.focus(), 50);
+  }
 
   // ------------------------------------------------------------ console
   const out = el("pre", { class: "adm-out", "aria-live": "polite" });
@@ -71,6 +104,12 @@ export function renderAdmin(container) {
   // ------------------------------------------------------------ drawing
   function tile(label, value, note) {
     return el("div", { class: "adm-tile" }, [el("span", { class: "adm-tile-label" }, label), el("strong", { class: "adm-tile-value" }, value), note ? el("span", { class: "adm-tile-note" }, note) : null].filter(Boolean));
+  }
+
+  function actionButton(label, cls, aria, fn) {
+    const b = el("button", { type: "button", class: cls, "aria-label": aria }, label);
+    b.addEventListener("click", () => fn(b));
+    return b;
   }
 
   function permSwitch(acc, perm) {
@@ -135,7 +174,7 @@ export function renderAdmin(container) {
     campaignsCard.replaceChildren(
       el("div", { class: "adm-card-head" }, [el("h2", {}, "Campaigns")]),
       el("div", { class: "adm-table adm-camps", role: "table", "aria-label": "Campaigns" }, [
-        el("div", { class: "adm-tr adm-th", role: "row" }, ["Name", "Game", "Owner", "Members", "Online", "Maps"].map((h) => el("span", { role: "columnheader" }, h))),
+        el("div", { class: "adm-tr adm-th", role: "row" }, ["Name", "Game", "Owner", "Members", "Online", "Maps", ""].map((h) => el("span", { role: "columnheader" }, h))),
         ...data.campaigns.map((c) => el("div", { class: "adm-tr", role: "row" }, [
           el("span", { role: "cell", class: "adm-email" }, c.name || "Untitled"),
           el("span", { role: "cell" }, c.system === "dnd5e" ? "D&D 5e" : "Pokémon D&D"),
@@ -143,10 +182,34 @@ export function renderAdmin(container) {
           el("span", { role: "cell" }, String(c.members)),
           el("span", { role: "cell" }, c.online ? el("span", { class: "adm-live" }, String(c.online)) : "0"),
           el("span", { role: "cell" }, String(c.maps)),
+          el("span", { role: "cell" }, actionButton("Delete", "adm-chip ghost danger", `Delete ${c.name || "Untitled"}`, () => confirmDelete(c))),
         ])),
       ]),
     );
-    if (first) { rise(accountsCard, 5); rise(consoleCard, 6); rise(campaignsCard, 7); first = false; }
+    archivedCard.hidden = !data.archived?.length;
+    archivedCard.replaceChildren(
+      el("div", { class: "adm-card-head" }, [el("h2", {}, "Deleted campaigns")]),
+      el("p", { class: "adm-note" }, "Kept whole, with every save and note, but hidden from everyone. Restore puts one back exactly as it was."),
+      el("div", { class: "adm-table adm-camps", role: "table", "aria-label": "Deleted campaigns" }, [
+        el("div", { class: "adm-tr adm-th", role: "row" }, ["Name", "Game", "Owner", "Members", "Deleted", "", ""].map((h) => el("span", { role: "columnheader" }, h))),
+        ...(data.archived || []).map((c) => el("div", { class: "adm-tr", role: "row" }, [
+          el("span", { role: "cell", class: "adm-email" }, c.name || "Untitled"),
+          el("span", { role: "cell" }, c.system === "dnd5e" ? "D&D 5e" : "Pokémon D&D"),
+          el("span", { role: "cell", class: "adm-email" }, c.owner),
+          el("span", { role: "cell" }, String(c.members)),
+          el("span", { role: "cell", title: c.archivedBy ? `by ${c.archivedBy}` : "" }, ago(c.archivedAt)),
+          el("span", { role: "cell" }),
+          el("span", { role: "cell" }, actionButton("Restore", "adm-chip", `Restore ${c.name || "Untitled"}`, async (b) => {
+            b.disabled = true;
+            const res = await adminCampaign(c.id, "restore");
+            if (!res) { print("Couldn't reach the server.", "bad"); b.disabled = false; return; }
+            print(res.message);
+            data = res.overview; draw();
+          })),
+        ])),
+      ]),
+    );
+    if (first) { rise(accountsCard, 5); rise(consoleCard, 6); rise(campaignsCard, 7); rise(archivedCard, 8); first = false; }
   }
 
   (async () => {

@@ -5,6 +5,12 @@
 // in several sessions, and each session has its own colour and label.
 //
 // readonly mode is the DM looking at a player's boards: same canvas, no editing, no rail.
+//
+// Slots (Pokémon campaigns): trainer, gym leader and wild encounter nodes have a Trainer slot and a Team slot, like the
+// inputs on a Scratch block. The Libraries button brings the DM's NPC trainers and wild Pokémon onto the board as cards;
+// drag a card (or a library entry straight from the list) into a slot and it snaps in: a trainer gives the node its
+// name, sprite and team, a Pokémon joins the team. Team rows drag to reorder, into another node's team, or back out onto
+// the board as a card again.
 
 import { el, btn, chip, field, selectEl, numInput, textInput, toast, confirmDialog, promptDialog, modal } from "../systems/dnd5e/ui.js";
 import { textGenerators, OPTIONS } from "./textGens.js";
@@ -15,8 +21,14 @@ import { putImage, getImage, deleteImage, readAsDataUrl, imageSize } from "./map
 import { icon } from "./icons.js";
 import { openMapLink } from "./mapLink.js";
 import { KINDS, kindOf } from "./kinds.js";
+import { cleanMon, TEAM_MAX } from "./board.js";
+import { getNpcs, getNpc, getWildList, getWildMon } from "../network.js";
+import { spriteUrl } from "../sprites.js";
+import { trainerSpriteUrl } from "../trainerSpritePicker.js";
 
-const SIZE = { note: [300, 240], list: [280, 300], gen: [320, 260], text: [210, 150], dungeon: [380, 320] };
+const SIZE = { note: [300, 240], list: [280, 300], gen: [320, 260], text: [210, 150], dungeon: [380, 320], libmon: [230, 190], libtrainer: [260, 240] };
+const SLOT_KINDS = new Set(["trainer", "gym", "wildmon"]);
+const MON_LINE = /^[A-Z][^()]*\(Lv \d+/;   // a generated "Pidgey (Lv 6, Normal/Flying) — ..." line, shown as a team row instead
 const DUNGEON_OPEN = [820, 640];
 const SVGNS = "http://www.w3.org/2000/svg";
 const svg = (tag, attrs = {}) => { const n = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
@@ -34,6 +46,8 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
   let flyout = null;          // which rail flyout is open
 
   const gens = textGenerators(system);
+  const pokemon = system !== "dnd5e";
+  const hasSlots = (n) => pokemon && n.type === "gen" && SLOT_KINDS.has(kindOf(n));
   const specs = OPTIONS[system] || {};
   const nodeEls = new Map();
 
@@ -176,7 +190,8 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     const body = el("div", { class: "pl-node-body" });
     fillBody(body, n);
     const handle = readonly ? null : el("div", { class: "pl-resize", title: "Drag to resize", "aria-hidden": "true" });
-    const e = el("div", { class: `pl-node type-${n.type}${n.expanded ? " open" : ""}`, "data-id": n.id, "data-kind": kind }, [el("div", { class: "pl-session-tags" }), head, body, handle]);
+    const plug = n.type === "libmon" || n.type === "libtrainer" ? el("span", { class: "pl-plug", "aria-hidden": "true" }) : null;
+    const e = el("div", { class: `pl-node type-${n.type}${n.expanded ? " open" : ""}${hasSlots(n) ? " has-slots" : ""}`, "data-id": n.id, "data-kind": kind }, [el("div", { class: "pl-session-tags" }), plug, head, body, handle]);
     place(e, n); paintSession(e, n);
     if (n.type === "text") e.style.setProperty("--sticky", n.color || "#f6e27a");
     e.addEventListener("pointerdown", () => { e.style.zIndex = String(++zTop); });
@@ -194,9 +209,17 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
   function fillBody(body, n) {
     if (n.type === "note" || n.type === "text") {
       body.append(textArea(n.body, (v) => saveSoon((b) => { const x = nodeOf(b, n.id); if (x) x.body = v.slice(0, 20000); }), { ph: n.type === "text" ? "Quick thought..." : "Write here..." }));
+    } else if (n.type === "libmon") {
+      body.append(...[monCard(n.mon), readonly ? null : el("p", { class: "pl-plug-hint" }, "Drag me into a trainer's Team slot")].filter(Boolean));
+    } else if (n.type === "libtrainer") {
+      body.append(...[trainerCard(n), readonly ? null : el("p", { class: "pl-plug-hint" }, "Drag me into a trainer or gym leader's Trainer slot")].filter(Boolean));
     } else if (n.type === "gen") {
       const kind = kindOf(n);
-      const lines = (n.lines || []).map((l) => (l.startsWith("#") ? el("h5", {}, l.replace(/^#\s?/, "")) : el("p", {}, l)));
+      const slots = hasSlots(n);
+      if (slots) body.append(slotsEl(n));
+      // the slots show the team (and who the trainer is), so the generated text doesn't repeat or contradict them
+      const shown = (n.lines || []).filter((l) => !(slots && n.mons?.length && (MON_LINE.test(l) || /^#.*team/i.test(l))) && !(n.identity && /^Leader:/.test(l)));
+      const lines = shown.map((l) => (l.startsWith("#") ? el("h5", {}, l.replace(/^#\s?/, "")) : el("p", {}, l)));
       if (kind === "npc") body.append(el("div", { class: "pl-avatar", "aria-hidden": "true" }, ((n.title || "?").trim()[0] || "?").toUpperCase()));
       if (kind === "name") body.append(el("div", { class: "pl-pills" }, (n.lines || []).filter((l) => !l.startsWith("#")).map((l) => el("span", { class: "pl-pill" }, l))));
       else body.append(...lines);
@@ -267,10 +290,21 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
       capture(handleEl, ev.pointerId);
       const sx = ev.clientX, sy = ev.clientY, ox = n.x, oy = n.y, z = view().z;
       e.classList.add("dragging");
-      const move = (m) => { n.x = Math.round(ox + (m.clientX - sx) / z); n.y = Math.round(oy + (m.clientY - sy) / z); place(e, n); drawLinks(); };
-      const up = () => {
+      const plug = n.type === "libmon" || n.type === "libtrainer";
+      let hot = null;
+      if (plug) nodeLayer.classList.add(`carrying-${n.type}`);
+      const move = (m) => {
+        n.x = Math.round(ox + (m.clientX - sx) / z); n.y = Math.round(oy + (m.clientY - sy) / z); place(e, n); drawLinks();
+        if (!plug) return;
+        const s = slotAt(m.clientX, m.clientY, e, n.type);
+        if (s !== hot) { hot?.classList.remove("hot"); hot = s; hot?.classList.add("hot"); }
+      };
+      const up = (m) => {
         handleEl.removeEventListener("pointermove", move); handleEl.removeEventListener("pointerup", up); handleEl.removeEventListener("pointercancel", up);
         e.classList.remove("dragging");
+        nodeLayer.classList.remove("carrying-libmon", "carrying-libtrainer");
+        hot?.classList.remove("hot");
+        if (plug && hot && m?.type === "pointerup") { snapInto(hot, n, m.clientY); return; }
         const { x, y } = n;
         edit((b) => { const t = nodeOf(b, n.id); if (t) { t.x = x; t.y = y; syncSessions(b, t); } grow(b); });
         applyBounds(); drawSessions();
@@ -313,6 +347,16 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
       const res = await g.run({ ...defaults(g.id), edition: getSettings().edition }, Math.random);
       return { ...base, title: res.title, genLabel: g.label, gen: g.id, kind: system !== "dnd5e" && g.id === "wild" ? "wildmon" : g.id, lines: res.lines, ...(res.mons ? { mons: res.mons } : {}) };
     }
+    if (spec.type === "libmon") {
+      const mon = cleanMon(spec.mon || (spec.wildId ? await getWildMon(spec.wildId) : null));
+      if (!mon) throw new Error("that Pokémon isn't in the library any more");
+      return { ...base, title: mon.nickname || mon.name, mon, source: spec.source || { kind: "wild", id: spec.wildId || "" } };
+    }
+    if (spec.type === "libtrainer") {
+      const npc = await getNpc(spec.npcId);
+      if (!npc?.name) throw new Error("that trainer isn't in the library any more");
+      return { ...base, title: npc.name, npcId: spec.npcId, sprite: npc.sprite || "", mons: (npc.team?.party || []).map(cleanMon).filter(Boolean).slice(0, TEAM_MAX) };
+    }
     if (spec.type === "dungeon") {
       const { genDungeon } = await import("../systems/dnd5e/engine/generators.js");
       const d = genDungeon(Math.random, { rooms: clamp(Number(spec.rooms) || 9, 3, 24), loops: 0.25 });
@@ -341,7 +385,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     try { node = await build(spec); } catch (err) { toast(`Couldn't make that: ${err.message || err}`, "bad"); return; }
     if (!node) return;
     const [w, h] = SIZE[node.type] || SIZE.note;
-    node.w = w; node.h = h;
+    node.w = w; node.h = hasSlots(node) ? 420 : h;   // room for the Trainer and Team slots
     const r = vp.getBoundingClientRect();
     const c = at || toWorld(r.left + r.width / 2 + 40, r.top + r.height / 2);
     node.x = Math.round(at ? c[0] - 40 : c[0] - w / 2); node.y = Math.round(at ? c[1] - 14 : c[1] - h / 2);
@@ -356,7 +400,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     const g = gens.find((x) => x.id === n.gen); if (!g) return;
     try {
       const res = await g.run({ ...defaults(g.id), edition: getSettings().edition }, Math.random);
-      edit((b) => { const x = nodeOf(b, n.id); if (x) { x.title = res.title; x.lines = res.lines; if (res.mons) x.mons = res.mons; } });
+      edit((b) => { const x = nodeOf(b, n.id); if (x) { x.title = res.title; x.lines = res.lines; if (res.mons) x.mons = res.mons; delete x.identity; } });
       drawNodes();
     } catch (err) { toast(`Couldn't roll that: ${err.message || err}`, "bad"); }
   }
@@ -384,6 +428,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
       railBtn("text", "Sticky", "sticky", { spec: () => ({ type: "text" }) }),
       railBtn("dungeon", "Dungeon", "dungeon", { fly: true }),
       railBtn("gens", "Generate", "dice", { fly: true }),
+      ...(pokemon ? [railBtn("libs", "Libraries", "paw", { fly: true })] : []),
       ...(p.notes.length || p.lists.length ? [railBtn("saved", "Saved", "saved", { fly: true })] : []),
     );
   }
@@ -398,6 +443,19 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
         el("p", { class: "dnd-tiny dnd-muted" }, "On the board, expand a dungeon to read every room and add your own notes to each."));
     } else if (id === "gens") {
       flyEl.replaceChildren(el("h5", {}, "Generators"), ...gens.map((g) => palItem(g.label, () => ({ type: "gen", gen: g.id }), `Drag a ${g.label.toLowerCase()} onto the board`, KINDS[system !== "dnd5e" && g.id === "wild" ? "wildmon" : g.id]?.icon)));
+    } else if (id === "libs") {
+      flyEl.replaceChildren(el("h5", {}, "Libraries"), el("p", { class: "dnd-tiny dnd-muted" }, "Loading the DM's trainers and wild Pokémon…"));
+      Promise.all([getNpcs(), getWildList()]).then(([npcs, wild]) => {
+        if (flyout !== "libs") return;
+        flyEl.replaceChildren(
+          el("h5", {}, "Libraries"),
+          el("p", { class: "dnd-tiny dnd-muted" }, "Drag onto the board, or straight into a trainer, gym leader or wild encounter's slots."),
+          el("h6", { class: "pl-fly-sub" }, "NPC trainers"),
+          ...(npcs.length ? npcs.map((x) => palItem(x.name || "NPC", () => ({ type: "libtrainer", npcId: x.id }), `${x.partyCount} Pokémon`, "person")) : [el("p", { class: "dnd-tiny dnd-muted" }, "None yet: the DM adds them in Control Centre → NPC Library.")]),
+          el("h6", { class: "pl-fly-sub" }, "Wild Pokémon"),
+          ...(wild.length ? wild.map((x) => palItem(`${x.name || "Pokémon"}${x.level ? ` · Lv ${x.level}` : ""}`, () => ({ type: "libmon", wildId: x.id, source: { kind: "wild", id: x.id } }), "", "paw")) : [el("p", { class: "dnd-tiny dnd-muted" }, "None yet: the DM adds them in Control Centre → Wild Library.")]),
+        );
+      });
     } else if (id === "saved") {
       const p = getPlan();
       flyEl.replaceChildren(el("h5", {}, "Saved notes and checklists"), el("p", { class: "dnd-tiny dnd-muted" }, "Adds a copy to the board."),
@@ -415,8 +473,167 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     ev.preventDefault();
     let spec; try { spec = JSON.parse(ev.dataTransfer.getData("text/plain")); } catch { return; }
     if (!spec || spec.pl !== 1) return;
-    addNode(spec, toWorld(ev.clientX, ev.clientY));
+    const from = spec.from;
+    addNode(spec, toWorld(ev.clientX, ev.clientY)).then(() => { if (from) takeFromTeam(from.nodeId, from.index); });
   });
+
+  // ---- slots: trainer identity and team (Pokémon trainer, gym leader and wild encounter nodes) ----------------------
+  const monSprite = (m) => (m?.dex ? el("img", { class: "pl-mon-sprite", src: spriteUrl(m.dex), alt: "", loading: "lazy" }) : el("span", { class: "pl-mon-ball", "aria-hidden": "true" }));
+  function monCard(m) {
+    return el("div", { class: "pl-mon-card" }, [
+      monSprite(m),
+      el("div", { class: "pl-mon-info" }, [
+        el("strong", {}, m.nickname ? `${m.nickname} (${m.name})` : m.name), el("span", { class: "pl-mon-lv" }, `Lv ${m.level}`),
+        m.ability ? el("span", { class: "dnd-tiny dnd-muted" }, m.ability) : null,
+        m.moves?.length ? el("div", { class: "pl-pills" }, m.moves.map((x) => el("span", { class: "pl-pill" }, x))) : null,
+      ].filter(Boolean)),
+    ]);
+  }
+  function trainerCard(n) {
+    return el("div", { class: "pl-trainer-card" }, [
+      el("div", { class: "pl-trainer-top" }, [n.sprite ? el("img", { class: "pl-trainer-sprite", src: trainerSpriteUrl(n.sprite), alt: "" }) : el("span", { class: "pl-avatar" }, (n.title || "?")[0].toUpperCase()), el("strong", {}, n.title)]),
+      el("div", { class: "pl-mini-team" }, (n.mons || []).map((m) => el("span", { class: "pl-mini-mon", title: `${m.name} Lv ${m.level}` }, [monSprite(m), el("span", {}, String(m.level))]))),
+    ]);
+  }
+
+  function slotsEl(n) {
+    const wrap = el("div", { class: "pl-slots" });
+    if (kindOf(n) !== "wildmon") wrap.append(trainerSlot(n));
+    wrap.append(teamSlot(n));
+    return wrap;
+  }
+  function trainerSlot(n) {
+    const who = n.identity;
+    const slot = el("div", { class: `pl-slot pl-slot-trainer${who ? " filled" : ""}`, "data-slot": "trainer", "data-node": n.id }, who
+      ? [who.sprite ? el("img", { class: "pl-trainer-sprite small", src: trainerSpriteUrl(who.sprite), alt: "" }) : el("span", { class: "pl-avatar small" }, who.name[0].toUpperCase()),
+        el("span", { class: "pl-slot-label" }, [el("strong", {}, who.name), el("span", { class: "dnd-tiny dnd-muted" }, who.npcId ? "From the NPC Library" : "Trainer")]),
+        readonly ? null : iconBtn("close", "Clear the trainer", () => { edit((b) => { const x = nodeOf(b, n.id); if (x) delete x.identity; }); drawNodes(); })].filter(Boolean)
+      : [el("span", { class: "pl-socket", "aria-hidden": "true" }), el("span", { class: "pl-slot-empty" }, readonly ? "No trainer" : "Trainer: drop one from the Libraries here")]);
+    if (!readonly) acceptDrops(slot, n, () => 0);
+    return slot;
+  }
+  function teamSlot(n) {
+    const mons = n.mons || [];
+    const rows = mons.map((m, i) => {
+      const row = el("div", { class: "pl-team-row", draggable: readonly ? "false" : "true", "data-index": String(i) }, [
+        readonly ? null : el("span", { class: "pl-grip", "aria-hidden": "true" }, "⋮⋮"),
+        monSprite(m), el("span", { class: "pl-team-name" }, m.nickname || m.name), el("span", { class: "pl-mon-lv" }, `Lv ${m.level}`),
+        readonly ? null : iconBtn("close", `Remove ${m.name}`, () => { takeFromTeam(n.id, i); }),
+      ].filter(Boolean));
+      if (!readonly) {
+        row.addEventListener("dragstart", (ev) => {
+          ev.stopPropagation();
+          ev.dataTransfer.setData("text/plain", JSON.stringify({ pl: 1, type: "libmon", mon: m, source: { kind: "wild", id: "" }, from: { nodeId: n.id, index: i } }));
+          ev.dataTransfer.effectAllowed = "move";
+          requestAnimationFrame(() => row.classList.add("lifted"));
+        });
+        row.addEventListener("dragend", () => row.classList.remove("lifted"));
+        row.addEventListener("pointerdown", (ev) => ev.stopPropagation());   // dragging a row isn't panning the board
+      }
+      return row;
+    });
+    const room = TEAM_MAX - mons.length;
+    const slot = el("div", { class: "pl-slot pl-slot-team", "data-slot": "team", "data-node": n.id }, [
+      el("div", { class: "pl-slot-head" }, [el("span", { class: "pl-socket", "aria-hidden": "true" }), el("strong", {}, "Team"), el("span", { class: "dnd-tiny dnd-muted" }, `${mons.length}/${TEAM_MAX}`)]),
+      ...rows,
+      room > 0 && !readonly ? el("div", { class: "pl-team-drop" }, mons.length ? "Drop more Pokémon here" : "Drop Pokémon from the Libraries here") : null,
+    ].filter(Boolean));
+    if (!readonly) acceptDrops(slot, n, (clientY) => insertIndex(slot, clientY));
+    return slot;
+  }
+  // Where a Pokémon dropped at clientY lands in a team: before the first row whose middle is below the pointer.
+  function insertIndex(slot, clientY) {
+    const rows = [...slot.querySelectorAll(".pl-team-row")];
+    const i = rows.findIndex((r) => { const b = r.getBoundingClientRect(); return clientY < b.top + b.height / 2; });
+    return i < 0 ? rows.length : i;
+  }
+  // HTML5 drops onto a slot: library entries from the flyout, and team rows from this or another node.
+  function acceptDrops(slot, n, indexAt) {
+    slot.addEventListener("dragover", (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      ev.dataTransfer.dropEffect = "move";
+      slot.classList.add("hot");
+      if (slot.dataset.slot === "team") showInsert(slot, indexAt(ev.clientY));
+    });
+    slot.addEventListener("dragleave", (ev) => { if (!slot.contains(ev.relatedTarget)) { slot.classList.remove("hot"); showInsert(slot, -1); } });
+    slot.addEventListener("drop", async (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      slot.classList.remove("hot"); showInsert(slot, -1); vp.classList.remove("drop");
+      let spec; try { spec = JSON.parse(ev.dataTransfer.getData("text/plain")); } catch { return; }
+      if (!spec || spec.pl !== 1) return;
+      const at = indexAt(ev.clientY);
+      try {
+        if (spec.type === "libtrainer") { const t = await build(spec); if (t) giveTrainer(n.id, t); return; }
+        if (spec.type !== "libmon") { toast("Only trainers and Pokémon from the Libraries fit here.", "bad"); return; }
+        if (slot.dataset.slot !== "team") { toast("Pokémon go in the Team slot.", "bad"); return; }
+        if (spec.from?.nodeId === n.id) { moveInTeam(n.id, spec.from.index, at); return; }
+        const mon = spec.mon ? cleanMon(spec.mon) : (await build(spec))?.mon;
+        if (mon && addToTeam(n.id, mon, at) && spec.from) takeFromTeam(spec.from.nodeId, spec.from.index);
+      } catch (err) { toast(`Couldn't add that: ${err.message || err}`, "bad"); }
+    });
+  }
+  function showInsert(slot, i) {
+    slot.querySelectorAll(".pl-insert").forEach((x) => x.remove());
+    if (i < 0) return;
+    const rows = slot.querySelectorAll(".pl-team-row");
+    const mark = el("div", { class: "pl-insert", "aria-hidden": "true" });
+    if (rows[i]) rows[i].before(mark); else (rows[rows.length - 1] || slot.querySelector(".pl-slot-head")).after(mark);
+  }
+  // The slot under a card being dragged by its title bar (pointer drag), if it accepts that kind of card.
+  function slotAt(cx, cy, self, type) {
+    for (const s of nodeLayer.querySelectorAll(".pl-slot")) {
+      if (self.contains(s)) continue;
+      const r = s.getBoundingClientRect();
+      if (cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) continue;
+      if (type === "libtrainer") return s.closest(".pl-node")?.querySelector('.pl-slot[data-slot="trainer"]') ? s : null;
+      if (type === "libmon" && s.dataset.slot === "team") return s;
+    }
+    return null;
+  }
+  function snapInto(slot, card, clientY) {
+    const targetId = slot.dataset.node;
+    let ok = false;
+    if (card.type === "libtrainer") ok = giveTrainer(targetId, card);
+    else ok = addToTeam(targetId, card.mon, insertIndex(slot, clientY));
+    if (!ok) { drawNodes(); return; }
+    // the card snaps in: it leaves the board (drag a team row out to get a card back)
+    edit((b) => { b.nodes = b.nodes.filter((x) => x.id !== card.id); removeLinksOf(b, card.id); });
+    drawNodes();
+    nodeEls.get(targetId)?.classList.add("snapped");
+    setTimeout(() => nodeEls.get(targetId)?.classList.remove("snapped"), 600);
+  }
+  function giveTrainer(targetId, t) {
+    const name = t.title || t.name || "Trainer";
+    edit((b) => {
+      const x = nodeOf(b, targetId); if (!x) return;
+      x.identity = { name, npcId: t.npcId || "", sprite: t.sprite || "" };
+      if (t.mons?.length) x.mons = t.mons.map(cleanMon).filter(Boolean).slice(0, TEAM_MAX);
+      x.title = kindOf(x) === "gym" && !/gym leader/i.test(name) ? `Gym Leader ${name}` : name;
+    });
+    drawNodes();
+    toast(`${name} and their team are in.`, "good");
+    return true;
+  }
+  function addToTeam(targetId, mon, at) {
+    const target = nodeOf(board, targetId);
+    if (!target) return false;
+    if ((target.mons || []).length >= TEAM_MAX) { toast(`A team holds ${TEAM_MAX} Pokémon.`, "bad"); return false; }
+    edit((b) => { const x = nodeOf(b, targetId); if (!x) return; x.mons = x.mons || []; x.mons.splice(clamp(at, 0, x.mons.length), 0, cleanMon(mon)); });
+    drawNodes();
+    return true;
+  }
+  function moveInTeam(nodeId, from, to) {
+    edit((b) => {
+      const x = nodeOf(b, nodeId); if (!x?.mons?.[from]) return;
+      const [m] = x.mons.splice(from, 1);
+      x.mons.splice(clamp(to > from ? to - 1 : to, 0, x.mons.length), 0, m);
+    });
+    drawNodes();
+  }
+  function takeFromTeam(nodeId, index) {
+    edit((b) => { const x = nodeOf(b, nodeId); if (x?.mons?.[index]) x.mons.splice(index, 1); });
+    drawNodes();
+  }
 
   // ---- drawers (maps, scenarios, party plans...) ---------------------------------------------
   let drawerId = null;

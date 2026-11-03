@@ -120,3 +120,21 @@ test("links join nodes, follow rooms, drop with their node, and suggest a relati
   assert.equal(n.links[1].rel, "custom");
   assert.equal(n.links[1].toRoom, 7);
 });
+
+test("library cards and trainer/team slots survive a save, and junk is dropped", () => {
+  const b = normalizeBoard({ id: "b", nodes: [
+    { id: "g", type: "gen", gen: "gym", kind: "gym", title: "Gym", identity: { name: "Brock", npcId: "n1", sprite: "brock.png" },
+      mons: [{ name: "Onix", dex: 95, level: 14, moves: ["Tackle", "Rock Throw", "", "x", "y"], item: "Hard Stone" }, { name: "" }, ...Array(8).fill({ name: "Geodude", level: 12 })] },
+    { id: "m", type: "libmon", mon: { name: "Rattata", dex: 19, level: 6, nickname: "Ratty" }, source: { kind: "wild", id: "w1" } },
+    { id: "t", type: "libtrainer", title: "Misty", npcId: "n2", mons: [{ name: "Staryu", level: 18 }] },
+    { id: "bad", type: "libmon", mon: { level: 5 } },
+  ] });
+  const gym = b.nodes.find((n) => n.id === "g");
+  assert.equal(gym.identity.name, "Brock");
+  assert.equal(gym.mons.length, 6, "a team holds six");
+  assert.deepEqual(gym.mons[0].moves, ["Tackle", "Rock Throw", "x", "y"]);
+  assert.equal(gym.mons[0].item, "Hard Stone");
+  assert.equal(b.nodes.find((n) => n.id === "m").mon.nickname, "Ratty");
+  assert.equal(b.nodes.find((n) => n.id === "t").mons[0].name, "Staryu");
+  assert.equal(b.nodes.find((n) => n.id === "bad"), undefined, "a Pokémon with no name isn't kept");
+});

@@ -236,3 +236,53 @@ html.planner-full #lavaFx, html.planner-full .lava-tower-wrap, html.planner-full
 .pl-eye.on { background: var(--gold); color: #1a1208; }
 .pl-share { margin-bottom: calc(10px * var(--s)); }
 .pl-party-map .pl-map-wrap { height: min(62vh, 640px); }
+
+/* ---- Library cards and the Trainer / Team slots (boardView.js "Slots") ------------------------------------------- */
+.pl-node[data-kind="libmon"] { --k: #ff8a5c; border-radius: 22px 6px 22px 6px; }
+.pl-node[data-kind="libtrainer"] { --k: #8f7cf0; border-radius: 6px 22px 6px 22px; }
+/* the plug on a card, like the notch on a Scratch block: it fits a slot's socket */
+.pl-plug { position: absolute; left: -11px; top: 34px; width: 20px; height: 26px; border-radius: 6px 0 0 6px; background: var(--k); border: 2px solid var(--text); border-right: 0; }
+.pl-plug::after { content: ""; position: absolute; left: 5px; top: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--ink, #111); opacity: .5; }
+.pl-plug-hint { margin: 6px 0 0; font-size: 12px; opacity: .65; }
+.pl-mon-card { display: flex; gap: 8px; align-items: flex-start; }
+.pl-mon-info { display: grid; gap: 3px; min-width: 0; }
+.pl-mon-info strong { font-size: 16px; }
+.pl-mon-sprite { width: 56px; height: 56px; object-fit: contain; image-rendering: pixelated; flex: none; }
+.pl-mon-ball { width: 22px; height: 22px; flex: none; border-radius: 50%; background: linear-gradient(#ff5a4e 0 46%, #222 46% 54%, #f4f4f5 54%); box-shadow: 0 0 0 2px #222 inset; }
+.pl-mon-lv { font-size: 13px; font-weight: 700; opacity: .8; white-space: nowrap; }
+.pl-trainer-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.pl-trainer-top strong { font-size: 17px; }
+.pl-trainer-sprite { width: 56px; height: 56px; object-fit: contain; image-rendering: pixelated; flex: none; }
+.pl-trainer-sprite.small { width: 36px; height: 36px; }
+.pl-avatar.small { float: none; width: 34px; height: 34px; margin: 0; font-size: 18px; border-width: 2px; }
+.pl-mini-team { display: flex; flex-wrap: wrap; gap: 4px; }
+.pl-mini-team .pl-mon-sprite { width: 36px; height: 36px; }
+.pl-mini-mon { display: inline-flex; flex-direction: column; align-items: center; font-size: 12px; font-weight: 700; }
+
+.pl-slots { display: grid; gap: 6px; margin-bottom: 8px; }
+.pl-slot { position: relative; border: 2px dashed color-mix(in srgb, var(--text) 45%, transparent); border-radius: 10px; padding: 6px 8px; background: color-mix(in srgb, var(--k) 10%, transparent); transition: border-color .15s, background-color .15s, transform .15s; }
+.pl-slot.filled { border-style: solid; }
+.pl-slot-trainer { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.pl-slot-label { display: grid; flex: 1; min-width: 0; }
+.pl-slot-empty, .pl-team-drop { font-size: 13px; opacity: .7; }
+.pl-team-drop { padding: 6px 4px 2px; text-align: center; }
+.pl-slot-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+/* the socket a card's plug fits into */
+.pl-socket { width: 12px; height: 18px; border-radius: 0 5px 5px 0; border: 2px solid var(--text); border-left: 0; background: var(--panel-alt); flex: none; }
+.pl-team-row { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 8px; background: var(--panel-alt); margin-bottom: 4px; cursor: grab; transition: opacity .15s, transform .15s; }
+.pl-team-row .pl-mon-sprite { width: 36px; height: 36px; }
+.pl-team-row .pl-ibtn { margin-left: auto; width: 24px; height: 24px; color: var(--text); }
+.pl-team-row.lifted { opacity: .35; }
+.pl-team-name { flex: 1; min-width: 0; font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-grip { opacity: .45; font-size: 12px; letter-spacing: -2px; cursor: grab; }
+.pl-insert { height: 4px; border-radius: 2px; background: var(--gold); margin: 2px 0 4px; }
+.pl-fly-sub { margin: 10px 0 2px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; opacity: .7; }
+/* while a card is carried, the slots it fits light up; the one under the pointer glows */
+.pl-nodes.carrying-libmon .pl-slot-team, .pl-nodes.carrying-libtrainer .pl-slot-trainer { border-color: var(--gold); }
+.pl-slot.hot { border-color: var(--gold); border-style: solid; background: color-mix(in srgb, var(--gold) 22%, transparent); transform: scale(1.02); }
+@media (prefers-reduced-motion: no-preference) {
+  .pl-node.snapped { animation: pl-snap .5s cubic-bezier(.34, 1.56, .64, 1); }
+  .pl-nodes.carrying-libmon .pl-slot-team, .pl-nodes.carrying-libtrainer .pl-slot-trainer { animation: pl-beckon 1s ease-in-out infinite; }
+}
+@keyframes pl-snap { 0% { transform: scale(1); } 35% { transform: scale(1.04); } 100% { transform: scale(1); } }
+@keyframes pl-beckon { 50% { transform: scale(1.015); } }

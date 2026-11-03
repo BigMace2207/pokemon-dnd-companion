@@ -16,7 +16,9 @@
 **For players**
 - The Hub: a shared whiteboard every player lands on, with notes, drawings and everyone's cursor live (in each player's
   own colour, picked in Settings > Appearance, with their name above it). The DM drags encounter buttons onto it, and
-  they are the only way into the Battle screen
+  they are the only way into the Battle screen. Pings (P or Alt+click) point something out to everyone, notes can be
+  recoloured and resized, the corner buttons zoom and fit the board, clicking a player's avatar jumps to them, and
+  Ctrl+Z takes back what you last added
 - Pokédex and Move Dex covering 1301 Pokémon, with forms, evolutions and stats
 - Stat and Damage calculators that load your saved Pokémon
 - My Team, Bag and Trainer Sheet built from the rulebook, with named saves
@@ -39,7 +41,7 @@
 - DM screen, encounter builder with XP budgets, and campaign notes
 
 **Everywhere**
-- Campaign Planner (both games): one full-screen whiteboard, no tower behind it. A slim rail on the left adds nodes (notes, checklists, stickies, expandable dungeons with per-room notes, and every generator: Pokémon wild encounters, trainers, gym leaders, routes; D&D NPCs, encounters, taverns, loot...). Drag them around an endless board that grows as you near its edge, change or upload the background, and circle groups of nodes (box or freehand) into colour-coded "Session N" regions; a node can be in several sessions. The Notebook drawer holds searchable Markdown notes that can also be NPCs, quests (with status), locations and session recaps, with an export to Markdown (it replaces the old Campaign Notes page and imports its notes once). Maps, scenarios (DM) and party plans (DM) open as drawers. Players share their boards, notes and checklists with the DM automatically
+- Campaign Planner (both games): one full-screen whiteboard, no tower behind it. A slim rail on the left adds nodes (notes, checklists, stickies, expandable dungeons with per-room notes, and every generator: Pokémon wild encounters, trainers, gym leaders, routes; D&D NPCs, encounters, taverns, loot...). Drag them around an endless board that grows as you near its edge, change or upload the background, and circle groups of nodes (box or freehand) into colour-coded "Session N" regions; a node can be in several sessions. The Notebook drawer holds searchable Markdown notes that can also be NPCs, quests (with status), locations and session recaps, with an export to Markdown (it replaces the old Campaign Notes page and imports its notes once). Maps, scenarios (DM) and party plans (DM) open as drawers. Players share their boards, notes and checklists with the DM automatically. In Pokémon campaigns, trainer, gym leader and wild encounter nodes have Trainer and Team slots like Scratch blocks: bring the DM's NPC trainers and wild Pokémon in with the Libraries button and drag them in (a trainer gives the node its name, sprite and team; Pokémon join the team, up to six, and can be dragged to reorder or back out). The hub battles those exact teams
 - Library: add your own PDF, EPUB, Word, text, Markdown and HTML books and read them in a built-in e-reader (they stay on your device; accounts the admin allows keep them on the server, private, on every device they sign in on)
 - Maps are stored on the server, so they follow you to every device: up to 10 per campaign (15 MB each) for everyone, unlimited (100 MB each) for accounts the admin allows
 - Lava Tower theme (flame button in the top bar, or Settings → Appearance): grey brick tower, lava drips, cracks of light and crumbling stone; "Calm" turns the motion off
@@ -49,7 +51,8 @@
 - Accounts with email, Google or Apple sign-in; campaigns appear after login
 - Signing in with a password on a new device asks for a 4-digit code sent to the account's email
 - Admin console for the site owner: every account and campaign, storage and disk use, permission switches, and a
-  command line (`grant`, `revoke`, `perms`, `signout`, `who`)
+  command line (`grant`, `revoke`, `perms`, `signout`, `who`); deleting a campaign there moves it to a restorable
+  "Deleted campaigns" list instead of erasing it
 - Autosave, hourly backups and automatic recovery
 - Trainers Online with live presence
 

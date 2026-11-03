@@ -151,6 +151,44 @@ class AdminAndPermissions(Base):
         self.assertIn("can't", out["message"])
 
 
+class DeletingCampaigns(Base):
+    def setUp(self):
+        super().setUp()
+        server.ADMIN_EMAILS = {"boss@example.com"}
+        self.boss = self.register("boss@example.com", "id-boss")
+        next(a for a in server.ACCOUNTS.values() if a["email"] == "boss@example.com")["emailVerified"] = True
+        self.owner = self.register("o@example.com", "id-owner")
+        self.cid, self.entry = self.make_campaign("id-owner", "Doomed table")
+        self.entry["state"]["plans"]["id-owner"] = {"name": "O", "updated": 1, "plan": {"notes": ["keep me"]}}
+
+    def tearDown(self):
+        server.ADMIN_EMAILS = set()
+        super().tearDown()
+
+    def act(self, token, action):
+        return call(self.base, "POST", "/api/admin/campaign", {"id": self.cid, "action": action}, token=token)
+
+    def test_deleting_hides_the_campaign_and_restoring_brings_it_back_whole(self):
+        self.assertEqual(self.act(self.owner, "archive")[0], 404, "only an admin")
+        status, out = self.act(self.boss, "archive")
+        self.assertEqual(status, 200)
+        self.assertEqual([c["id"] for c in out["overview"]["archived"]], [self.cid])
+        self.assertNotIn(self.cid, [c["id"] for c in out["overview"]["campaigns"]])
+        self.assertEqual(call(self.base, "GET", "/api/campaigns?networkId=id-owner", token=self.owner)[1]["campaigns"], [])
+        self.assertEqual(call(self.base, "GET", f"/api/campaign/{self.cid}?networkId=id-owner", token=self.owner)[0], 404)
+        self.assertEqual(self.act(self.boss, "restore")[0], 200)
+        self.assertEqual(server.CAMPAIGNS[self.cid]["state"]["plans"]["id-owner"]["plan"]["notes"], ["keep me"], "nothing was lost")
+        self.assertNotIn("archivedAt", server.CAMPAIGNS[self.cid])
+
+    def test_a_deleted_campaign_survives_a_save_and_reload(self):
+        self.act(self.boss, "archive")
+        server.save_state_to_disk()
+        server.CAMPAIGNS, server.ARCHIVED = {}, {}
+        server.load_state_from_disk()
+        self.assertIn(self.cid, server.ARCHIVED)
+        self.assertNotIn(self.cid, server.CAMPAIGNS)
+
+
 class Uploads(Base):
     def setUp(self):
         super().setUp()
@@ -251,6 +289,16 @@ class Hub(Base):
         self.assertEqual(self.op(self.member, "id-member", op="activate", itemId=bid)[0], 403)
         self.op(self.owner, "id-owner", op="activate", itemId=bid, token=self.dm)
         self.assertEqual(self.sync(self.member, "id-member", since=out["rev"])[1]["activeButton"], bid)
+
+    def test_pings_reach_everyone_and_fade(self):
+        self.sync(self.member, "id-member", cursor={"x": 1, "y": 1, "name": "Mia", "color": "#ff0000"}, ping={"x": 40, "y": -20})
+        out = self.sync(self.owner, "id-owner")[1]
+        self.assertEqual([(p["x"], p["y"], p["name"]) for p in out["pings"]], [(40, -20, "Mia")])
+        for _ in range(5):
+            self.sync(self.member, "id-member", ping={"x": 0, "y": 0})
+        self.assertLessEqual(len(self.sync(self.owner, "id-owner")[1]["pings"]), 3, "no ping spam")
+        server.HUB_PINGS[self.cid] = [{**p, "t": 0} for p in server.HUB_PINGS[self.cid]]
+        self.assertEqual(self.sync(self.owner, "id-owner")[1]["pings"], [])
 
     def test_notes_belong_to_whoever_wrote_them(self):
         rev = self.op(self.member, "id-member", op="put", item={"type": "note", "id": "n-1", "x": 5, "y": 5, "text": "Hi"})[1]["rev"]

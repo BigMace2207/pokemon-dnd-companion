@@ -55,7 +55,8 @@ class ServerCase(unittest.TestCase):
         tmp = Path(self.tmp.name)
         server.STATE_FILE = tmp / ".server_state.dat"
         server.BACKUP_DIR = tmp / "backups"
-        server.CAMPAIGNS, server.ACCOUNTS, server.SESSIONS, server.FILES = {}, {}, {}, {}
+        server.CAMPAIGNS, server.ACCOUNTS, server.SESSIONS, server.FILES, server.ARCHIVED = {}, {}, {}, {}, {}
+        server.HUB_PINGS.clear()
         server.UPLOAD_DIR = tmp / "uploads"
         server.CHALLENGES.clear()
         server.HUB_CURSORS.clear()

@@ -304,6 +304,9 @@ SESSIONS = {}  # sha256(token) -> {"accountId", "expires"} -- raw tokens are nev
 # bytes are separate files in UPLOAD_DIR, so a big upload never slows the
 # autosave down. fileId -> {id, owner, kind, campaignId, name, mime, size, sha256, created, meta, deleted}
 FILES = {}
+# Campaigns the admin deleted. Kept whole (nothing is erased) so a deletion can be undone from the admin console;
+# nobody can see or join them while they are here. campaignId -> {"meta", "state", "archivedAt", "archivedBy"}
+ARCHIVED = {}
 # token -> campaignId. A DM login is scoped to the one campaign it was
 # issued for, since each campaign now has its own DM password.
 DM_TOKENS = {}
@@ -444,7 +447,7 @@ def _read_state_file(path):
 def _serialize_state():
     """The exact bytes written to the save file and to every backup. Caller
     holds CAMPAIGNS_LOCK."""
-    body = json.dumps({"campaigns": CAMPAIGNS, "accounts": ACCOUNTS, "sessions": SESSIONS, "files": FILES}).encode("utf-8")
+    body = json.dumps({"campaigns": CAMPAIGNS, "accounts": ACCOUNTS, "sessions": SESSIONS, "files": FILES, "archived": ARCHIVED}).encode("utf-8")
     return _MAGIC + _xor(body, _FILE_KEY) if ENCRYPT_STATE_FILE else body
 
 
@@ -518,7 +521,7 @@ def _quarantine_unreadable_state():
 
 
 def load_state_from_disk():
-    global CAMPAIGNS, ACCOUNTS, SESSIONS, FILES
+    global CAMPAIGNS, ACCOUNTS, SESSIONS, FILES, ARCHIVED
     if not STATE_FILE.exists():
         return
     try:
@@ -535,14 +538,14 @@ def load_state_from_disk():
             return
         except Exception as e:
             print(f"WARNING: backup {backup.name} is unreadable too ({e}).")
-    CAMPAIGNS, ACCOUNTS, SESSIONS, FILES = {}, {}, {}, {}
+    CAMPAIGNS, ACCOUNTS, SESSIONS, FILES, ARCHIVED = {}, {}, {}, {}, {}
     print("No usable backup found -- starting fresh (the unreadable file was kept, see above).")
 
 
 def _install_loaded(loaded, source_name):
     """Replaces the in-memory state with a parsed save. Raises (leaving the
     caller to fall back) if the data isn't shaped like a save."""
-    global CAMPAIGNS, ACCOUNTS, SESSIONS, FILES
+    global CAMPAIGNS, ACCOUNTS, SESSIONS, FILES, ARCHIVED
     if "campaigns" in loaded:
         campaigns = loaded["campaigns"]
         # Backfill any fields added to campaign meta after some campaigns
@@ -578,6 +581,7 @@ def _install_loaded(loaded, source_name):
     ACCOUNTS = loaded.get("accounts") or {}   # absent in saves from before accounts existed
     SESSIONS = loaded.get("sessions") or {}
     FILES = loaded.get("files") or {}
+    ARCHIVED = loaded.get("archived") or {}
     total_trainers = sum(len(e["state"]["trainers"]) for e in CAMPAIGNS.values())
     print(f"Loaded {len(CAMPAIGNS)} campaign(s), {len(ACCOUNTS)} account(s) from {source_name} ({total_trainers} trainer(s) remembered).")
 
@@ -892,7 +896,9 @@ def clean_meta(raw, limit=60_000):
 # a few seconds: they change many times a second and never need saving.
 HUB_MAX_ITEMS = 600
 HUB_CURSOR_TTL = 6
-HUB_CURSORS = {}   # campaignId -> {networkId: {name, color, x, y, t}}
+HUB_CURSORS = {}   # campaignId -> {networkId: {name, color, x, y, t, down}}
+HUB_PING_TTL = 4
+HUB_PINGS = {}     # campaignId -> [{id, x, y, color, name, t}] -- "look here" ripples, gone after a few seconds
 HUB_TYPES = ("note", "stroke", "text", "button")
 HUB_SOURCES = ("npc", "wild", "plan")
 
@@ -1580,6 +1586,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             "online": sum(1 for t in e["state"]["trainers"].values() if time.time() - t.get("lastSeen", 0) < TRAINER_TIMEOUT),
             "maps": len(live_files(kind="map", campaign_id=c)),
         } for c, e in CAMPAIGNS.items()]
+        archived = [{"id": c, "name": e["meta"].get("name"), "system": e["meta"].get("system"), "members": len(e["meta"].get("memberIds") or []),
+                     "owner": email_of.get(e["meta"].get("ownerId"), "(no account)"), "archivedAt": e.get("archivedAt"), "archivedBy": e.get("archivedBy")}
+                    for c, e in sorted(ARCHIVED.items(), key=lambda kv: kv[1].get("archivedAt") or 0, reverse=True)]
         all_files = live_files()
         try:
             disk = shutil.disk_usage(DATA_DIR)
@@ -1587,7 +1596,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         except OSError:
             disk = None
         return {
-            "accounts": accounts, "campaigns": campaigns, "perms": PERMS, "mail": mailer.describe(),
+            "accounts": accounts, "campaigns": campaigns, "archived": archived, "perms": PERMS, "mail": mailer.describe(),
             "storage": {"disk": disk, "files": len(all_files), "fileBytes": sum(f["size"] for f in all_files),
                         "books": sum(1 for f in all_files if f["kind"] == "book"), "maps": sum(1 for f in all_files if f["kind"] == "map"),
                         "stateBytes": STATE_FILE.stat().st_size if STATE_FILE.exists() else 0},
@@ -1628,7 +1637,35 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._send_json({"message": msg, "overview": self._admin_overview()})
             if parts[2:] == ["command"]:
                 return self._send_json({"output": self._admin_command(me, data.get("text")), "overview": self._admin_overview()})
+            if parts[2:] == ["campaign"]:
+                msg = self._archive_campaign(me, data.get("id"), data.get("action"))
+                return self._send_json({"message": msg, "overview": self._admin_overview()})
         return self._send_json({"error": "not found"}, 404)
+
+    def _archive_campaign(self, me, cid, action):
+        """Caller holds CAMPAIGNS_LOCK. "archive" takes a campaign away from everyone (kept whole in ARCHIVED, so it
+        can come back); "restore" puts it back exactly as it was."""
+        if action == "archive":
+            entry = CAMPAIGNS.pop(cid, None) if isinstance(cid, str) else None
+            if not entry:
+                return "No such campaign."
+            ARCHIVED[cid] = {**entry, "archivedAt": time.time(), "archivedBy": me.get("email") or me["id"]}
+            HUB_CURSORS.pop(cid, None)
+            HUB_PINGS.pop(cid, None)
+            for tok in [t for t, rec in DM_TOKENS.items() if rec.get("cid") == cid]:
+                del DM_TOKENS[tok]
+            mark_dirty()
+            return f"Deleted \"{entry['meta'].get('name')}\". It's in Deleted campaigns if you need it back."
+        if action == "restore":
+            entry = ARCHIVED.pop(cid, None) if isinstance(cid, str) else None
+            if not entry:
+                return "No such deleted campaign."
+            entry.pop("archivedAt", None)
+            entry.pop("archivedBy", None)
+            CAMPAIGNS[cid] = entry
+            mark_dirty()
+            return f"Restored \"{entry['meta'].get('name')}\"."
+        return "Unknown campaign action."
 
     def _admin_command(self, me, text):
         """Caller holds CAMPAIGNS_LOCK. A tiny command line for the console:
@@ -2121,14 +2158,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 cur = data.get("cursor")
                 if isinstance(cur, dict):
                     cursors[nid] = {"name": _text(cur.get("name"), MAX_NAME) or "Player", "color": _colour(cur.get("color"), "#5aa8f0"),
-                                    "x": _num(cur.get("x")), "y": _num(cur.get("y")), "t": now}
+                                    "x": _num(cur.get("x")), "y": _num(cur.get("y")), "t": now, "down": cur.get("down") is True}
                 else:
                     cursors.pop(nid, None)
                 for k in [k for k, c in cursors.items() if now - c["t"] > HUB_CURSOR_TTL]:
                     del cursors[k]
+                pings = [pg for pg in HUB_PINGS.get(cid, []) if now - pg["t"] < HUB_PING_TTL]
+                ping = data.get("ping")
+                if isinstance(ping, dict) and sum(1 for pg in pings if pg["by"] == nid) < 3:
+                    who = cursors.get(nid) or {}
+                    pings.append({"id": secrets.token_hex(5), "by": nid, "x": _num(ping.get("x")), "y": _num(ping.get("y")),
+                                  "color": who.get("color", "#5aa8f0"), "name": who.get("name", "Player"), "t": now})
+                HUB_PINGS[cid] = pings
                 hub = state["hub"]
                 out = {"rev": hub["rev"], "activeButton": hub.get("activeButton"),
-                       "cursors": [{"id": k, **{f: c[f] for f in ("name", "color", "x", "y")}} for k, c in cursors.items() if k != nid]}
+                       "cursors": [{"id": k, **{f: c[f] for f in ("name", "color", "x", "y", "down")}} for k, c in cursors.items() if k != nid],
+                       "pings": [{f: pg[f] for f in ("id", "by", "x", "y", "color", "name")} for pg in pings]}
                 if data.get("since") != hub["rev"]:
                     out["items"] = [{**it, "preview": hub_button_preview(state, it)} if it["type"] == "button" else it for it in hub["items"]]
                 return self._send_json(out)
@@ -2144,6 +2189,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     item = clean_hub_item(data.get("item"), nid, is_dm)
                     if not item:
                         return self._send_json({"error": "bad item"}, 400)
+                    # who wrote it, from the server's own list (shown on notes; never taken from the client)
+                    item["byName"] = (state["trainers"].get(nid) or {}).get("name") or ""
                     existing = next((i for i, it in enumerate(hub["items"]) if it["id"] == item["id"]), None)
                     if existing is not None:
                         old = hub["items"][existing]
@@ -2151,7 +2198,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                             return self._send_json({"error": "not yours"}, 403)
                         if old["type"] == "button" and not is_dm:
                             return self._send_json({"error": "DM only"}, 403)
-                        item["owner"] = old["owner"]
+                        item["owner"], item["byName"] = old["owner"], old.get("byName", "")
                         hub["items"][existing] = item
                     else:
                         if len(hub["items"]) >= HUB_MAX_ITEMS:

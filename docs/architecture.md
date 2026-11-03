@@ -165,6 +165,15 @@ moves a whole map. Generators: `pokeGenerators.js` is built on the Pokémon data
 Node-tested (`tests/js`), as is the board geometry (`board.test.mjs`). The server tests cover who may write and read plans
 (`PlannerPlans`). The desktop sidebar folds away (`html.nav-collapsed`, remembered per device).
 
+## Planner slots (Pokémon)
+
+Trainer, gym leader and wild encounter nodes (`gen` nodes of kind `trainer`, `gym`, `wildmon`) carry `mons` (up to six,
+`board.js cleanMon`) and, for trainers and gym leaders, `identity` ({name, npcId, sprite}). The Libraries flyout adds
+`libtrainer` and `libmon` cards from the DM's NPC and Wild Libraries. Dragging a card by its title bar over a slot
+(`slotAt`) or dropping a library entry or a team row onto one (`acceptDrops`, HTML5 drag) snaps it in; the card leaves the
+board. Team rows drag to reorder, to another node, or out onto the board (`takeFromTeam` + a new `libmon` card). The hub's
+"From your planner" encounters read `mons` and `identity`, so a battle uses the team in the order set here.
+
 ## Shared screens
 
 The shared sign-in and campaign screens say "D&D Companion" and show nothing Pokémon; the Pokémon artwork credit is in
@@ -194,13 +203,16 @@ Apple sign-ins don't need a code.
 
 The admin is whoever's confirmed address is in `PKDND_ADMIN_EMAILS` on the server (an address is confirmed by a code
 sent to it, or by Google). Admins see the Admin page (`js/views/admin.js`, `/api/admin/*`, which answers 404 to anyone
-else) and can grant `admin`, `cloudLibrary` and `unlimitedMaps` to any account.
+else) and can grant `admin`, `cloudLibrary` and `unlimitedMaps` to any account. Deleting a campaign from the console
+(`POST /api/admin/campaign`, action `archive`) moves it whole into `ARCHIVED` (saved as `archived` in the save file),
+where nobody can reach it; `restore` puts it back unchanged.
 
 ## The Pokémon hub
 
 `js/views/hub.js` is the Pokémon system's default page: one shared board per campaign (`state.hub`, server.py "The
 Pokémon hub"). The page calls `POST /api/hub/sync` a few times a second while open with its own cursor and gets back
-everyone else's (kept in memory only, gone after 6 seconds) and the board when its revision changed. `POST /api/hub/op`
+everyone else's (kept in memory only, gone after 6 seconds) and the board when its revision changed. Pings ride on the same
+call (`ping`, in memory for 4 seconds, at most 3 per player at once), and a cursor's `down` flag shows a click ripple. `POST /api/hub/op`
 puts, deletes or clears items: notes, text and drawings belong to whoever made them; encounter buttons need the DM token.
 A button's hover card is computed by the server from the DM's NPC and Wild libraries (`hub_button_preview`), so it
 shows the lead Pokémon's level and only names it when the DM allowed the sprite. The Battle screen is a gated view

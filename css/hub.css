@@ -34,7 +34,10 @@ html.hub-full body { background: #09090b; }
 .hub-title, .hub-people { pointer-events: auto; display: flex; align-items: center; gap: calc(10px * var(--s)); background: var(--h-glass); border: 1px solid var(--h-line); border-radius: 999px; padding: calc(8px * var(--s)) calc(16px * var(--s)); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
 .hub-title strong { font-family: "Instrument Serif", Georgia, serif; font-weight: 400; font-size: calc(24px * var(--s)); letter-spacing: -.01em; line-height: 1; }
 .hub-eyebrow { font-size: calc(12px * var(--s)); text-transform: uppercase; letter-spacing: .14em; color: var(--h-faint); }
-.hub-avatar { width: calc(28px * var(--s)); height: calc(28px * var(--s)); min-width: 22px; min-height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: calc(13px * var(--s)); font-weight: 700; color: #0b0b0c; background: var(--c); margin-left: calc(-8px * var(--s)); box-shadow: 0 0 0 2px #18181b; }
+.hub-avatar { width: calc(28px * var(--s)); height: calc(28px * var(--s)); min-width: 22px; min-height: 22px; padding: 0; border: 0; font-family: inherit; border-radius: 50%; display: grid; place-items: center; font-size: calc(13px * var(--s)); font-weight: 700; color: #0b0b0c; background: var(--c); margin-left: calc(-8px * var(--s)); box-shadow: 0 0 0 2px #18181b; cursor: pointer; transition: transform .15s var(--h-ease); position: relative; }
+.hub-avatar:hover { transform: translateY(-3px) scale(1.08); z-index: 1; }
+.hub-avatar.self { cursor: default; }
+.hub-avatar.self:hover { transform: none; }
 .hub-avatar:first-child { margin-left: 0; }
 .hub-avatar.more { background: #3f3f46; color: var(--h-text); }
 .hub-online { margin-left: calc(6px * var(--s)); font-size: calc(13px * var(--s)); color: var(--h-dim); }
@@ -48,7 +51,11 @@ html.hub-full body { background: #09090b; }
 .hub-tool svg { width: calc(18px * var(--s)); height: calc(18px * var(--s)); min-width: 16px; min-height: 16px; }
 .hub-tool:hover { color: var(--h-text); background: rgba(255, 255, 255, .06); }
 .hub-tool:active { transform: scale(.96); }
-.hub-tool.on { color: #0b0b0c; background: #fff; }
+.hub-toolbar { position: absolute; }
+.hub-tool { position: relative; z-index: 1; }
+.hub-tool.on { color: #0b0b0c; background: transparent; }
+.hub-thumb { position: absolute; left: 0; top: calc(6px * var(--s)); bottom: calc(6px * var(--s)); border-radius: 999px; background: #fff; box-shadow: 0 4px 14px rgba(255, 255, 255, .18); transition: transform .32s var(--h-ease); pointer-events: none; }
+.hub-thumb.instant { transition: none; }
 .hub-dm.on { background: var(--h-live); color: #fff; }
 .hub-sep { width: 1px; height: calc(22px * var(--s)); background: var(--h-line-2); margin: 0 calc(4px * var(--s)); }
 .hub-swatch { width: calc(24px * var(--s)); height: calc(24px * var(--s)); min-width: 20px; min-height: 20px; border-radius: 50%; border: 2px solid transparent; background: var(--c); cursor: pointer; padding: 0; transition: transform .15s var(--h-ease); }
@@ -74,10 +81,22 @@ html.hub-full body { background: #09090b; }
 .hub-mytag.show { opacity: 1; }
 
 /* --- notes, text --- */
-.hub-note { position: absolute; background: var(--note, #ffe58a); color: #1c1917; border-radius: 6px 6px 14px 6px; box-shadow: 0 10px 30px rgba(0, 0, 0, .35), 0 1px 0 rgba(255, 255, 255, .4) inset; display: flex; flex-direction: column; cursor: grab; transition: box-shadow .15s, transform .15s var(--h-ease); }
-.hub-note-grip { height: 16px; flex: none; border-bottom: 1px dashed rgba(0, 0, 0, .12); }
-.hub-note-text { flex: 1; min-height: 120px; resize: none; border: 0; background: transparent; padding: 10px 12px 12px; font: 500 16px/1.4 "Space Grotesk", system-ui, sans-serif; color: inherit; outline: none; user-select: text; -webkit-user-select: text; }
-.hub-note-text::placeholder { color: rgba(0, 0, 0, .35); }
+.hub-note { position: absolute; background: var(--note, #fff6c2); color: #1c1917; border-radius: 8px 8px 16px 8px; box-shadow: 0 14px 34px rgba(0, 0, 0, .45), 0 0 0 1px rgba(255, 255, 255, .55) inset; display: flex; flex-direction: column; cursor: grab;
+  transition: box-shadow .2s var(--h-ease), transform .2s var(--h-ease); }
+.hub-note:hover { transform: translateY(-2px); box-shadow: 0 20px 44px rgba(0, 0, 0, .5), 0 0 0 1px #fff inset; }
+.hub-note-grip { min-height: 22px; flex: none; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 6px 2px 10px; border-bottom: 1px dashed rgba(0, 0, 0, .1); }
+.hub-note-by { font-size: 12px; font-weight: 600; color: rgba(28, 25, 23, .55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-note-tools { display: flex; gap: 3px; align-items: center; opacity: 0; transform: translateY(-2px); transition: opacity .15s, transform .15s var(--h-ease); }
+.hub-note.editable:hover .hub-note-tools, .hub-note.editable:focus-within .hub-note-tools { opacity: 1; transform: none; }
+.hub-note:not(.editable) .hub-note-tools, .hub-note:not(.editable) .hub-note-resize { display: none; }
+.hub-note-dot { width: 13px; height: 13px; padding: 0; border-radius: 50%; border: 1px solid rgba(0, 0, 0, .25); background: var(--c); cursor: pointer; transition: transform .12s var(--h-ease); }
+.hub-note-dot:hover { transform: scale(1.25); }
+.hub-note-del { width: 20px; height: 20px; padding: 0; margin-left: 2px; border: 0; border-radius: 50%; background: rgba(0, 0, 0, .08); color: #44403c; font: 700 14px/1 system-ui, sans-serif; cursor: pointer; transition: background-color .12s, color .12s; }
+.hub-note-del:hover { background: #ef4444; color: #fff; }
+.hub .hub-note textarea.hub-note-text { flex: 1; min-height: 110px; resize: none; border: 0; background: transparent; box-shadow: none; padding: 8px 12px 14px; font: 500 16px/1.4 "Space Grotesk", system-ui, sans-serif; color: #1c1917; outline: none; user-select: text; -webkit-user-select: text; }
+.hub .hub-note textarea.hub-note-text:focus { outline: none; box-shadow: none; border: 0; }
+.hub .hub-note textarea.hub-note-text::placeholder { color: rgba(28, 25, 23, .4); }
+.hub-note-resize { position: absolute; right: 2px; bottom: 2px; width: 14px; height: 14px; cursor: nwse-resize; background: linear-gradient(135deg, transparent 50%, rgba(0, 0, 0, .22) 50% 60%, transparent 60% 70%, rgba(0, 0, 0, .22) 70% 80%, transparent 80%); border-radius: 0 0 14px 0; }
 .hub-text { position: absolute; white-space: pre; font-family: "Instrument Serif", Georgia, serif; line-height: 1.05; cursor: grab; text-shadow: 0 2px 16px rgba(0, 0, 0, .5); }
 .dragging { cursor: grabbing; transform: rotate(-1.5deg) scale(1.03); box-shadow: 0 24px 60px rgba(0, 0, 0, .5); z-index: 5; }
 
@@ -172,3 +191,57 @@ html.hub-full body { background: #09090b; }
 
 /* the way back from the Battle screen */
 .battle-back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: calc(8px * var(--s)); }
+
+/* --- zoom and fit (bottom-left; the dice and Bag buttons live bottom-right) --- */
+.hub-zoom { position: absolute; left: calc(16px * var(--s)); bottom: calc(22px * var(--s)); display: flex; align-items: center; gap: 2px; padding: 4px; background: var(--h-glass); border: 1px solid var(--h-line); border-radius: 999px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.hub-zoom-btn { width: calc(34px * var(--s)); height: calc(34px * var(--s)); min-width: 30px; min-height: 30px; border: 0; border-radius: 50%; background: transparent; color: var(--h-dim); font: 600 18px/1 "Space Grotesk", system-ui, sans-serif; cursor: pointer; transition: color .15s, background-color .15s, transform .15s var(--h-ease); }
+.hub-zoom-btn:hover { color: var(--h-text); background: rgba(255, 255, 255, .08); }
+.hub-zoom-btn:active { transform: scale(.9); }
+.hub-zoom-label { min-width: 46px; text-align: center; font-size: 12px; color: var(--h-dim); font-variant-numeric: tabular-nums; }
+.hub.gliding .hub-world { transition: transform .36s var(--h-ease); }
+.hub.gliding .hub-cursor { transition: none; }
+
+/* --- pings --- */
+.hub-ping { position: absolute; width: 0; height: 0; pointer-events: none; z-index: 4; }
+.hub-ping-ring, .hub-ping-dot { position: absolute; left: -40px; top: -40px; width: 80px; height: 80px; border-radius: 50%; border: 3px solid var(--c); opacity: 0; }
+.hub-ping-dot { left: -7px; top: -7px; width: 14px; height: 14px; border: 0; background: var(--c); opacity: 1; box-shadow: 0 0 18px var(--c); }
+.hub-ping-name { position: absolute; left: 12px; top: -30px; white-space: nowrap; font-size: 12px; font-weight: 700; color: #0b0b0c; background: var(--c); padding: 2px 8px; border-radius: 999px; }
+
+/* --- motion (all of it is opacity/transform, and off for reduced motion) --- */
+@media (prefers-reduced-motion: no-preference) {
+  .hub-ping-ring { animation: hub-ping 1.2s var(--h-ease) 2 both; }
+  .hub-ping-ring.r2 { animation-delay: .3s; }
+  .hub-ping-dot { animation: hub-ping-dot 2.4s var(--h-ease) both; }
+  .hub-ping-name { animation: hub-tag 2.4s var(--h-ease) both; }
+  .hub-cursor.click .hub-cursor-arrow { animation: hub-press .3s var(--h-ease); }
+  .hub-cursor.click::after { content: ""; position: absolute; left: -12px; top: -12px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--c); animation: hub-ripple .5s var(--h-ease) both; }
+  .hub-leave { animation: hub-out .22s var(--h-ease) both; pointer-events: none; }
+  .hub-ink path.fresh { animation: hub-fade .5s var(--h-ease) both; }
+  .hub-avatar.pop { animation: hub-pop .45s cubic-bezier(.34, 1.56, .64, 1) both; }
+  .hub-enter { animation: hub-in .5s cubic-bezier(.34, 1.4, .64, 1) both; }
+  .hub-btn:hover .hub-btn-icon { animation: hub-wobble .6s var(--h-ease); }
+  .hub-hover.show .hub-hover-sprite { animation: hub-bob 1.6s ease-in-out infinite; }
+  .hub-drawer.open .hub-src { animation: hub-rise .45s var(--h-ease) both; }
+  .hub-drawer.open .hub-drawer-group:nth-child(3) .hub-src { animation-delay: .06s; }
+  .hub-drawer.open .hub-drawer-group:nth-child(4) .hub-src { animation-delay: .12s; }
+  .hub-subbar.show > * { animation: hub-rise .3s var(--h-ease) both; }
+  .hub-zoom { animation: hub-rise .7s var(--h-ease) .14s both; }
+  .hub-empty h2 { animation: hub-rise .7s var(--h-ease) .12s both, hub-float 6s ease-in-out 1s infinite; }
+  .hub-btn.live .hub-btn-icon { animation: hub-wobble 1.4s var(--h-ease) infinite; }
+}
+@keyframes hub-ping { 0% { opacity: .9; transform: scale(.15); } 100% { opacity: 0; transform: scale(1.4); } }
+@keyframes hub-ping-dot { 0% { opacity: 0; transform: scale(0); } 10% { opacity: 1; transform: scale(1.3); } 20%, 80% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(.6); } }
+@keyframes hub-tag { 0% { opacity: 0; transform: translateY(6px); } 12%, 80% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+@keyframes hub-press { 50% { transform: scale(.8); } }
+@keyframes hub-ripple { from { opacity: .9; transform: scale(.3); } to { opacity: 0; transform: scale(1.6); } }
+@keyframes hub-out { to { opacity: 0; transform: scale(.9); } }
+@keyframes hub-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes hub-pop { 0% { opacity: 0; transform: scale(.3); } 100% { opacity: 1; transform: none; } }
+@keyframes hub-wobble { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-16deg); } 45% { transform: rotate(12deg); } 70% { transform: rotate(-6deg); } }
+@keyframes hub-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes hub-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+
+@media (max-width: 700px) {
+  .hub-zoom { bottom: auto; top: calc(64px * var(--s)); left: 12px; }
+  .hub-zoom-label { display: none; }
+}

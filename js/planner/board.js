@@ -133,10 +133,27 @@ export const BACKGROUNDS = [
 ];
 export const isPreset = (id) => BACKGROUNDS.some(([k]) => k === id);
 
-const NODE_TYPES = ["note", "list", "gen", "text", "dungeon"];
+// libmon / libtrainer: a Pokémon or an NPC trainer brought in from the DM's Wild and NPC Libraries. They snap into the
+// Trainer and Team slots of a Pokémon trainer, gym leader or wild encounter node (boardView.js "Slots").
+const NODE_TYPES = ["note", "list", "gen", "text", "dungeon", "libmon", "libtrainer"];
+export const TEAM_MAX = 6;
 const str = (v, n) => String(v ?? "").slice(0, n);
 const fin = (v, f = 0) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : f);
 const hex = (v, f) => (/^#[0-9a-f]{3,8}$/i.test(String(v)) ? String(v) : f);
+
+// One Pokémon on a team (from a generator or a library), with only the fields a battle needs.
+export function cleanMon(m) {
+  if (!m || typeof m !== "object" || !str(m.name, 40)) return null;
+  const dex = Number(m.dex);
+  return {
+    name: str(m.name, 40), nickname: str(m.nickname, 40), dex: Number.isInteger(dex) && dex > 0 ? dex : null,
+    level: clamp(fin(m.level, 5), 1, 100), ability: str(m.ability, 40), item: str(m.item, 40),
+    moves: (Array.isArray(m.moves) ? m.moves : []).map((x) => str(x, 40)).filter(Boolean).slice(0, 4),
+    ...(Array.isArray(m.types) ? { types: m.types.slice(0, 2).map((t) => str(t, 12)) } : {}),
+  };
+}
+const cleanMons = (list) => (Array.isArray(list) ? list : []).map(cleanMon).filter(Boolean).slice(0, TEAM_MAX);
+const cleanIdentity = (v) => (v && typeof v === "object" && str(v.name, 60) ? { name: str(v.name, 60), npcId: str(v.npcId, 40), sprite: str(v.sprite, 100) } : null);
 
 // Boards also arrive from other players (the DM reads them), so every field is rebuilt with a known type here.
 function cleanNode(n) {
@@ -149,8 +166,18 @@ function cleanNode(n) {
   if (n.type === "text") out.color = hex(n.color, "#f6e27a");
   if (n.type === "list") out.items = (Array.isArray(n.items) ? n.items : []).slice(0, 200).map((i) => ({ id: str(i?.id, 40) || Math.random().toString(36).slice(2), text: str(i?.text, 300), done: !!i?.done }));
   if (n.type === "gen") { out.kind = str(n.kind || n.gen, 20); out.genLabel = str(n.genLabel, 60); out.gen = str(n.gen, 40); out.lines = (Array.isArray(n.lines) ? n.lines : []).slice(0, 200).map((l) => str(l, 2000));
-    // a Pokémon encounter's team (name and level), so the hub can turn it into a battle
-    if (Array.isArray(n.mons)) out.mons = n.mons.slice(0, 6).map((m) => ({ name: str(m?.name, 40), level: clamp(fin(m?.level, 5), 1, 100), ability: str(m?.ability, 40), moves: (Array.isArray(m?.moves) ? m.moves : []).slice(0, 4).map((x) => str(x, 40)) })).filter((m) => m.name); }
+    // a Pokémon encounter's team and (for trainers and gym leaders) who they are, so the hub can turn it into a battle
+    if (Array.isArray(n.mons)) out.mons = cleanMons(n.mons);
+    const who = cleanIdentity(n.identity);
+    if (who) out.identity = who;
+  }
+  if (n.type === "libmon") {
+    out.mon = cleanMon(n.mon);
+    if (!out.mon) return null;
+    out.source = { kind: n.source?.kind === "npc" ? "npc" : "wild", id: str(n.source?.id, 40) };
+  }
+  if (n.type === "libtrainer") {
+    out.npcId = str(n.npcId, 40); out.sprite = str(n.sprite, 100); out.mons = cleanMons(n.mons); }
   if (n.type === "dungeon") {
     out.dungeon = n.dungeon && Array.isArray(n.dungeon.rooms) ? n.dungeon : null;
     out.roomNotes = {};

@@ -307,7 +307,9 @@ export function deleteFile(id) { return postJSON(`/api/files/${encodeURIComponen
 export function adminOverview() { return getJSON("/api/admin/overview"); }
 export function adminSetPerm(accountId, perm, value) { return postJSON("/api/admin/perm", { accountId, perm, value }); }
 export function adminCommand(text) { return postJSON("/api/admin/command", { text }); }
+// action: "archive" (delete: hidden from everyone, kept whole) or "restore"
+export function adminCampaign(id, action) { return postJSON("/api/admin/campaign", { id, action }); }
 
 // --- The Pokémon hub's shared board (server.py "The Pokémon hub") ---
-export function hubSync(id, since, cursor) { return postJSON("/api/hub/sync", { id, since, cursor }); }
+export function hubSync(id, since, cursor, ping = null) { return postJSON("/api/hub/sync", { id, since, cursor, ...(ping ? { ping } : {}) }); }
 export function hubOp(id, body, token) { return postJSON("/api/hub/op", { id, ...body, ...(token ? { token } : {}) }); }

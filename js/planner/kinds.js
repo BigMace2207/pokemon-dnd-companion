@@ -22,6 +22,8 @@ export const KINDS = {
   trainer: { label: "Trainer", icon: "person" },
   gym: { label: "Gym", icon: "badge" },
   route: { label: "Route", icon: "route" },
+  libmon: { label: "Pokémon", icon: "paw" },
+  libtrainer: { label: "Trainer", icon: "person" },
 };
 
 export const kindOf = (n) => (n.type === "gen" ? (n.kind || n.gen || "note") : n.type);
