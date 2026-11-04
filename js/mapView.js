@@ -8,6 +8,7 @@
 
 import { el } from "./components.js";
 import { fileUrl, cachedFileUrl } from "./network.js";
+import { wheelIntent, wheelPx } from "./wheelIntent.js";
 
 const FOG_RES = 720;   // the fog canvas's longest side, in pixels
 
@@ -132,6 +133,10 @@ export function panZoom(frame, stage, { getSize, minK = 0.05, maxK = 8, onTap = 
   };
   frame.addEventListener("pointerup", end);
   frame.addEventListener("pointercancel", end);
-  frame.addEventListener("wheel", (e) => { e.preventDefault(); const r = frame.getBoundingClientRect(); zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * 0.0016)); }, { passive: false });
+  frame.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    if (wheelIntent(e) === "pan") { view.x -= e.deltaX; view.y -= e.deltaY; apply(); return; }   // a touchpad scroll pans
+    const r = frame.getBoundingClientRect(); zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-wheelPx(e) * (e.ctrlKey ? 0.01 : 0.0016)));
+  }, { passive: false });
   return { view, apply, fit, zoomAt, centreOn, toMap, zoomBy: (f) => { const r = frame.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, f); } };
 }

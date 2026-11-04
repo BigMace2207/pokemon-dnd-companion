@@ -822,7 +822,7 @@ html.no-sidebar:not(.hub-full):not(.admin-full):not(.mapeditor-full) .main:not([
    than the screen and shifts by less than one tile, so nothing repaints while you drag. ---- */
 .hub-dots { inset: auto; left: 0; top: 0; width: calc(100% + var(--grid, 28px) * 2); height: calc(100% + var(--grid, 28px) * 2); will-change: transform; }
 .hub-starfield { inset: auto; left: -90px; top: -90px; width: calc(100% + 180px + 620px * var(--zk, 1)); height: calc(100% + 180px + 620px * var(--zk, 1)); }
-.hub-constellation { right: 7%; top: 13%; transform-origin: 0 0; }   /* it zooms from its corner, like the board (hub.js applyView) */
+.hub-constellation { right: 7%; top: 13%; transform-origin: 50% 50%; }   /* zooming scales it in place, about its centre (hub.js applyView) */
 html.m .hub-constellation { width: 60vw; right: 4vw; top: 16vh; }
 
 /* ---- the stars float like the nebula's shards: each layer rises slowly, forever (it moves exactly one tile per loop,

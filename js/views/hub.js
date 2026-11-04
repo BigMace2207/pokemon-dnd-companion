@@ -35,6 +35,7 @@ import { describeItem } from "../itemDescriptions.js";
 import { itemIconSrc, MONEY } from "../bagIcon.js";
 import { myEggs, hatch, EGG_ICON } from "../eggs.js";
 import { hubSound } from "../hubSound.js";
+import { wheelIntent, wheelPx } from "../wheelIntent.js";
 import { rayquazaConstellation } from "../constellation.js";
 import { nebulaLayer } from "../nebula.js";
 import { cursorColorOf } from "../cursorColor.js";
@@ -718,9 +719,9 @@ export function renderHub(container, state) {
       const at = skyPos[i] = follow(skyPos[i], par, -90, -90), t = tile * view.k;   // each layer's box starts 90px up and left
       node.style.translate = `${wrap(at.x, t).toFixed(2)}px ${wrap(at.y, t).toFixed(2)}px`;
     });
-    // the constellation: its box's own place on the stage is the origin it scales from
-    conPos = follow(conPos, 0.2, constellation.offsetLeft, constellation.offsetTop);
-    if (!lastView) conPos = { x: 0, y: 0 };
+    // the constellation stays where it is when you zoom and only grows or shrinks about its own centre; a pan drifts it
+    // a fifth of the way, like something far off
+    conPos = !conPos || !lastView ? { x: 0, y: 0 } : f === 1 ? { x: conPos.x + (view.x - lastView.x) * 0.2, y: conPos.y + (view.y - lastView.y) * 0.2 } : conPos;
     constellation.style.transform = `translate3d(${conPos.x.toFixed(2)}px, ${conPos.y.toFixed(2)}px, 0) scale(${view.k.toFixed(4)})`;
     lastView = { x: view.x, y: view.y, k: view.k };
     backdropLayer.style.transform = `translate(${(view.x * 0.03).toFixed(1)}px, ${(view.y * 0.03).toFixed(1)}px)`;
@@ -762,11 +763,13 @@ export function renderHub(container, state) {
     view.x = r.width / 2; view.y = r.height / 2;
     applyView();
   }
+  // a touchpad's two-finger scroll pans; a pinch (or a mouse wheel) zooms, about the pointer (js/wheelIntent.js)
   stage.addEventListener("wheel", (e) => {
     e.preventDefault();
+    if (wheelIntent(e) === "pan") { view.x -= e.deltaX; view.y -= e.deltaY; applyView(true); return; }
     const r = stage.getBoundingClientRect();
     const before = toWorld(e.clientX, e.clientY);
-    view.k = clamp(view.k * Math.exp(-e.deltaY * 0.0015), 0.25, 3);
+    view.k = clamp(view.k * Math.exp(-wheelPx(e) * (e.ctrlKey ? 0.01 : 0.0015)), 0.25, 3);   // pinches report small steps
     view.x = e.clientX - r.left - before.x * view.k;
     view.y = e.clientY - r.top - before.y * view.k;
     applyView(true);

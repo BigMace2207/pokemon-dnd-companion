@@ -341,8 +341,9 @@ async function startApp() {
     ]));
     return;
   }
-  const startView = location.hash.replace("#", "");
-  setView(VIEWS[startView] ? startView : system.defaultView, { initial: true });
+  // Opening a campaign, new or old (or reloading one), always starts on its home page: the hub for Pokémon D&D. A page
+  // left in the address (#planner, #team, ...) is not reopened.
+  setView(system.defaultView, { initial: true });
   mountAccountChip(signedInAccount, { onOpenSettings: () => setView("settings") });
 
   // The floating Quick Console (Bag/Level Up/Heal), the log drawer (My

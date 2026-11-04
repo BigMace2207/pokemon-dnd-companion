@@ -337,5 +337,9 @@ Inter was dropped as too generic. If you add a family, add it to the `<link>` in
 - A newly published hub map starts with fog on; republishing the same map keeps its fog.
 - The app blocks the browser's right-click menu except in text boxes (`app.js`). The Bag's add box uses `makeCombo`,
   its list moved onto the page so it isn't clipped.
+- Wheel input on the boards (hub, Whiteboard, Map editor, hub map) goes through `js/wheelIntent.js`: a touchpad's two-finger
+  scroll pans, a pinch (ctrlKey) or a mouse wheel notch zooms; a gesture keeps its meaning until the wheel goes quiet.
+- The hub's constellation only scales about its centre when zooming (it drifts a fifth of a pan).
+- Opening or reloading a campaign always starts on the system's `defaultView` (the hub for Pokémon), not the page in the URL.
 - Hub panning is transform-only: `applyView` moves the dot grid and star layers with `transform`/`translate` (wrapped by a
   tile) and only touches CSS variables when the zoom changes, on those layers, never on `.hub` (that restyled every card).

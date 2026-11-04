@@ -29,6 +29,7 @@ import { dexPanel, CARD_MIME } from "../hubDex.js";
 import { pokemonState } from "./textGens.js";
 import { generateMon } from "./pokeGenerators.js";
 import { askLevel } from "../levelAsk.js";
+import { wheelIntent } from "../wheelIntent.js";
 
 const SIZE = { note: [300, 240], list: [280, 300], gen: [320, 260], text: [210, 150], dungeon: [380, 320], libmon: [230, 190], libtrainer: [260, 240] };
 const SLOT_KINDS = new Set(["trainer", "gym", "wildmon"]);
@@ -842,7 +843,9 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
   vp.addEventListener("wheel", (ev) => {
     if (!ev.ctrlKey && ev.target.closest(".pl-node-body")) return;   // let a node's text scroll
     ev.preventDefault();
-    zoomAt(ev.clientX, ev.clientY, ev.deltaY < 0 ? 1.12 : 1 / 1.12);
+    // a touchpad's two-finger scroll pans the board; a pinch or a mouse wheel zooms (js/wheelIntent.js)
+    if (wheelIntent(ev) === "pan") { const v = view(); setView(v.x - ev.deltaX, v.y - ev.deltaY, v.z); return; }
+    zoomAt(ev.clientX, ev.clientY, ev.ctrlKey ? Math.exp(-ev.deltaY * 0.01) : ev.deltaY < 0 ? 1.12 : 1 / 1.12);
   }, { passive: false });
   shell.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { if (focusId) focusSession(null); closeFly(); if (!bgPanel.hidden) bgPanel.hidden = true; if (tool !== "move") setTool("move"); } });
 

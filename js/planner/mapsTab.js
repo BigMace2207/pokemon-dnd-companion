@@ -33,6 +33,7 @@ async function mapImageUrl(m) {
 }
 import { publishPartyMap, updatePartyMapLive, clearPartyMap, getRoster, getPartyMap, moveOnMap, setMapFog } from "../network.js";
 import { drawFog } from "../mapView.js";
+import { wheelIntent, wheelPx } from "../wheelIntent.js";
 
 // Shrink a map image so it is small enough to share with the table (a JPEG up to 1600 px on its longest side).
 async function shrinkImage(dataUrl, max = 1600, limit = 2_300_000) {
@@ -355,7 +356,11 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
     wrap.addEventListener("pointerup", end);
     wrap.addEventListener("pointercancel", end);
     wrap.addEventListener("dblclick", (e) => { if (!e.target.closest(".pl-pin")) addPinAt(e.clientX, e.clientY); });
-    wrap.addEventListener("wheel", (e) => { e.preventDefault(); const r = wrap.getBoundingClientRect(); zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * 0.0016)); }, { passive: false });
+    wrap.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      if (wheelIntent(e) === "pan") { view.x -= e.deltaX; view.y -= e.deltaY; apply(); return; }   // a touchpad scroll pans
+      const r = wrap.getBoundingClientRect(); zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-wheelPx(e) * (e.ctrlKey ? 0.01 : 0.0016)));
+    }, { passive: false });
     window.addEventListener("resize", () => { if (document.body.contains(wrap)) { fit(); apply(); } }, { once: true });
 
     function addPinAt(cx, cy) {
