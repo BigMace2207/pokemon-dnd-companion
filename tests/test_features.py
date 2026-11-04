@@ -290,6 +290,22 @@ class Hub(Base):
         self.op(self.owner, "id-owner", op="activate", itemId=bid, token=self.dm)
         self.assertEqual(self.sync(self.member, "id-member", since=out["rev"])[1]["activeButton"], bid)
 
+    def test_a_players_trainer_and_each_pokemon_are_on_the_board_only_once(self):
+        mon = {"type": "mon", "name": "Eevee", "dex": 133, "x": 0, "y": 0, "hp": [20, 30], "link": "mon:abc123"}
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={**mon, "id": "c1"})[0], 200)
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={**mon, "id": "c2", "x": 50, "hp": [12, 30]})[0], 200)
+        cards = [it for it in self.sync(self.member, "id-member", since=-1)[1]["items"] if it["type"] == "mon"]
+        self.assertEqual([(c["id"], c["hp"]) for c in cards], [("c2", [12, 30])], "a second copy replaces the first")
+        trainer = {"type": "trainer", "name": "Mia", "x": 0, "y": 0, "link": "trainer"}
+        self.op(self.member, "id-member", op="put", item={**trainer, "id": "t1"})
+        self.op(self.member, "id-member", op="put", item={**trainer, "id": "t2"})
+        self.op(self.owner, "id-owner", op="put", item={**trainer, "name": "DM", "id": "t3"})
+        names = sorted(it["id"] for it in self.sync(self.member, "id-member", since=-1)[1]["items"] if it["type"] == "trainer")
+        self.assertEqual(names, ["t2", "t3"], "one trainer card per player, and someone else's link never removes yours")
+        self.op(self.member, "id-member", op="put", item={**mon, "id": "c3", "link": "mon:../../x"})
+        bad = next(it for it in self.sync(self.member, "id-member", since=-1)[1]["items"] if it["id"] == "c3")
+        self.assertNotIn("link", bad, "a malformed link is dropped")
+
     def test_the_dm_sets_a_map_behind_the_hub_and_members_can_see_it(self):
         from test_features import upload, fetch, PNG
         fid = upload(self.base, self.owner, PNG, kind="map", campaignId=self.cid, name="world.png")[1]["file"]["id"]

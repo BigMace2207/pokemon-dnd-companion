@@ -87,6 +87,13 @@
 - Mystery Eggs: the DM gives one from Control Centre -> DM Tools with a Pokémon inside that only the server knows; it sits in the player's Key Items until they hatch it at level 1
 - Moves are checked: a Pokémon can only know moves it learns by level up at or below its level, or egg moves
 - Hub sounds: soft, spatial Web Audio sounds for clicks, drags, drops and pings (Settings -> Appearance -> Hub sounds)
+- Each kind of bag item has its own sound when you drag it out (Poké Ball, medicine, TM, held item, key item, berry,
+  money, egg); a Pokémon dragged out of the Pokédex or your team plays its real cry from the games.
+- A trainer's own Pokémon cards show the whole sheet: HP, status, ability, held item and every move's numbers; open one
+  for what the ability, item, status and moves do, and its stats.
+- Battle: every move plays a short game-style animation with sound, picked by its type (fireballs, a water stream, a
+  lightning bolt, falling rocks, psychic rings...). Physical moves lunge, special moves fly or beam across, status
+  moves glow; everyone in the battle sees it.
 - Map editor: its own page (the map button on the hub, left of the Whiteboard)
 - The cosmic sky has Rayquaza as a constellation; the sign-in page is always in the cosmic theme
 

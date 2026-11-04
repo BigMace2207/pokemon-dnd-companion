@@ -34,7 +34,7 @@ import { addLogEntry } from "../log.js";
 import { describeItem } from "../itemDescriptions.js";
 import { itemIconSrc, MONEY } from "../bagIcon.js";
 import { myEggs, hatch, EGG_ICON } from "../eggs.js";
-import { hubSound } from "../hubSound.js";
+import { hubSound, itemSound, playCry } from "../hubSound.js";
 import { wheelIntent, wheelPx } from "../wheelIntent.js";
 import { rayquazaConstellation } from "../constellation.js";
 import { nebulaLayer } from "../nebula.js";
@@ -287,8 +287,10 @@ export function renderHub(container, state) {
       ["PC box", (s.pc || []).filter((m) => m && m.name).length ? `${(s.pc || []).filter((m) => m && m.name).length} Pokémon` : ""],
     ].filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== "").map(([k, v]) => [k, String(v).slice(0, 200)]);
   }
+  // Your trainer and each of your Pokémon can be on the board once (its card carries a `link`; the server keeps one per
+  // link), and those cards follow your sheet: syncLinkedCards rewrites them when your details, HP or moves change.
   const trainerCard = (s) => ({
-    type: "trainer", name: s.trainer?.name?.trim() || "Trainer", sprite: s.trainer?.sprite || "", fields: trainerFields(s),
+    type: "trainer", link: "trainer", name: s.trainer?.name?.trim() || "Trainer", sprite: s.trainer?.sprite || "", fields: trainerFields(s),
     backstory: String(s.trainer?.backstory || "").slice(0, 1500),
     party: (s.party || []).filter((m) => m && m.name).slice(0, 6).map((m) => ({ name: m.name, dex: m.dex || state?.pokemonByName?.get(m.name)?.dex || 0, level: Number(m.level) || null })),
   });
@@ -307,6 +309,37 @@ export function renderHub(container, state) {
     e.dataTransfer.setData(CARD_MIME, JSON.stringify(trainerCard(loadSave())));
     e.dataTransfer.effectAllowed = "copy";
   });
+  function monCard(m) {
+    const species = state?.pokemonByName?.get(m.name);
+    const level = Math.min(100, Math.max(1, Number(m.level) || 1));
+    const max = species ? calcAllStats(species, level, 15, 0, 1).hp : null;
+    const cur = m.currentHp === null || m.currentHp === undefined ? max : m.currentHp;
+    return { type: "mon", ...(m.id ? { link: `mon:${m.id}` } : {}), name: m.name, dex: m.dex || species?.dex || 0, level: Number(m.level) || null, hp: max === null ? undefined : [cur, max],
+      moves: (m.moves || []).filter(Boolean), nickname: m.nickname || "", held: m.item || "", ability: m.ability || "", status: m.status || "" };
+  }
+  // the fields of a linked card that come from your sheet (position, size and open/closed stay as they are on the board)
+  const SHEET_KEYS = ["name", "sprite", "fields", "backstory", "party", "dex", "level", "hp", "moves", "nickname", "held", "ability", "status"];
+  const sheetOf = (c) => JSON.stringify(SHEET_KEYS.map((k) => [k, c[k] ?? ""]));
+  const freshCardFor = (item, s) => {
+    if (item.link === "trainer") return trainerCard(s);
+    const id = item.link?.startsWith("mon:") ? item.link.slice(4) : null;
+    const m = id && [...(s.party || []), ...(s.pc || [])].find((x) => x && String(x.id) === id && x.name);
+    return m ? monCard(m) : null;   // not in your team or PC any more: the card keeps its last details
+  };
+  let linkTimer = 0;
+  function syncLinkedCards() {
+    clearTimeout(linkTimer);
+    linkTimer = setTimeout(async () => {
+      if (!document.body.contains(root)) return;
+      const s = loadSave();
+      for (const it of items.filter((x) => x.link && x.owner === me.id && (x.type === "trainer" || x.type === "mon"))) {
+        const fresh = freshCardFor(it, s);
+        if (!fresh || sheetOf(fresh) === sheetOf(it)) continue;
+        const { own, ...clean } = fresh; void own;
+        await op({ op: "put", item: { ...it, ...clean, id: it.id, x: it.x, y: it.y, open: it.open } });
+      }
+    }, 400);
+  }
   function drawTeam() {
     drawMe();
     const party = (loadSave().party || []).filter((m) => m && m.name).slice(0, 6);
@@ -328,11 +361,10 @@ export function renderHub(container, state) {
         el("span", { class: "hub-team-hp", "aria-label": max === null ? "HP unknown" : `${cur} of ${max} HP` }, el("span", { style: `width:${pct}%` })),
       ]);
       slot.addEventListener("dragstart", (e) => {
-        const card = { type: "mon", name: m.name, dex, level: Number(m.level) || null, hp: max === null ? undefined : [cur, max], moves: (m.moves || []).filter(Boolean),
-          nickname: m.nickname || "", held: m.item || "", ability: m.ability || "", status: m.status || "" };
-        e.dataTransfer.setData(CARD_MIME, JSON.stringify(card));
+        e.dataTransfer.setData(CARD_MIME, JSON.stringify(monCard(m)));
         e.dataTransfer.effectAllowed = "copyMove";
         startOwnDrag({ kind: "mon", id: m.id, label: name });
+        playCry(dex, m.name);
       });
       slot.addEventListener("dragend", endOwnDrag);
       slot.addEventListener("pointerdown", (e) => e.stopPropagation());
@@ -342,7 +374,7 @@ export function renderHub(container, state) {
     }) : [el("button", { type: "button", class: "hub-team-empty" }, "Add Pokémon in My Team")]));
     teamStrip.querySelector(".hub-team-empty")?.addEventListener("click", () => openFromHub("team"));
   }
-  window.addEventListener("pokemon-dnd-save-changed", function onSave() { if (!document.body.contains(root)) { window.removeEventListener("pokemon-dnd-save-changed", onSave); return; } drawTeam(); if (bagDrop.classList.contains("open")) drawBag(); });
+  window.addEventListener("pokemon-dnd-save-changed", function onSave() { if (!document.body.contains(root)) { window.removeEventListener("pokemon-dnd-save-changed", onSave); return; } drawTeam(); if (bagDrop.classList.contains("open")) drawBag(); syncLinkedCards(); });
 
   // ---- the Bag: a drop-down under its button. Every item (and your money, as a Key Item) can be dragged onto the board
   // as a card, or onto Send To to give it to another player.
@@ -424,6 +456,7 @@ export function renderHub(container, state) {
           e.dataTransfer.setData(CARD_MIME, JSON.stringify({ type: "item", name }));
           e.dataTransfer.effectAllowed = "copyMove";
           startOwnDrag({ kind: isMoney ? "money" : "item", name, count, label: name });
+          itemSound(isMoney ? "money" : /berry$/i.test(name) ? "berry" : sec, e.clientX);
         });
         cell.addEventListener("dragend", endOwnDrag);
         // a press on an item never reaches the board (no panning or drawing under the bag)
@@ -997,7 +1030,7 @@ export function renderHub(container, state) {
     if ("backdrop" in res) setBackdrop(res.backdrop);
     if (res.isDm === true && !dmToken) becomeDm();
     else if (res.isDm === false && dmToken) stopBeingDm();
-    if (res.items) { items = res.items; rev = res.rev; activeButton = res.activeButton; drawItems(); }
+    if (res.items) { items = res.items; rev = res.rev; activeButton = res.activeButton; drawItems(); syncLinkedCards(); }   // (your cards catch up with changes made while you were away)
     else if (res.activeButton !== activeButton) { activeButton = res.activeButton; drawItems(); }
   }
   const timer = setInterval(() => {
@@ -1612,6 +1645,13 @@ export function renderHub(container, state) {
       card = { ...card, level: lvl };
     }
     if (card.type === "prop") { await op({ op: "put", item: { type: "prop", id: uid(), prop: card.prop, size: card.size || propSize, x: Math.round(at.x - (card.size || propSize) / 2), y: Math.round(at.y - (card.size || propSize) / 2) } }); return; }
+    const already = card.link && items.find((it) => it.link === card.link && it.owner === me.id && it.type === card.type);
+    if (already) {
+      const { own, ...clean } = card; void own;
+      await op({ op: "put", item: { ...already, ...clean, id: already.id, x: Math.round(at.x - 110), y: Math.round(at.y - 40), open: already.open } });
+      say(card.type === "trainer" ? "Your trainer is already on the board: moved it here." : `${card.nickname || card.name} is already on the board: moved it here.`);
+      return;
+    }
     let x = Math.round(at.x - 110), y = Math.round(at.y - 40);
     while (items.some((it) => CARD_TYPES.has(it.type) && Math.abs(it.x - x) < 30 && Math.abs(it.y - y) < 30)) { x += 28; y += 28; }
     const { own, ...clean } = card; void own;

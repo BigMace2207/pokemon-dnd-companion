@@ -21,7 +21,7 @@
 // teams (NPCs, wild Pokémon, every online player) at once, not one lead
 // Pokémon in a scene.
 
-import { combatantLabel, ownerName, levelText } from "../battleLabels.js";
+import { combatantLabel, ownerName, levelText, monName } from "../battleLabels.js";
 import { el } from "../components.js";
 import { calcAllStats, BALL_TYPES } from "../calc.js";
 import { HEAL_ITEMS } from "../battleItems.js";
@@ -35,6 +35,7 @@ import { rollMove, damageAgainst } from "../moveResolution.js";
 import { moveEffectivenessSummary } from "../battleMath.js";
 import { showDiceRollFx } from "../diceRollFx.js";
 import { attachCombatantInfo } from "../combatantInfo.js";
+import { playMoveFx, parseMoveLine } from "../moveFx.js";
 
 const POLL_MS = 3000;
 const EMPTY_FULLTURN = { combatants: [], currentIndex: 0, round: 1, background: "", spreadHitsAllies: false, phase: "draft" };
@@ -145,7 +146,46 @@ export function renderBattleView(container, state, options = {}) {
   // box can sit absolutely over the bottom of the scene (see .battle-stage/
   // .battle-textbox in style.css) -- like the games' own battle screen,
   // instead of the text box being a separate block underneath it.
-  container.appendChild(el("div", { class: "battle-stage" }, [sceneEl, dialogEl]));
+  const stageEl = el("div", { class: "battle-stage" }, [sceneEl, dialogEl]);
+  container.appendChild(stageEl);
+
+  // ---------------- Move animations (js/moveFx.js) ----------------
+  // Your own move animates as you use it (its damage lands with the hit); everyone else's animates when its line
+  // turns up in the Battle Log, on the scene as it was, before the new HP is drawn. Only lines that are new since
+  // this screen opened, never a backlog, and never twice (playedHere remembers the lines this screen played itself).
+  const playedHere = new Set();
+  let seenLog = undefined;   // the id of the newest log line already looked at (undefined: not loaded yet)
+  let animating = false;
+  let moveNames = null;
+  const slotFor = (c) => (c ? sceneEl.querySelector(`[data-cid="${CSS.escape(String(c.id))}"]`) : null);
+  const labelsOf = (c) => [combatantLabel(c), `${ownerName(c)}: ${monName(c.mon)}`];
+  async function animateMove(move, attacker, targets, missed, logText) {
+    if (logText) playedHere.add(logText);
+    if (!move || !stageEl.isConnected || document.hidden) return;
+    const from = slotFor(attacker), to = targets.map(slotFor).filter(Boolean);
+    if (!from && !to.length) return;
+    const { hitAt } = playMoveFx(stageEl, { move, from, to, missed });
+    await new Promise((r) => setTimeout(r, hitAt * 1000 + 60));
+  }
+  // the Battle Log lines that arrived since the last look, as moves to animate (at most the last two)
+  function newMoveLines(nextLog) {
+    if (!Array.isArray(nextLog) || !nextLog.length) { if (seenLog === undefined) seenLog = null; return []; }
+    const lastId = nextLog[nextLog.length - 1].id;
+    if (seenLog === undefined) { seenLog = lastId; return []; }   // first look: what's already there isn't news
+    if (lastId === seenLog) return [];
+    const at = nextLog.findIndex((e) => e.id === seenLog);
+    seenLog = lastId;
+    const fresh = (at >= 0 ? nextLog.slice(at + 1) : nextLog.slice(-1)).slice(-2);
+    moveNames = moveNames || state.moves.filter((m) => !m.stub).map((m) => m.name);
+    return fresh.filter((e) => {
+      if (playedHere.has(e.text)) { playedHere.delete(e.text); return false; }
+      return true;
+    }).map((e) => parseMoveLine(e.text, fullTurn.combatants, moveNames, labelsOf)).filter((m) => m && (m.attacker || m.targets.length)).map((m) => {
+      // a damaging move whose target the line doesn't name: it went at the other side
+      if (!m.targets.length && !m.status && m.attacker) m.targets = enemiesOf(m.attacker, fullTurn.combatants).filter((c) => currentHpFor(state, c.mon) > 0).slice(0, 1);
+      return m;
+    });
+  }
 
   function myMon() { return dm ? myCombatant()?.mon || null : save.party[activeIndex] || null; }
   const dmTurnKey = () => `${fullTurn.turnId || activeCombatant()?.id}|${fullTurn.round}`;
@@ -303,13 +343,17 @@ export function renderBattleView(container, state, options = {}) {
 
     if (!hit) {
       showDiceRollFx({ label: move.name, d20, hit, resultText: "MISSED" });
-      await submitTurn({ logTexts: [`${targetLabel(attacker)} used ${move.name} — MISSED (d20 rolled ${d20}).`] });
+      const missText = `${targetLabel(attacker)} used ${move.name} — MISSED (d20 rolled ${d20}).`;
+      await animateMove(move, attacker, targets, true, missText);
+      await submitTurn({ logTexts: [missText] });
       flash([`${atkName} used ${move.name}!`, `${atkName}'s attack missed!`]);
       return;
     }
     if (move.category === "Status" || !atkSpecies) {
       showDiceRollFx({ label: move.name, d20, hit, resultText: "no direct damage" });
-      await submitTurn({ logTexts: [`${targetLabel(attacker)} used ${move.name} (status move — no direct damage).`] });
+      const statusText = `${targetLabel(attacker)} used ${move.name} (status move — no direct damage).`;
+      await animateMove(move, attacker, targets, false, statusText);
+      await submitTurn({ logTexts: [statusText] });
       flash(`${atkName} used ${move.name}!`);
       return;
     }
@@ -349,8 +393,11 @@ export function renderBattleView(container, state, options = {}) {
     const logText = summaries.length > 1
       ? `${targetLabel(attacker)} used ${move.name} on ${summaries.length} targets — ${summaries.map((s) => `${s.label}: ${s.dmg} dmg (${s.before}→${s.after})`).join("; ")}`
       : `${targetLabel(attacker)} used ${move.name} on ${summaries[0].label} for ${summaries[0].dmg} damage! (${summaries[0].before} → ${summaries[0].after} HP)`;
+    await animateMove(move, attacker, targets, false, logText);   // the HP drops when it lands
     await submitTurn({ combatants: updated, logTexts: [logText] });
   }
+
+  const moveByNameFor = (name) => state.moves[state.moveByName.get(name)] || null;
 
   function useMove(moveName) {
     const mine = myCombatant();
@@ -417,7 +464,7 @@ export function renderBattleView(container, state, options = {}) {
     ].filter(Boolean));
     attachCombatantInfo(hud, c, species);
     const platform = el("div", { class: "battle-platform" }, [spriteImg(species?.dex, { back: facing === "back", alt: mon.name, className: "battle-sprite" })]);
-    const slot = el("div", { class: classes.join(" ") }, facing === "back" ? [platform, hud] : [hud, platform]);
+    const slot = el("div", { class: classes.join(" "), "data-cid": String(c.id) }, facing === "back" ? [platform, hud] : [hud, platform]);
     if (canSelect) slot.addEventListener("click", () => {
       const cb = pendingTarget;
       menuMode = "root"; pendingTarget = null;
@@ -693,7 +740,7 @@ export function renderBattleView(container, state, options = {}) {
   }
 
   async function poll() {
-    if (submitting) return;
+    if (submitting || animating) return;
     const [ft, log] = await Promise.all([getFullTurn(), getBattleLog()]);
     if (submitting) return; // a move started while this fetch was in flight — its own state is newer, don't clobber it
     // The DM can build/edit the roster in draft without it appearing here —
@@ -705,6 +752,15 @@ export function renderBattleView(container, state, options = {}) {
     const snap = snapshotOf(nextFullTurn, nextLog);
     if (snap === lastSnapshot) return; // nothing actually changed — skip the re-render so the screen doesn't flash every poll
     lastSnapshot = snap;
+
+    // someone else's move: play it on the scene as it stands, then show what it did
+    const moves = newMoveLines(nextLog);
+    if (moves.length && (fullTurn.phase === "live" || dm)) {
+      animating = true;
+      try { for (const m of moves) await animateMove(moveByNameFor(m.moveName), m.attacker, m.targets, m.missed); }
+      finally { animating = false; }
+      if (submitting) { lastSnapshot = null; return; }   // you moved meanwhile: the next poll catches up
+    }
 
     fullTurn = nextFullTurn;
     logEntries = nextLog;

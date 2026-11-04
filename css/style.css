@@ -1290,3 +1290,8 @@ a, button, input, select, textarea, label, .nav-item, .pill-btn { touch-action: 
 .sheet-tools-row { display: flex; flex-wrap: wrap; align-items: center; gap: calc(8px * var(--s)); }
 .sheet-tools-row select { flex: 1 1 calc(160px * var(--s)); }
 .sheet-tools-row .view-sub:empty { display: none; }
+
+/* Move animations (js/moveFx.js): a throw-away layer above the battle scene, clipped to it, never clickable. */
+.move-fx { position: absolute; inset: 0; z-index: 4; overflow: hidden; pointer-events: none; border-radius: var(--radius); }
+.move-fx-p { position: absolute; display: block; pointer-events: none; will-change: transform, opacity; }
+.battle-textbox { z-index: 5; }   /* above the move animations */

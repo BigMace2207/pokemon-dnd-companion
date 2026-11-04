@@ -11,7 +11,7 @@ feature docs.
 
 ```
 python server.py [port]                    # default 8850; serves the app + /api
-python -m unittest discover -s tests -v    # ~60s, 91 tests, run before every commit
+python -m unittest discover -s tests -v    # ~60s, 92 tests, run before every commit
 python tools/test_server.py --admin you@example.com   # throwaway local copy on :8860; code emails go to an outbox folder
 node --test tests/js/*.test.mjs            # D&D rules engine, <1s (use the glob, not the folder)
 ```
@@ -79,6 +79,9 @@ through the API (the API now needs a login).
 sizes that way, with a 12px minimum for text. Layouts must work at 1920x1080,
 3440x1440 and iPhone widths (390px). Animations: opacity/transform only, under
 0.25s, never on background re-renders, respect `prefers-reduced-motion`.
+
+**Battle move animations** (`js/moveFx.js`) also run up to ~1s at the user's request: once per move used, never on a
+re-render, transform/opacity only, a glow only under reduced motion.
 
 **Lava theme / reader motion:** the lava ambient effects intentionally break the "<0.25s" rule (the user asked
 for them), so keep them on the non-re-rendering `#lavaFx` layer, opacity/transform only, and off for

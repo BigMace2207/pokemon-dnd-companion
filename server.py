@@ -999,6 +999,16 @@ def _num(v, lo=-200000, hi=200000):
     return 0 if f != f else round(min(hi, max(lo, f)), 1)
 
 
+def _hub_link(raw, kind):
+    """Which of its owner's things a card shows: "trainer" (their character) or "mon:<id>" (one of their Pokémon).
+    A player has at most one card per link on the hub (see the hub's "put")."""
+    if kind == "trainer":
+        return "trainer" if raw == "trainer" else None
+    if isinstance(raw, str) and raw.startswith("mon:") and 4 < len(raw) <= 60 and all(c.isalnum() or c in "-_:" for c in raw):
+        return raw
+    return None
+
+
 def clean_hub_item(raw, owner, is_dm):
     """A validated copy of one hub item, or None. Only the DM makes buttons."""
     if not isinstance(raw, dict) or raw.get("type") not in HUB_TYPES:
@@ -1045,6 +1055,9 @@ def clean_hub_item(raw, owner, is_dm):
                 if _text(raw.get(key), size):
                     item[key] = _text(raw.get(key), size)
         item["open"] = raw.get("open") is True   # the card shows its details
+        link = _hub_link(raw.get("link"), "mon")
+        if link:
+            item["link"] = link
     elif kind == "item":
         item["name"] = _text(raw.get("name"), 60)
         if not item["name"]:
@@ -1061,6 +1074,9 @@ def clean_hub_item(raw, owner, is_dm):
         item["party"] = [{"name": _text(m.get("name"), 40), "dex": int(_num(m.get("dex"), 0, 5000)), "level": int(_num(m.get("level"), 0, 100)) or None}
                          for m in party[:6] if isinstance(m, dict) and _text(m.get("name"), 40)]
         item["open"] = raw.get("open") is True
+        link = _hub_link(raw.get("link"), "trainer")
+        if link:
+            item["link"] = link
     elif kind == "stroke":
         pts = raw.get("pts") if isinstance(raw.get("pts"), list) else []
         item.update({"pts": [[_num(p[0]), _num(p[1])] for p in pts[:600] if isinstance(p, list) and len(p) == 2],
@@ -1157,7 +1173,8 @@ CONTENT_SECURITY_POLICY = "; ".join([
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",
     "font-src https://fonts.gstatic.com",
     "img-src 'self' data: blob:",   # blob: shows map images fetched with the session (never a URL with a token in it)
-    "media-src 'self'",
+    # Pokémon cries are streamed from the PokeAPI cries collection, or Showdown's MP3s for browsers without Ogg (js/hubSound.js)
+    "media-src 'self' https://raw.githubusercontent.com https://play.pokemonshowdown.com",
     "frame-src https://accounts.google.com https://appleid.apple.com",
     "connect-src 'self' https://accounts.google.com https://appleid.apple.com",
     "object-src 'none'",
@@ -2476,6 +2493,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                         item["owner"], item["byName"] = old["owner"], old.get("byName", "")
                         hub["items"][existing] = item
                     else:
+                        if item.get("link"):
+                            # one card per thing: a player's trainer, or one of their Pokémon, is only on the board once
+                            hub["items"] = [it for it in hub["items"] if not (it.get("link") == item["link"] and it["owner"] == item["owner"])]
                         if len(hub["items"]) >= HUB_MAX_ITEMS:
                             return self._send_json({"error": "the hub is full; clear some drawings first"}, 409)
                         hub["items"].append(item)

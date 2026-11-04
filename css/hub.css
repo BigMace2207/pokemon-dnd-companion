@@ -611,6 +611,22 @@ html.no-sidebar:not(.hub-full):not(.admin-full):not(.mapeditor-full) .main:not([
 .hub-card-moves { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 8px; }
 .hub-card-moves span { font-size: 12px; padding: 3px 8px; border-radius: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: color-mix(in srgb, var(--mc, #888) 30%, transparent); border: 1px solid color-mix(in srgb, var(--mc, #888) 60%, transparent); }
 .hub-card-held { margin: 6px 0 0; font-size: 12px; color: var(--h-dim); }
+/* a player's own Pokémon: its whole sheet (ability, item, status, every move's numbers; opened, what they all do) */
+.hub-card.team { width: 250px; }
+.hub-card.team.open { width: 310px; }
+.hub-card-facts { gap: 4px 10px; }
+.hub-card-facts dd { font-weight: 600; }
+.hub-card-facts dd.none { color: var(--h-dim); font-weight: 400; }
+.hub-card-facts dd.bad { color: #fca5a5; }
+.hub-card-facts dd small { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; line-height: 1.35; color: #d4d4d8; }
+.hub-card-movelist { display: grid; grid-template-columns: 1fr; gap: 4px; margin-top: 8px; }
+.hub-card-move { min-width: 0; padding: 4px 8px; border-radius: 8px; background: color-mix(in srgb, var(--mc, #888) 26%, transparent); border: 1px solid color-mix(in srgb, var(--mc, #888) 60%, transparent); }
+.hub-card-move-top { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.hub-card-move-top strong { flex: 1; min-width: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-card-move-type { flex: none; font-size: 12px; color: color-mix(in srgb, var(--mc, #888) 55%, #fff); }
+.hub-card-move-line { display: block; font-size: 12px; color: var(--h-dim); }
+.hub-card-move p { margin: 3px 0 0; font-size: 12px; line-height: 1.35; color: #d4d4d8; }
+.hub-card-more { margin: 8px 0 0; font-size: 12px; color: var(--h-dim); }
 .hub-card-icon { width: 44px; height: 44px; object-fit: contain; image-rendering: pixelated; flex: none; }
 .hub-card-desc { margin: 8px 0 0; font-size: 13px; line-height: 1.4; color: #d4d4d8; }
 .hub-card.kind-item { width: 200px; }

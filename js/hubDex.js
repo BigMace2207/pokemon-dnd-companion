@@ -11,6 +11,8 @@ import { categorizeItem, SECTION_LABELS } from "./bagItems.js";
 import { describeItem } from "./itemDescriptions.js";
 import { itemIconSrc, MONEY } from "./bagIcon.js";
 import { trainerSpriteUrl } from "./trainerSpritePicker.js";
+import { playCry } from "./hubSound.js";
+import { STATUS_INFO } from "./statusEffects.js";
 
 export const CARD_MIME = "application/x-hub-card";
 const LIMIT = 120;
@@ -56,7 +58,10 @@ export function dexPanel(state, kind, { onPlace, onClose, openFull, onSwitch }) 
         : [el("span", { class: "hub-dex-name" }, [el("strong", {}, x.name), el("span", {}, [x.category, x.power ? `${x.power} power` : "", dice(x)].filter(Boolean).join(" · "))]), el("span", { class: "hub-dex-types" }, typePill(x.type))];
       const row = el("div", { class: `hub-dex-row${opened === x.name ? " open" : ""}`, role: "listitem", draggable: "true", tabindex: "0", title: "Drag onto the board" }, [el("div", { class: "hub-dex-head" }, [...head, add])]);
       if (opened === x.name) row.append(isMon ? monDetail(x) : moveDetail(x));
-      row.addEventListener("dragstart", (e) => { e.dataTransfer.setData(CARD_MIME, JSON.stringify(card)); e.dataTransfer.effectAllowed = "copy"; row.classList.add("lifted"); });
+      row.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData(CARD_MIME, JSON.stringify(card)); e.dataTransfer.effectAllowed = "copy"; row.classList.add("lifted");
+        if (isMon) playCry(x.dex, x.name);   // a Pokémon pulled out of the Pokédex calls out
+      });
       row.addEventListener("dragend", () => row.classList.remove("lifted"));
       const toggle = () => { opened = opened === x.name ? null : x.name; draw(); };
       row.addEventListener("click", toggle);
@@ -101,9 +106,10 @@ function moveDetail(m) {
 export function makeCard() {
   return el("div", { class: "hub-card" });
 }
-const cardSig = (it) => JSON.stringify([it.type, it.name, it.open, it.level, it.hp, it.moves, it.nickname, it.held, it.status, it.sprite, it.fields, it.backstory, it.party]);
+const cardSig = (it) => JSON.stringify([it.type, it.name, it.open, it.level, it.hp, it.moves, it.nickname, it.held, it.ability, it.status, it.sprite, it.fields, it.backstory, it.party]);
 export function fillCard(node, it, state) {
-  node.className = `hub-card kind-${it.type}${it.open ? " open" : ""}`;
+  const team = it.type === "mon" && (Array.isArray(it.hp) || Array.isArray(it.moves));   // a player's own Pokémon: the full sheet
+  node.className = `hub-card kind-${it.type}${team ? " team" : ""}${it.open ? " open" : ""}`;
   const sig = cardSig(it);
   if (node.dataset.sig === sig) return;   // nothing changed: leave it alone (no flicker)
   node.dataset.sig = sig;
@@ -117,24 +123,68 @@ function fillMon(node, it, state) {
   const p = monByName(state, it.name);
   node.style.setProperty("--tc", typeColor(p?.type1));
   const fromTeam = Array.isArray(it.hp) || Array.isArray(it.moves);
-  const sub = [`#${p?.dex || it.dex || "?"}`, it.level ? `Lv ${it.level}` : "", fromTeam && it.nickname ? it.name : ""].filter(Boolean).join(" · ");
-  const hp = Array.isArray(it.hp) && it.hp[1] ? it.hp : null;
-  const pct = hp ? Math.max(0, Math.min(100, (hp[0] / hp[1]) * 100)) : 0;
+  if (fromTeam) { fillTeamMon(node, it, state, p); return; }
+  const sub = [`#${p?.dex || it.dex || "?"}`, it.level ? `Lv ${it.level}` : ""].filter(Boolean).join(" · ");
   node.replaceChildren(...[
     el("div", { class: "hub-card-head" }, [
       el("img", { class: "hub-card-sprite", src: spriteUrl(p?.dex || it.dex), alt: "", draggable: "false" }),
-      el("div", { class: "hub-card-title" }, [el("strong", {}, (fromTeam && it.nickname) || it.name), el("span", {}, sub), el("span", { class: "hub-dex-types" }, [typePill(p?.type1), typePill(p?.type2)].filter(Boolean))]),
+      el("div", { class: "hub-card-title" }, [el("strong", {}, it.name), el("span", {}, sub), el("span", { class: "hub-dex-types" }, [typePill(p?.type1), typePill(p?.type2)].filter(Boolean))]),
+    ]),
+    it.open && p ? (it.level ? levelDetail(p, it.level) : monDetail(p)) : null,
+  ].filter(Boolean));
+}
+
+// what an ability does, from whichever species in the Pokédex lists it (the card's own species first)
+let abilityText = null;
+function abilityEffect(state, name, p) {
+  if (!name) return "";
+  for (const k of ["ability1", "ability2", "hiddenAbility"]) if (p?.[k] === name && p[`${k}Effect`]) return p[`${k}Effect`];
+  if (!abilityText) {
+    abilityText = new Map();
+    for (const x of state?.pokemon || []) for (const k of ["ability1", "ability2", "hiddenAbility"]) if (x[k] && x[`${k}Effect`] && !abilityText.has(x[k])) abilityText.set(x[k], x[`${k}Effect`]);
+  }
+  return abilityText.get(name) || "";
+}
+
+// A Pokémon from a player's team: everything on its sheet. Closed, the card shows its health, status, ability, held
+// item and each move's type, kind, power and damage dice; opened, it adds what the ability, item, status and every
+// move actually do, and its stats at its level.
+function fillTeamMon(node, it, state, p) {
+  const open = !!it.open;
+  const sub = [`#${p?.dex || it.dex || "?"}`, it.level ? `Lv ${it.level}` : "", it.nickname ? it.name : ""].filter(Boolean).join(" · ");
+  const hp = Array.isArray(it.hp) && it.hp[1] ? it.hp : null;
+  const pct = hp ? Math.max(0, Math.min(100, (hp[0] / hp[1]) * 100)) : 0;
+  const status = it.status && it.status !== "None" ? it.status : "";
+  const ability = it.ability || "";
+  const facts = [
+    ["Ability", ability || "Not set", open && ability ? abilityEffect(state, ability, p) : ""],
+    ["Held", it.held || "Nothing", open && it.held ? describeItem(it.held, state) : ""],
+    ["Status", status || "Healthy", open && status ? STATUS_INFO[status]?.summary || "" : ""],
+  ];
+  node.replaceChildren(...[
+    el("div", { class: "hub-card-head" }, [
+      el("img", { class: "hub-card-sprite", src: spriteUrl(p?.dex || it.dex), alt: "", draggable: "false" }),
+      el("div", { class: "hub-card-title" }, [el("strong", {}, it.nickname || it.name), el("span", {}, sub), el("span", { class: "hub-dex-types" }, [typePill(p?.type1), typePill(p?.type2)].filter(Boolean))]),
     ]),
     hp ? el("div", { class: "hub-card-hp" }, [
       el("span", { class: "hub-card-hpbar" }, el("span", { class: pct > 50 ? "good" : pct > 20 ? "warn" : "bad", style: `width:${pct}%` })),
-      el("span", {}, `${hp[0]}/${hp[1]} HP${it.status && it.status !== "None" ? ` · ${it.status}` : ""}`),
+      el("span", {}, `${hp[0]}/${hp[1]} HP`),
     ]) : null,
-    it.moves?.length ? el("div", { class: "hub-card-moves" }, it.moves.map((m) => {
-      const mv = moveByName(state, m);
-      return el("span", { style: `--mc:${typeColor(mv?.type)}`, title: mv ? [mv.type, mv.category, mv.power ? `${mv.power} power` : "", dice(mv)].filter(Boolean).join(" · ") : "" }, m);
-    })) : null,
-    it.held ? el("p", { class: "hub-card-held" }, `Holding ${it.held}`) : null,
-    it.open && p ? (it.level ? levelDetail(p, it.level) : monDetail(p)) : null,
+    el("dl", { class: "hub-card-fields hub-card-facts" }, facts.flatMap(([k, v, more]) => [
+      el("dt", {}, k),
+      el("dd", { class: v === "Not set" || v === "Nothing" ? "none" : k === "Status" && status ? "bad" : "" }, [v, more ? el("small", {}, more) : null].filter(Boolean)),
+    ])),
+    it.moves?.length ? el("div", { class: `hub-card-movelist${open ? " full" : ""}` }, it.moves.map((name) => {
+      const mv = moveByName(state, name);
+      const line = mv ? [mv.category, mv.power ? `${mv.power} pow` : "", dice(mv), mv.accuracy ? `${mv.accuracy}%` : "", mv.pp ? `${mv.pp} PP` : ""].filter(Boolean).join(" · ") : "Not in the Move Dex";
+      return el("div", { class: "hub-card-move", style: `--mc:${typeColor(mv?.type)}` }, [
+        el("div", { class: "hub-card-move-top" }, [el("strong", {}, name), mv ? el("span", { class: "hub-card-move-type" }, mv.type) : null].filter(Boolean)),
+        el("span", { class: "hub-card-move-line" }, line),
+        open && mv?.effect ? el("p", {}, mv.effect) : null,
+      ].filter(Boolean));
+    })) : el("p", { class: "hub-card-held" }, "No moves yet"),
+    open && p && it.level ? levelDetail(p, it.level) : null,
+    open ? null : el("p", { class: "hub-card-more" }, "Open for what everything does and its stats"),
   ].filter(Boolean));
 }
 

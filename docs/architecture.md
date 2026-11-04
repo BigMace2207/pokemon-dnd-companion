@@ -320,6 +320,15 @@ Inter was dropped as too generic. If you add a family, add it to the `<link>` in
   refuses other typed moves and marks existing ones (`.move-invalid`).
 - Hub sounds: `js/hubSound.js` synthesises everything with Web Audio (no files), pans by screen x, and runs through a
   generated reverb. The AudioContext is made on the first gesture; `pkdnd-hub-sound` = "off" turns it off on a device.
+  It also has `itemSound` (a sound per bag section, played on the bag's dragstart), `moveSound` (per type, a launch and
+  a hit timed by js/moveFx.js) and `playCry`: the real game cries streamed from the PokeAPI cries collection by sprite id
+  (Ogg), or Pokémon Showdown's MP3 by name where Ogg won't play. Those two hosts are the only extra `media-src` in the CSP;
+  cries are never stored in the repo or on the server.
+- Move animations: `js/moveFx.js` draws on a throw-away `.move-fx` layer inside `.battle-stage` (transform/opacity
+  only, Web Animations). battleview.js plays your own move before submitting it (the HP drops on the hit), and on a poll
+  plays new "used <move>" Battle Log lines (`parseMoveLine`) on the old scene before drawing the new HP. Slots carry
+  `data-cid`. Reduced motion gets a soft glow only; Low graphics halves the particles.
+- Hub cards for a player's own Pokémon (`fillTeamMon` in js/hubDex.js, class `team`) show the whole sheet.
 - Draw on a phone: the pen's colours sit on a half circle round the wheel dot (`.pen-arc`), with one brush-size button that
   opens into the three sizes; on a computer the same size button is in the bar above the tools.
 - The phone wheel (`js/mobile/wheel.js`) is paged by group: a sideways swipe turns exactly one page (flick or a third of
@@ -346,5 +355,8 @@ Inter was dropped as too generic. If you add a family, add it to the `<link>` in
   (`<html data-gfx>`, set before paint in layout-init.js; Settings -> Appearance -> Graphics, default medium) gates the rest:
   medium/low drop backdrop-filter blur (re-blurring a moving sky every frame), nebula drift and most shards; low also
   stills the stars and drops comets, trails and the constellation twinkle. The edge mist only animates on a visible side.
+- A player's trainer and each of their Pokémon can be on the hub once: cards carry a `link` ("trainer" / "mon:<id>"), the
+  server's hub "put" drops any other card with the same owner and link, and dropping one that's already there moves it.
+  `syncLinkedCards` (hub.js) rewrites your linked cards when your sheet changes (details, HP, moves, held item).
 - Hub panning is transform-only: `applyView` moves the dot grid and star layers with `transform`/`translate` (wrapped by a
   tile) and only touches CSS variables when the zoom changes, on those layers, never on `.hub` (that restyled every card).

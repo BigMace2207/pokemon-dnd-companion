@@ -170,3 +170,199 @@ export function hubSound(kind, x = null) {
       break;
   }
 }
+
+// ------------------------------------------------------------------ noise, for the rougher sounds below
+// a burst of filtered noise: type is a BiquadFilter type, the filter sweeps from `from` to `to` Hz
+function burst({ at = 0, dur = 0.3, from = 1200, to = 1200, type = "bandpass", q = 1, gain = 0.08, pan = 0, verb = 0.5, attack = 0.01 }) {
+  const t = ctx.currentTime + Math.max(0, at);
+  const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource(); src.buffer = buf;
+  const f = ctx.createBiquadFilter(); f.type = type; f.Q.value = q;
+  f.frequency.setValueAtTime(from, t); f.frequency.exponentialRampToValueAtTime(Math.max(20, to), t + dur);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + Math.min(attack, dur * 0.5)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  const p = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+  if (p) p.pan.value = Math.max(-1, Math.min(1, pan));
+  src.connect(f).connect(g);
+  const out = p ? (g.connect(p), p) : g;
+  const dg = ctx.createGain(); dg.gain.value = 1 - verb * 0.5; out.connect(dg).connect(dry);
+  const wg = ctx.createGain(); wg.gain.value = verb; out.connect(wg).connect(wet.send);
+  src.start(t); src.stop(t + dur + 0.05);
+}
+
+function ready() {
+  if (!hubSoundOn() || (typeof document !== "undefined" && document.hidden)) return false;
+  if (!ensure() || ctx.state === "closed") return false;
+  if (ctx.state === "suspended") ctx.resume();
+  return true;
+}
+const panOf = (x) => (x == null || typeof window === "undefined" ? 0 : ((x / (window.innerWidth || 1)) * 2 - 1) * 0.8);
+
+// ------------------------------------------------------------------ items picked up out of the bag
+/**
+ * The sound of lifting an item out of the bag, by what kind of item it is (js/bagItems.js's sections, plus berries,
+ * money and eggs): a Poké Ball clicks open, medicine sprays, a TM chirps like a disc, a held item rings like metal,
+ * a key item jingles, a berry squishes, money is a coin and an egg wobbles.
+ */
+export function itemSound(kind, x = null) {
+  if (!ready()) return;
+  const pan = panOf(x);
+  switch (kind) {
+    case "ball":
+      voice({ freq: 1400, type: "square", decay: 0.04, gain: 0.03, pan, verb: 0.3 });
+      voice({ freq: 900, type: "square", at: 0.07, decay: 0.05, gain: 0.03, pan, verb: 0.3 });
+      voice({ freq: 330, to: 660, at: 0.09, attack: 0.02, decay: 0.3, gain: 0.07, pan, verb: 0.6 });
+      burst({ at: 0.08, dur: 0.25, from: 600, to: 3000, gain: 0.03, pan, q: 1.5 });
+      break;
+    case "medicine":
+      burst({ dur: 0.38, from: 5000, to: 7000, type: "highpass", gain: 0.05, pan, verb: 0.4, attack: 0.02 });
+      [0, 4, 7].forEach((s, i) => voice({ freq: note(1046.5, s), at: 0.12 + i * 0.06, decay: 0.4, gain: 0.04, pan, verb: 0.8 }));
+      break;
+    case "tm":
+      [0, 7, 12, 19].forEach((semi, i) => voice({ freq: 880 * Math.pow(2, semi / 12), type: "square", at: i * 0.05, decay: 0.07, gain: 0.025, pan, verb: 0.5 }));
+      voice({ freq: 220, to: 440, attack: 0.05, decay: 0.3, type: "triangle", gain: 0.05, pan, verb: 0.5 });
+      break;
+    case "held":
+      [1, 2.76, 5.4].forEach((r, i) => voice({ freq: 760 * r, decay: 0.9 - i * 0.25, gain: 0.07 / (i + 1), pan, verb: 0.7 }));
+      break;
+    case "key":
+      for (let i = 0; i < 5; i++) voice({ freq: 2600 + Math.random() * 2400, at: i * 0.045 + Math.random() * 0.02, decay: 0.14, gain: 0.03, pan: pan + (Math.random() - 0.5) * 0.3, verb: 0.6 });
+      break;
+    case "berry":
+      voice({ freq: 520, to: 180, attack: 0.005, decay: 0.16, gain: 0.1, pan, verb: 0.4 });
+      burst({ dur: 0.1, from: 900, to: 300, type: "lowpass", gain: 0.05, pan, verb: 0.3 });
+      break;
+    case "money":
+      voice({ freq: 987.77, type: "square", decay: 0.08, gain: 0.03, pan, verb: 0.5 });
+      voice({ freq: 1318.5, type: "square", at: 0.08, decay: 0.45, gain: 0.03, pan, verb: 0.6 });
+      break;
+    case "egg":
+      [0, 0.12].forEach((at, i) => voice({ freq: 180 - i * 30, at, attack: 0.01, decay: 0.15, type: "triangle", gain: 0.09, pan: pan + (i ? 0.1 : -0.1), verb: 0.4 }));
+      break;
+    default:
+      hubSound("pick", x);
+  }
+}
+
+// ------------------------------------------------------------------ Pokémon cries
+// The cries come from the PokeAPI cries collection (by the same id numbers as the sprites, forms included) as Ogg;
+// a browser that can't play Ogg (older Safari) gets Pokémon Showdown's MP3 of the base species instead. They're
+// streamed from there, never stored here (sound files aren't committed: see CLAUDE.md), and the site's CSP allows
+// exactly these two hosts for media.
+const CRY_OGG = (dex) => `https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/latest/${dex}.ogg`;
+const CRY_MP3 = (name) => `https://play.pokemonshowdown.com/audio/cries/${name}.mp3`;
+// "Mr. Mime" -> "mrmime", "Farfetch'd" -> "farfetchd", "Nidoran♀" -> "nidoranf", "Deoxys (Attack)" -> "deoxys"
+export const showdownCryName = (name) => String(name || "").replace(/\s*\(.*\)\s*/g, "").replace(/♀/g, "f").replace(/♂/g, "m")
+  .normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+let canOgg = null, lastCry = null;
+export function playCry(dex, name = "") {
+  if (!hubSoundOn() || typeof Audio === "undefined" || (!dex && !name)) return;
+  if (canOgg === null) { try { canOgg = !!new Audio().canPlayType('audio/ogg; codecs="vorbis"'); } catch { canOgg = false; } }
+  const mp3 = () => { const b = new Audio(CRY_MP3(showdownCryName(name))); b.volume = 0.4; b.play().catch(() => {}); lastCry = b; };
+  try {
+    lastCry?.pause?.();
+    if (!(canOgg && dex)) { if (name) mp3(); return; }
+    const a = new Audio(CRY_OGG(dex));
+    a.volume = 0.4;
+    if (name) a.addEventListener("error", mp3, { once: true });
+    a.play().catch(() => {});
+    lastCry = a;
+  } catch { /* no audio: stay quiet */ }
+}
+
+// ------------------------------------------------------------------ battle moves
+/**
+ * The sound of a move, in two parts: the launch when it's used, then the hit `hitAt` seconds later when it lands
+ * (js/moveFx.js times both to its animation). By the move's type, after the games: fire roars and crackles,
+ * water splashes, electricity buzzes and zaps, ice chimes, a punch thuds, a steel move rings, and so on.
+ * x / tx: where the user and the target are on screen (clientX), for panning.
+ */
+export function moveSound(type, { category = "Physical", hitAt = 0.45, missed = false, x = null, tx = null } = {}) {
+  if (!ready()) return;
+  const p0 = panOf(x), p1 = panOf(tx ?? x), h = hitAt;
+  // the launch
+  if (category === "Status") {
+    const low = type === "Dark" || type === "Ghost" || type === "Poison" ? -5 : 0;
+    [0, 4, 7, 12].forEach((s, i) => voice({ freq: note(392, s + low), at: i * 0.07, attack: 0.02, decay: 0.5, gain: 0.05, pan: p0, verb: 0.85 }));
+  } else if (category === "Physical") {
+    burst({ dur: 0.22, from: 500, to: 2600, gain: 0.05, pan: p0, q: 1.2 });
+  } else {
+    voice({ freq: 300, to: 900, attack: 0.05, decay: h * 0.9, type: "triangle", gain: 0.035, pan: p0, verb: 0.6 });
+  }
+  if (missed) { burst({ at: h * 0.8, dur: 0.35, from: 2400, to: 400, gain: 0.05, pan: p1, q: 1.4 }); return; }
+  // the hit (or, for a status move, the effect settling)
+  const H = (o) => ({ ...o, at: h + (o.at || 0), pan: o.pan ?? p1 });
+  const thud = (gain) => { voice(H({ freq: 140, to: 50, attack: 0.003, decay: 0.22, gain, verb: 0.3 })); burst(H({ dur: 0.12, from: 2500, to: 400, type: "lowpass", gain: gain * 0.6, verb: 0.3 })); };
+  switch (type) {
+    case "Fire":
+      burst(H({ dur: 0.7, from: 300, to: 1200, type: "lowpass", gain: 0.12, attack: 0.04 }));
+      for (let i = 0; i < 7; i++) burst(H({ at: Math.random() * 0.5, dur: 0.03, from: 3000, to: 3000, type: "highpass", gain: 0.05 }));
+      break;
+    case "Water":
+      burst(H({ dur: 0.5, from: 1800, to: 400, type: "lowpass", gain: 0.1 }));
+      for (let i = 0; i < 6; i++) voice(H({ freq: 400 + Math.random() * 500, to: 1200 + Math.random() * 800, at: 0.05 + i * 0.06, attack: 0.005, decay: 0.07, gain: 0.04, verb: 0.5 }));
+      break;
+    case "Electric":
+      for (let i = 0; i < 6; i++) voice(H({ freq: 80 + Math.random() * 60, type: "sawtooth", at: i * 0.05, attack: 0.002, decay: 0.06, gain: 0.05, verb: 0.3 }));
+      burst(H({ dur: 0.18, from: 6000, to: 2000, type: "highpass", gain: 0.08, attack: 0.002 }));
+      voice(H({ freq: 2200, to: 600, attack: 0.002, decay: 0.25, type: "square", gain: 0.025 }));
+      break;
+    case "Grass":
+      for (let i = 0; i < 5; i++) burst(H({ at: i * 0.06, dur: 0.12, from: 2500, to: 5000, gain: 0.04, q: 3 }));
+      voice(H({ freq: 660, to: 990, attack: 0.02, decay: 0.4, gain: 0.04, verb: 0.7 }));
+      break;
+    case "Ice":
+      [0, 3, 7, 10].forEach((s, i) => voice(H({ freq: note(1760, s), at: i * 0.05, decay: 0.6, gain: 0.04, verb: 0.85 })));
+      burst(H({ dur: 0.15, from: 7000, to: 3000, type: "highpass", gain: 0.06, attack: 0.002 }));
+      break;
+    case "Poison":
+      for (let i = 0; i < 6; i++) voice(H({ freq: 200 + Math.random() * 150, to: 500 + Math.random() * 300, at: i * 0.07, attack: 0.01, decay: 0.12, type: "triangle", gain: 0.05, verb: 0.6 }));
+      break;
+    case "Ground":
+      voice(H({ freq: 60, to: 35, attack: 0.02, decay: 0.8, gain: 0.2, verb: 0.4 }));
+      burst(H({ dur: 0.8, from: 400, to: 120, type: "lowpass", gain: 0.12, attack: 0.03, verb: 0.4 }));
+      break;
+    case "Rock":
+      for (let i = 0; i < 4; i++) { burst(H({ at: i * 0.09, dur: 0.1, from: 1800, to: 300, type: "lowpass", gain: 0.1 })); voice(H({ freq: 110 - i * 8, to: 60, at: i * 0.09, attack: 0.002, decay: 0.14, gain: 0.1, verb: 0.3 })); }
+      break;
+    case "Flying":
+      burst({ at: Math.max(0, h - 0.2), dur: 0.5, from: 400, to: 2500, gain: 0.08, q: 0.8, attack: 0.2, pan: p0 });
+      burst(H({ dur: 0.4, from: 2500, to: 600, gain: 0.06, q: 0.8 }));
+      break;
+    case "Psychic":
+      voice(H({ freq: 440, to: 880, attack: 0.05, decay: 0.8, gain: 0.05, verb: 0.9 }));
+      voice(H({ freq: 446, to: 892, attack: 0.05, decay: 0.8, gain: 0.05, verb: 0.9 }));
+      voice(H({ freq: 660, to: 330, at: 0.2, attack: 0.05, decay: 0.6, type: "triangle", gain: 0.03, verb: 0.9 }));
+      break;
+    case "Ghost":
+      voice(H({ freq: 300, to: 180, attack: 0.15, decay: 0.9, type: "triangle", gain: 0.05, verb: 0.95 }));
+      voice(H({ freq: 307, to: 175, attack: 0.15, decay: 0.9, gain: 0.05, verb: 0.95 }));
+      burst(H({ dur: 0.7, from: 300, to: 900, gain: 0.03, q: 4, attack: 0.2 }));
+      break;
+    case "Dark":
+      [0, 0.12].forEach((a) => burst(H({ at: a, dur: 0.14, from: 5000, to: 900, gain: 0.08, q: 1.5, attack: 0.003 })));
+      voice(H({ freq: 90, to: 55, attack: 0.01, decay: 0.4, gain: 0.1, type: "sawtooth", verb: 0.4 }));
+      break;
+    case "Bug":
+      for (let i = 0; i < 10; i++) voice(H({ freq: 3000 + Math.random() * 1500, type: "square", at: i * 0.035, attack: 0.002, decay: 0.03, gain: 0.015, verb: 0.4 }));
+      thud(0.06);
+      break;
+    case "Dragon":
+      voice(H({ freq: 110, to: 70, attack: 0.05, decay: 0.8, type: "sawtooth", gain: 0.07, verb: 0.6 }));
+      burst(H({ dur: 0.6, from: 500, to: 2000, gain: 0.07, q: 1, attack: 0.08 }));
+      [0, 5, 7].forEach((s, i) => voice(H({ freq: note(220, s), at: 0.1 + i * 0.05, decay: 0.7, type: "triangle", gain: 0.03, verb: 0.7 })));
+      break;
+    case "Steel":
+      [1, 2.76, 5.4, 8.9].forEach((r, i) => voice(H({ freq: 520 * r, decay: 1.1 - i * 0.2, gain: 0.08 / (i + 1), verb: 0.6 })));
+      burst(H({ dur: 0.06, from: 6000, to: 6000, type: "highpass", gain: 0.06, attack: 0.002 }));
+      break;
+    case "Fairy":
+      [0, 2, 4, 7, 9, 12].forEach((s, i) => voice(H({ freq: note(1318.5, s), at: i * 0.05, decay: 0.7, gain: 0.04, pan: p1 + (i - 3) * 0.08, verb: 0.9 })));
+      break;
+    default:   // Normal, Fighting and anything unknown: a solid hit
+      thud(category === "Physical" ? 0.16 : 0.11);
+  }
+}
