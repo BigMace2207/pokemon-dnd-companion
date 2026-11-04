@@ -35,13 +35,34 @@ export function movesLearnedBetween(state, dex, fromLevel, toLevel) {
 // doesn't offer, say, a level-40 move on a level-5 Pokémon. Falls back to
 // the full curated move list for an unrecognized species or a species with
 // no moveset data at all, rather than leaving the picker empty.
+// Is this move one this Pokémon could know at its level? (Unknown species: anything goes, there's nothing to check.)
+export function canKnowMove(state, mon, moveName) {
+  if (!moveName) return true;
+  if (!state.pokemonByName.get(mon.name)) return true;
+  return learnableMoveNames(state, mon).includes(moveName);
+}
+
+// The moves a Pokémon knows when it first appears at a level: its four most recent level-up moves.
+export function startingMoves(state, name, level = 1) {
+  const species = state.pokemonByName.get(name);
+  if (!species) return [];
+  const best = new Map();
+  for (const r of state.movesetsByDex.get(species.dex) || []) {
+    if (r.method !== "L" || r.level > level) continue;
+    const m = state.moves[r.moveIdx];
+    if (m && !m.stub && (!best.has(m.name) || best.get(m.name) < r.level)) best.set(m.name, r.level);
+  }
+  return [...best.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n]) => n);
+}
+
 export function learnableMoveNames(state, mon) {
   const species = state.pokemonByName.get(mon.name);
   const fallback = () => battleMoves(state).map((m) => m.name);
   if (!species) return fallback();
   const level = Math.min(100, Math.max(1, Number(mon.level) || 1));
   const rows = state.movesetsByDex.get(species.dex) || [];
-  const eligible = rows.filter((r) => r.method !== "L" || r.level <= level);
+  // the house rule: a Pokémon can only know moves it learns by levelling up (at or below its level) or egg moves
+  const eligible = rows.filter((r) => (r.method === "L" && r.level <= level) || r.method === "E");
   const seen = new Set();
   const names = [];
   for (const r of eligible) {

@@ -4,7 +4,7 @@ import { STATUS_OPTIONS } from "../statusEffects.js";
 import { loadSave, writeSave, newMon } from "../storage.js";
 import { addLogEntry } from "../log.js";
 import { spriteImg } from "../sprites.js";
-import { handleLevelUp, learnableMoveNames } from "../levelUp.js";
+import { handleLevelUp, learnableMoveNames, canKnowMove } from "../levelUp.js";
 import { teamToText, parseTeamText } from "../teamExport.js";
 import { getViewState, setViewState } from "../viewState.js";
 import { goToPokemon, goToStatCalc } from "../navState.js";
@@ -170,8 +170,25 @@ export function renderTeam(container, state) {
     const monMoveNames = learnableMoveNames(state, mon);
     if (!Array.isArray(mon.moves)) mon.moves = ["", "", "", ""];   // an older or imported save without a move list
     const moveCombos = mon.moves.map((mv, i) => {
-      const combo = makeCombo({ options: monMoveNames, initial: mv, placeholder: `Move ${i + 1}`, onSelect: (n) => { mon.moves[i] = n; writeSave(save); } });
-      combo.inputEl.addEventListener("blur", () => { mon.moves[i] = combo.inputEl.value; writeSave(save); });
+      const combo = makeCombo({ options: monMoveNames, initial: mv, placeholder: `Move ${i + 1}`, onSelect: (n) => { mon.moves[i] = n; writeSave(save); flag(); } });
+      // only moves it can know: level-up moves up to its level, and egg moves (see learnableMoveNames)
+      const flag = () => {
+        const bad = mon.moves[i] && !canKnowMove(state, mon, mon.moves[i]);
+        combo.inputEl.classList.toggle("move-invalid", !!bad);
+        combo.inputEl.title = bad ? `${mon.name} can't know ${mon.moves[i]} at level ${mon.level}: only level-up moves up to its level, or egg moves.` : "";
+      };
+      combo.inputEl.addEventListener("blur", () => {
+        const v = combo.inputEl.value.trim();
+        if (v && !monMoveNames.includes(v)) {
+          combo.setValue(mon.moves[i] || "");
+          combo.inputEl.title = `${mon.name || "This Pokémon"} can't learn ${v} at level ${mon.level}. Pick from the list: level-up moves up to its level, or egg moves.`;
+          combo.inputEl.classList.add("move-rejected");
+          setTimeout(() => combo.inputEl.classList.remove("move-rejected"), 900);
+          return;
+        }
+        mon.moves[i] = v; writeSave(save); flag();
+      });
+      flag();
       return combo;
     });
 

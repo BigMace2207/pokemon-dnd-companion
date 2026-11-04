@@ -462,11 +462,11 @@ class CampaignAuthorization(ServerCase):
         status, out = call(self.base, "GET", f"/api/campaign/{self.cid}?networkId=id-owner", token=m)
         self.assertEqual(status, 200)
         self.assertFalse(out["isOwner"])
-        for secret in ("dmPassword", "inviteCode", "memberIds", "ownerId"):
+        for secret in ("dmPassword", "inviteCode", "memberIds", "ownerId", "dmIds"):
             self.assertNotIn(secret, out)
         status, listing = call(self.base, "GET", "/api/campaigns?networkId=id-member", token=m)
         self.assertFalse(listing["campaigns"][0]["isOwner"])
-        for action, body in [("rename", {"name": "Hijacked"}), ("regenerate-code", {}), ("regenerate-dm-password", {}),
+        for action, body in [("rename", {"name": "Hijacked"}), ("regenerate-code", {}), ("set-dm", {"memberId": "id-member", "dm": True}),
                              ("remove-member", {"memberId": "id-owner"}), ("transfer-owner", {"newOwnerId": "id-member"}), ("delete", {})]:
             status, _ = call(self.base, "POST", f"/api/campaigns/{self.cid}/{action}", {"networkId": "id-owner", **body}, token=m)
             self.assertEqual(status, 403, action)
@@ -477,7 +477,9 @@ class CampaignAuthorization(ServerCase):
         self.assertEqual(status, 404)
         # The real owner (via their session) still can.
         status, out = call(self.base, "GET", f"/api/campaign/{self.cid}?networkId=id-owner", token=self.owner_tok)
-        self.assertTrue(out["isOwner"] and out["dmPassword"] and out["inviteCode"])
+        self.assertTrue(out["isOwner"] and out["inviteCode"])
+        self.assertNotIn("dmPassword", out, "there is no DM password any more")
+        self.assertEqual(out["dmIds"], ["id-owner"], "the owner is the DM to start with")
         status, out = call(self.base, "POST", f"/api/campaigns/{self.cid}/rename", {"name": "Renamed"}, token=self.owner_tok)
         self.assertEqual((status, out["name"]), (200, "Renamed"))
 
@@ -520,7 +522,7 @@ class CampaignAuthorization(ServerCase):
         self.assertEqual(status, 403)
         status, out = self.post("/api/fullturn/playermove", {"networkId": "id-member", "combatants": []}, self.member_tok)
         self.assertEqual((status, out.get("error")), (200, "not a combatant"), "allowed through to the game rules")
-        server.DM_TOKENS["dmtok"] = {"cid": self.cid, "exp": time.time() + 60}
+        server.DM_TOKENS["dmtok"] = {"cid": self.cid, "exp": time.time() + 60, "acc": server.account_owning_network_id("id-owner")["id"]}
         status, out = self.post("/api/fullturn/playermove", {"networkId": "id-owner", "combatants": [], "token": "dmtok"}, self.member_tok)
         self.assertEqual(status, 200)
 

@@ -252,9 +252,9 @@ html.hub-full .topbar { display: none; }
 /* --- layers under the board: the DM's backdrop map, then the dot grid --- */
 .hub-dots { position: absolute; inset: 0; pointer-events: none;
   background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, .14) 1px, transparent 1.4px);
-  background-size: var(--grid, 28px) var(--grid, 28px); background-position: var(--gx, 0) var(--gy, 0); }
+  background-size: var(--grid, 28px) var(--grid, 28px); }
 .hub-backdrop { position: absolute; inset: -40px; pointer-events: none; overflow: hidden; }
-.hub-backdrop::after { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(9, 9, 11, calc(var(--dim, .35) * .6)), rgba(9, 9, 11, calc(var(--dim, .35) + .25))); }
+.hub-backdrop::after { content: ""; position: absolute; inset: 0; background: rgba(9, 9, 11, calc(var(--dim, .35) * .8 + .1)); }   /* an even dim: an oval vignette read as rounded corners */
 .hub-backdrop-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: blur(var(--blur, 12px)) saturate(1.1); opacity: 0; transform: scale(1.12); transition: opacity 1.4s var(--h-ease), transform 1.6s var(--h-ease); }
 .hub-backdrop-img.in { opacity: 1; transform: scale(1.06); }
 
@@ -307,7 +307,7 @@ html.hub-full .topbar { display: none; }
 .hub.cosmic { background: radial-gradient(ellipse at 30% 20%, #15131f 0%, #09090b 60%); }
 /* the starfield moves and zooms with the board, like the dots: each layer is a repeating tile of stars */
 /* a little parallax: each layer of stars drifts slower than the board as you pan, the faintest slowest (more depth) */
-.hub-starfield { position: absolute; inset: 0; background-repeat: repeat; background-position: calc(var(--gx, 0px) * var(--par, .7)) calc(var(--gy, 0px) * var(--par, .7)); }
+.hub-starfield { position: absolute; inset: 0; background-repeat: repeat; }
 .hub-starfield.s1 { --par: .72; } .hub-starfield.s2 { --par: .58; } .hub-starfield.s3 { --par: .85; } .hub-starfield.s4 { --par: .44; }
 .hub-starfield.s1 { background-image: radial-gradient(circle at 32.4% 15.1%, rgba(255,255,255,0.63) 0 1.1px, transparent 1.8px), radial-gradient(circle at 53.6% 36.6%, rgba(255,255,255,0.92) 0 1.1px, transparent 1.8px), radial-gradient(circle at 21.5% 8.6%, rgba(255,255,255,0.62) 0 1.4px, transparent 2.1px), radial-gradient(circle at 9.1% 42.5%, rgba(255,255,255,0.93) 0 1.1px, transparent 1.8px), radial-gradient(circle at 63.1% 58.3%, rgba(255,255,255,0.8) 0 1.1px, transparent 1.8px), radial-gradient(circle at 39.7% 97.6%, rgba(255,255,255,0.79) 0 1.1px, transparent 1.8px), radial-gradient(circle at 13.3% 41.9%, rgba(255,255,255,0.8) 0 1.1px, transparent 1.8px), radial-gradient(circle at 56.0% 68.2%, rgba(255,255,255,0.8) 0 1.1px, transparent 1.8px), radial-gradient(circle at 63.9% 37.2%, rgba(255,255,255,0.8) 0 1.1px, transparent 1.8px); background-size: calc(520px * var(--zk, 1)) calc(520px * var(--zk, 1)), calc(520px * var(--zk, 1)) calc(520px * var(--zk, 1)), calc(520px * var(--zk, 1)) calc(520px * var(--zk, 1)), calc(520px * var(--zk, 1)) calc(520px * var(--zk, 1)), calc(520px * var(--zk, 1)) calc(520px * var(--zk, 1)), calc(520px * var(--zk, 1)) calc(520px * var(--zk, 1)), calc(520px * var(--zk, 1)) calc(520px * var(--zk, 1)), calc(520px * var(--zk, 1)) calc(520px * var(--zk, 1)), calc(520px * var(--zk, 1)) calc(520px * var(--zk, 1)); }
 .hub-starfield.s2 { background-image: radial-gradient(circle at 61.9% 49.6%, rgba(255,255,255,0.72) 0 1.2px, transparent 1.9px), radial-gradient(circle at 46.6% 92.3%, rgba(255,255,255,0.55) 0 1.2px, transparent 1.9px), radial-gradient(circle at 79.4% 69.9%, rgba(255,255,255,0.48) 0 0.9px, transparent 1.6px), radial-gradient(circle at 30.0% 49.5%, rgba(255,255,255,0.71) 0 1.2px, transparent 1.9px), radial-gradient(circle at 28.8% 98.0%, rgba(255,255,255,0.63) 0 0.9px, transparent 1.6px), radial-gradient(circle at 16.5% 34.2%, rgba(255,255,255,0.6) 0 1.2px, transparent 1.9px), radial-gradient(circle at 96.2% 7.8%, rgba(255,255,255,0.57) 0 1.2px, transparent 1.9px), radial-gradient(circle at 35.0% 49.7%, rgba(255,255,255,0.47) 0 1.2px, transparent 1.9px); background-size: calc(430px * var(--zk, 1)) calc(430px * var(--zk, 1)), calc(430px * var(--zk, 1)) calc(430px * var(--zk, 1)), calc(430px * var(--zk, 1)) calc(430px * var(--zk, 1)), calc(430px * var(--zk, 1)) calc(430px * var(--zk, 1)), calc(430px * var(--zk, 1)) calc(430px * var(--zk, 1)), calc(430px * var(--zk, 1)) calc(430px * var(--zk, 1)), calc(430px * var(--zk, 1)) calc(430px * var(--zk, 1)), calc(430px * var(--zk, 1)) calc(430px * var(--zk, 1)); }
@@ -540,13 +540,13 @@ html.no-sidebar .lava-tower-wrap { left: 0; }
 @media (prefers-reduced-motion: no-preference) { .level-ask { animation: hub-in .25s cubic-bezier(.34, 1.4, .64, 1) both; } }
 
 /* ---- full pages (My Team, Trainer, Bag...) get more room round the edges when there's no sidebar ---- */
-html.no-sidebar:not(.hub-full):not(.admin-full) .main:not([data-view="planner"]) {
+html.no-sidebar:not(.hub-full):not(.admin-full):not(.mapeditor-full) .main:not([data-view="planner"]) {
   padding-top: calc(44px * var(--s)); padding-bottom: calc(110px * var(--s));
   padding-left: max(calc(72px * var(--s)), calc((100% - var(--content-max)) / 2));
   padding-right: max(calc(96px * var(--s)), calc((100% - var(--content-max)) / 2));
 }
 @media (max-width: 700px) {
-  html.no-sidebar:not(.hub-full):not(.admin-full) .main:not([data-view="planner"]) { padding: calc(22px * var(--s)) calc(20px * var(--s)) calc(110px * var(--s)); padding-right: 44px; }
+  html.no-sidebar:not(.hub-full):not(.admin-full):not(.mapeditor-full) .main:not([data-view="planner"]) { padding: calc(22px * var(--s)) calc(20px * var(--s)) calc(110px * var(--s)); padding-right: 44px; }
 }
 
 /* ---- other players' cursors glide between updates; strokes they're still drawing ---- */
@@ -761,3 +761,93 @@ html.no-sidebar:not(.hub-full):not(.admin-full) .main:not([data-view="planner"])
 
 /* the hub never scrolls (focusing a note far out on the board, or the drifting stars, could otherwise nudge it) */
 .hub, .hub-stage, .hub-stars { overflow: clip; }
+
+/* ---- dragging things on the board: press, lift, lean, trail, land (js/views/hub.js dragFx / landFx) ---- */
+/* scale and rotate are their own properties, so they never fight the hover lift (transform) or the click bounce */
+.hub-items > .pressed { scale: .97; transition: scale .1s cubic-bezier(.4, 0, .2, 1); }
+.hub-items > .dragging { transform: none; scale: 1.05; z-index: 50; cursor: grabbing; box-shadow: none;
+  filter: drop-shadow(0 22px 28px rgba(0, 0, 0, .5)); transition: scale .22s cubic-bezier(.34, 1.56, .64, 1), filter .22s cubic-bezier(.4, 0, .2, 1); }
+.hub-trail { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, var(--c) 0 35%, transparent 70%); animation: hub-trail .6s cubic-bezier(.4, 0, .2, 1) forwards; }
+@keyframes hub-trail { from { opacity: .7; transform: scale(1); } to { opacity: 0; transform: scale(.25); } }
+@media (prefers-reduced-motion: reduce) {
+  .hub-items > .pressed, .hub-items > .dragging { scale: 1; transition: none; }
+  .hub-trail { display: none; }
+}
+
+/* ---- brush size: one button showing the current size, opening out into the three (js/views/hub.js sizeButton) ---- */
+.pen-bar-size { display: inline-flex; align-items: center; gap: calc(4px * var(--s)); }
+.pen-size-now, .pen-size-opt { width: calc(32px * var(--s)); height: calc(32px * var(--s)); min-width: 28px; min-height: 28px; border-radius: 50%; padding: 0; display: grid; place-items: center; cursor: pointer;
+  border: 1px solid var(--h-line-2); background: rgba(255, 255, 255, .06); color: #fff; transition: background-color .15s, transform .15s var(--h-ease); }
+.pen-size-dot { display: block; border-radius: 50%; background: currentColor; }
+.pen-size-now:active, .pen-size-opt:active { transform: scale(.92); }
+.pen-bar-size .pen-size-opt { display: none; }
+.pen-bar-size.open .pen-size-opt { display: grid; animation: pen-size-in .2s cubic-bezier(.34, 1.56, .64, 1) backwards; animation-delay: calc(var(--i) * 30ms); }
+.pen-size-opt { color: var(--h-dim); }
+.pen-size-opt.on { color: #fff; background: rgba(255, 255, 255, .16); }
+.pen-bar-size.open .pen-size-now { background: #fff; color: #171717; }
+@keyframes pen-size-in { from { opacity: 0; transform: scale(.4); } }
+@media (hover: hover) and (pointer: fine) { .pen-size-now:hover, .pen-size-opt:hover { background: rgba(255, 255, 255, .14); } }
+.hub-pill.small { font-size: calc(12px * var(--s)); padding: calc(4px * var(--s)) calc(11px * var(--s)); }
+
+/* ---- DM access: the Control Centre button only for DMs, and red like the DM's SOUND/PARTY pull tabs ---- */
+.hub-page-btn[hidden] { display: none; }
+.hub-round.hub-dm-page { color: #fca5a5; border-color: rgba(255, 90, 78, .35); }
+.hub-round.hub-dm-page:focus-visible, .hub-round.hub-dm-page:active { color: #fff; background: #ff5a4e; border-color: #ff5a4e; }
+@media (hover: hover) and (pointer: fine) { .hub-round.hub-dm-page:hover { color: #fff; background: #ff5a4e; border-color: #ff5a4e; } }
+
+/* ---- eggs in the Key Items ---- */
+.hub-bag-item.egg { cursor: default; border-color: rgba(255, 255, 255, .12); }
+.hub-bag-item.egg .hub-pill { grid-column: 1 / -1; margin-top: 6px; }
+
+@media (prefers-reduced-motion: reduce) { .pen-bar-size.open .pen-size-opt { animation: none; } }
+
+/* ---- bottom left: your trainer standing on top of your team, name and money right beside them. Sprites are drawn
+   facing left, so they're mirrored to face right, into the board. ---- */
+.hub-left-dock { gap: 0; }
+.hub-left-dock .hub-team { position: relative; z-index: 1; left: auto; bottom: auto; }   /* its old offsets would nudge it up into the portrait */
+.hub-me { position: relative; z-index: 0; align-items: flex-end; gap: 2px; padding: 0 0 0 calc(6px * var(--s)); margin-bottom: calc(18px * var(--s));   /* standing clear above the team */
+  background: none; border: 0; border-radius: 0; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.hub-me-face { width: calc(76px * var(--s)); height: calc(76px * var(--s)); min-width: 60px; min-height: 60px; border-radius: 0; background: none;
+  object-fit: contain; object-position: center bottom; transform: scaleX(-1); filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .55)); }
+.hub-me-initial { width: calc(52px * var(--s)); height: calc(52px * var(--s)); min-width: 44px; min-height: 44px; margin: 0 4px 8px 0; border-radius: 50%; background: #e4e4e7; transform: none; font-size: calc(20px * var(--s)); }
+.hub-me-text { padding-bottom: calc(10px * var(--s)); text-shadow: 0 1px 8px rgba(0, 0, 0, .7); }
+.hub-me-text strong { font-size: calc(15px * var(--s)); }
+.hub-me-text span { font-size: 12px; }
+.hub-me:hover, .hub-me:focus-visible { border-color: transparent; }
+.hub-me:focus-visible .hub-me-text strong { text-decoration: underline; text-underline-offset: 3px; }
+.hub-team-mon img { transform: scaleX(-1); }
+
+/* ---- panning moves the dot grid and the star layers with transforms only (hub.js applyView): each is a tile larger
+   than the screen and shifts by less than one tile, so nothing repaints while you drag. ---- */
+.hub-dots { inset: auto; left: 0; top: 0; width: calc(100% + var(--grid, 28px) * 2); height: calc(100% + var(--grid, 28px) * 2); will-change: transform; }
+.hub-starfield { inset: auto; left: -90px; top: -90px; width: calc(100% + 180px + 620px * var(--zk, 1)); height: calc(100% + 180px + 620px * var(--zk, 1)); }
+.hub-constellation { right: 7%; top: 13%; transform-origin: 0 0; }   /* it zooms from its corner, like the board (hub.js applyView) */
+html.m .hub-constellation { width: 60vw; right: 4vw; top: 16vh; }
+
+/* ---- the stars float like the nebula's shards: each layer rises slowly, forever (it moves exactly one tile per loop,
+   so the pattern never jumps). transform only; panning uses the separate `translate` (hub.js applyView). Each layer is
+   one tile wider and two taller than the screen, room for the pan wrap plus the rise. ---- */
+.hub-starfield.s1 { --t: calc(520px * var(--zk, 1)); } .hub-starfield.s2 { --t: calc(430px * var(--zk, 1)); } .hub-starfield.s3 { --t: calc(610px * var(--zk, 1)); } .hub-starfield.s4 { --t: calc(370px * var(--zk, 1)); }
+.hub-starfield { left: -90px; top: -90px; width: calc(100% + var(--t) + 180px); height: calc(100% + var(--t) * 2 + 180px); }
+@media (prefers-reduced-motion: no-preference) {
+  .hub-starfield.s1 { animation: hub-twinkle 5.3s ease-in-out -1s infinite, hub-star-rise 80s linear infinite; }
+  .hub-starfield.s2 { animation: hub-twinkle 3.7s ease-in-out -2.4s infinite, hub-star-rise 96s linear -40s infinite; }
+  .hub-starfield.s3 { animation: hub-twinkle 7.1s ease-in-out -4s infinite, hub-star-rise 64s linear -30s infinite; }
+  .hub-starfield.s4 { animation: hub-twinkle 4.4s ease-in-out -.6s infinite, hub-star-rise 110s linear -15s infinite; }
+}
+@keyframes hub-star-rise { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(0, calc(var(--t) * -1), 0); } }   /* (not hub-rise: that's the entrance) */
+
+/* the Bag's add box: the site's own suggestion list (makeCombo), in the hub's glass, over the item grid */
+.hub-bag-add { position: relative; z-index: 3; }
+.hub-bag-combo { min-width: 0; }
+.hub-bag-combo .combo-list { max-height: 240px; padding: 4px; background: rgba(18, 18, 20, .98); border: 1px solid var(--h-line-2); border-radius: 14px; box-shadow: 0 18px 44px rgba(0, 0, 0, .55); }
+.hub-bag-combo .combo-opt { padding: 7px 10px; border-radius: 9px; font-size: 14px; color: var(--h-text); cursor: pointer; }
+.hub-bag-combo .combo-opt.hi { background: rgba(255, 255, 255, .1); }
+@media (hover: hover) and (pointer: fine) { .hub-bag-combo .combo-opt:hover { background: rgba(255, 255, 255, .07); } }
+/* the Bag's suggestions, lifted onto the page (hub.js drawBag) so a long list isn't cut off by the Bag window */
+.combo-list.hub-bag-suggest { position: fixed; z-index: 90; right: auto; max-height: 50vh; padding: 4px; font-family: "Space Grotesk", system-ui, sans-serif;
+  background: rgba(18, 18, 20, .98); border: 1px solid rgba(255, 255, 255, .16); border-radius: 14px; box-shadow: 0 18px 44px rgba(0, 0, 0, .55); }
+.hub-bag-suggest .combo-opt { padding: 8px 10px; border-radius: 9px; font-size: 14px; color: #fafafa; cursor: pointer; }
+.hub-bag-suggest .combo-opt.hi { background: rgba(255, 255, 255, .1); }
+@media (hover: hover) and (pointer: fine) { .hub-bag-suggest .combo-opt:hover { background: rgba(255, 255, 255, .07); } }

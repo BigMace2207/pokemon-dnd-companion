@@ -201,9 +201,9 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
     const addBtn = tools.children[3], labelsBtn = tools.children[4];
     wrap.classList.toggle("adding", mode === "add"); wrap.classList.toggle("no-text", !showLabels);
     viewerHost.replaceChildren(...[
-      el("div", { class: "dnd-row between", style: "margin-bottom:8px" }, [
-        el("strong", {}, `${m.name}`),
-        el("div", { class: "dnd-row tight" }, [
+      el("div", { class: "dnd-row between pl-map-head", style: "margin-bottom:8px" }, [
+        el("strong", { class: "pl-map-name" }, `${m.name}`),
+        el("div", { class: "dnd-row tight pl-map-actions" }, [
           btn("Rename", async () => { const n = await promptDialog("Rename map", "Name", m.name); if (n) { patchMap(m.id, (x) => { x.name = n.trim().slice(0, 80) || x.name; }); drawList(); drawViewer(); } }, "btn secondary tiny"),
           btn("Replace image", async () => {
             const f = await pickFile("image/*"); if (!f) return;
@@ -220,11 +220,12 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
         ]),
       ]),
       el("div", { class: "pl-map-frame" }, [wrap, tools]),
-      el("p", { class: "dnd-small dnd-muted" }, "Drag to pan, scroll or pinch to zoom, double-click to add a label, drag a label to move it."),
+      el("p", { class: "dnd-small dnd-muted pl-map-hint" }, "Drag to pan, scroll or pinch to zoom, double-click to add a label, drag a label to move it."),
     ].filter(Boolean));
 
     // transform handling
-    function fit() { const r = wrap.getBoundingClientRect(); view.fit = Math.min(r.width / m.w, r.height / m.h); view.k = view.fit; view.x = (r.width - m.w * view.k) / 2; view.y = (r.height - m.h * view.k) / 2; }
+    // (the hub layout fits the map a little smaller, so there's sky round it)
+    function fit() { const r = wrap.getBoundingClientRect(); view.fit = Math.min(r.width / m.w, r.height / m.h) * (shared.hubLayout ? 0.84 : 1); view.k = view.fit; view.x = (r.width - m.w * view.k) / 2; view.y = (r.height - m.h * view.k) / 2; }
     function apply() {
       stage.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`;
       wrap.style.setProperty("--inv", String(1 / view.k));
@@ -236,7 +237,11 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
     }
     function zoomBy(f) { const r = wrap.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, f); }
     const toMap = (cx, cy) => { const r = wrap.getBoundingClientRect(); return { x: ((cx - r.left - view.x) / view.k) / m.w, y: ((cy - r.top - view.y) / view.k) / m.h }; };
-    requestAnimationFrame(() => { fit(); apply(); });
+    // Fit straight away when the viewer already has its size, and keep the map hidden until it's fitted, so it never
+    // shows at full size first and then shrinks (a page transition or a background tab could catch that frame).
+    stage.style.visibility = "hidden";
+    const fitNow = () => { if (wrap.clientWidth && wrap.clientHeight) { fit(); apply(); stage.style.visibility = ""; return true; } return false; };
+    if (!fitNow()) requestAnimationFrame(function again() { if (document.body.contains(wrap) && !fitNow()) requestAnimationFrame(again); });
 
     // pins and (for the DM) the players' tokens on the stage
     function drawStagePins() {
@@ -508,15 +513,68 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
   for (const ev of ["dragleave", "drop"]) drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); });
   drop.addEventListener("drop", (e) => importFile(e.dataTransfer.files[0]));
 
-  panel.append(
-    usageHost,
-    el("div", { class: "pl-map-layout three" }, [
-      el("div", { class: "pl-map-side" }, [el("div", { class: "card" }, [el("div", { class: "dnd-row between" }, [el("h4", {}, "Your maps"), importBtn]), listHost, drop]), pinsHost]),
-      viewerHost,
-      rightHost,
-    ]),
-  );
+  if (shared.hubLayout) {
+    mountHubLayout(panel, { dm, viewerHost, rightHost, pinsHost, mapsCard: el("div", { class: "card me-maps" }, [el("div", { class: "dnd-row between" }, [el("h4", {}, "Your maps"), importBtn]), listHost, drop, usageHost]), onBack: shared.onBack, startOpen: maps().length ? null : "maps" });
+  } else {
+    panel.append(
+      usageHost,
+      el("div", { class: "pl-map-layout three" }, [
+        el("div", { class: "pl-map-side" }, [el("div", { class: "card" }, [el("div", { class: "dnd-row between" }, [el("h4", {}, "Your maps"), importBtn]), listHost, drop]), pinsHost]),
+        viewerHost,
+        rightHost,
+      ]),
+    );
+  }
   drawList();
   drawViewer().then(startLive);
   void chip;
+}
+
+// ------------------------------------------------------------ the hub layout (the Map editor's own page)
+// The map being edited fills the page, with the cosmic sky past its edges. Your maps, Labels and (for the DM) Hub map
+// are buttons in a hub-style bar at the top left; each opens its section as a floating glass panel, one at a time, and
+// pressing it again closes it. The map's own actions and tools float as hub pill bars too (css/planner-hub.css).
+const QUICK_ICONS = {
+  maps: "M3 6.5l6-2.5 6 2.5 6-2.5v13.5l-6 2.5-6-2.5-6 2.5zM9 4v13.5M15 6.5V20",
+  labels: "M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z",
+  hub: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z",
+  back: "M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10",
+};
+const glyph = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+
+function mountHubLayout(panel, { dm, viewerHost, rightHost, pinsHost, mapsCard, onBack, startOpen }) {
+  const sections = {
+    maps: { label: "Your maps", side: "left", body: mapsCard },
+    labels: { label: "Labels", side: "left", body: pinsHost },
+    ...(dm ? { hub: { label: "Hub map", side: "right", body: rightHost } } : {}),
+  };
+  const left = el("div", { class: "me-panel left", hidden: "" });
+  const right = el("div", { class: "me-panel right", hidden: "" });
+  let open = null;
+  const buttons = Object.entries(sections).map(([id, sec]) => {
+    const b = el("button", { type: "button", class: "hub-tool", "aria-expanded": "false" });
+    b.innerHTML = glyph(QUICK_ICONS[id]) + `<span>${sec.label}</span>`;
+    b.addEventListener("click", () => show(open === id ? null : id));
+    return [id, b];
+  });
+  function show(id) {
+    open = id;
+    for (const [bid, b] of buttons) { b.classList.toggle("on", bid === id); b.setAttribute("aria-expanded", String(bid === id)); }
+    for (const host of [left, right]) { host.hidden = true; host.replaceChildren(); }
+    if (!id) return;
+    const sec = sections[id], host = sec.side === "left" ? left : right;
+    host.append(sec.body);
+    host.hidden = false;
+  }
+  const home = el("button", { type: "button", class: "hub-round", "aria-label": "Back to the hub", title: "Back to the hub" });
+  home.innerHTML = glyph(QUICK_ICONS.back);
+  home.addEventListener("click", () => (onBack ? onBack() : (location.hash = "hub")));
+  const top = el("div", { class: "me-top" }, [
+    home,
+    el("div", { class: "hub-title" }, [el("span", { class: "hub-eyebrow" }, "Pokémon D&D"), el("strong", {}, dm ? "Map editor" : "Maps")]),
+    el("div", { class: "hub-quick", role: "toolbar", "aria-label": "Map editor sections" }, buttons.map(([, b]) => b)),
+  ]);
+  panel.classList.add("me-hub");
+  panel.append(viewerHost, top, left, right);
+  if (startOpen) show(startOpen);
 }

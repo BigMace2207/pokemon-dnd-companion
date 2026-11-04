@@ -44,7 +44,7 @@ export function renderDmOverview(host, state, token, { go }) {
     battle.replaceChildren(
       head("Battle", "Battle Control", "battle"),
       el("div", { class: "dmo-chips" }, [el("span", { class: `dmo-chip${ft?.phase === "live" ? " live" : ""}` }, phase), up && ft?.phase === "live" ? el("span", { class: "dmo-chip" }, `Turn: ${combatantLabel(up)}`) : null].filter(Boolean)),
-      ft?.acted && up && ft.acted.combatantId === up.id ? el("p", { class: "dmo-choice" }, [el("b", {}, "Their choice: "), ft.acted.text || ft.acted.kind]) : null,
+      ...(ft?.acted && up && ft.acted.combatantId === up.id ? [el("p", { class: "dmo-choice" }, [el("b", {}, "Their choice: "), ft.acted.text || ft.acted.kind])] : []),
       combatants.length ? el("div", { class: "dmo-fighters" }, ["A", "B"].map((side) => el("div", { class: "dmo-side" }, [
         el("span", { class: "dmo-side-name" }, side === "A" ? "Side A" : "Side B"),
         ...combatants.filter((c) => (c.side || "A") === side).map((c) => {

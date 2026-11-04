@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>D&amp;D Companion</title>
 <link rel="icon" href="assets/dnd-logo.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -12,9 +12,10 @@
 <link rel="stylesheet" href="css/dnd5e.css">
 <link rel="stylesheet" href="css/library.css">
 <link rel="stylesheet" href="css/planner.css"><link rel="stylesheet" href="css/planner-board.css"><link rel="stylesheet" href="css/whiteboard.css"><link rel="stylesheet" href="css/planner-hub.css"><link rel="stylesheet" href="css/keywords.css">
-<link rel="stylesheet" href="css/hub.css"><link rel="stylesheet" href="css/admin.css"><link rel="stylesheet" href="css/cosmic.css">
+<link rel="stylesheet" href="css/hub.css"><link rel="stylesheet" href="css/admin.css"><link rel="stylesheet" href="css/cosmic.css"><link rel="stylesheet" href="css/vvd.css">
 <link rel="stylesheet" href="css/lava-bricks.css">
 <link rel="stylesheet" href="css/lava.css">
+<link rel="stylesheet" href="css/mobile.css">
 
 <!-- Installable as a home-screen app (see README.md's "iPhone app" section) -->
 <link rel="manifest" href="manifest.json">
@@ -22,12 +23,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="D&amp;D Companion">
-<meta name="theme-color" content="#14161b">
+<meta name="theme-color" content="#000000">
 
 <!-- Applies the saved theme before first paint, so there's no flash of the
      wrong theme while js/app.js's module chain is still loading. Keep the
      localStorage key in sync with js/deviceSettings.js's THEME_KEY. -->
 <script src="js/theme-init.js"></script>
+<!-- Picks the phone layout before first paint (js/layout-init.js; the phone copy is css/mobile.css + js/mobile/) -->
+<script src="js/layout-init.js"></script>
 </head>
 <body>
 

@@ -168,5 +168,5 @@ export function mountHubMap(root, { me, getDmToken, say }) {
 
   load();
   const timer = setInterval(() => { if (!document.body.contains(root)) { clearInterval(timer); return; } if (!document.hidden) load(); }, POLL_MS);
-  return { refresh: () => { sig = ""; return load(); } };
+  return { refresh: () => { sig = ""; return load(); }, open: () => { if (map) openFull(); else say("The DM hasn't shared a map yet."); } };
 }

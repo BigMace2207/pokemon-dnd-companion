@@ -1,11 +1,13 @@
 import { el, field } from "../components.js";
+import { hubSound, hubSoundOn, setHubSoundOn } from "../hubSound.js";
 import { getForcedTheme, getTheme, setTheme, getLavaFx, setLavaFx, getHiddenViews, setViewHidden, getSelectedCampaignId, clearSelectedCampaignId } from "../deviceSettings.js";
 import {
-  getCampaign, renameCampaign, setCampaignEdition, regenerateInviteCode, regenerateDmPassword,
+  getCampaign, renameCampaign, setCampaignEdition, regenerateInviteCode, setCampaignDm, getRoster,
   removeCampaignMember, transferCampaignOwnership, deleteCampaign, listTrainers,
 } from "../network.js";
 import { loadSave, writeSave } from "../storage.js";
 import { CURSOR_COLORS, cursorColorOf } from "../cursorColor.js";
+import { getLayoutPref, setLayoutPref } from "../mobileMode.js";
 import { renderAccountCard } from "../accountCard.js";
 import { fetchMe } from "../account.js";
 import { renderAdmin } from "./admin.js";
@@ -124,6 +126,24 @@ export function renderSettings(container) {
     ]);
   }
 
+  // The hub's sound effects (js/hubSound.js), on or off for this device
+  function soundCard() {
+    return el("div", { class: "card" }, [
+      el("h4", {}, "Hub sounds"),
+      el("div", { class: "settings-dm-toggle" }, [toggleSwitch(hubSoundOn(), (on) => { setHubSoundOn(on); if (on) hubSound("click"); }), el("span", {}, "Soft spatial sounds for clicks, drags, drops and pings on the hub")]),
+    ]);
+  }
+
+  // Phone layout: the separate copy of the interface built for phones (css/mobile.css, js/mobile/). Automatic turns it on
+  // for a touch screen up to 820px wide; this device can also always or never use it.
+  function layoutCard() {
+    const group = pillGroup([["auto", "Automatic"], ["phone", "Always"], ["desktop", "Never"]], getLayoutPref(), (pref) => setLayoutPref(pref));
+    return el("div", { class: "card" }, [
+      el("h4", {}, "Phone layout"), group,
+      el("p", { class: "view-sub", style: "margin-top:12px" }, "The phone layout puts the hub's tools and pages on one wheel at the bottom of the screen, turns panels into sheets you can drag down, and keeps everything clear of the notch. Automatic uses it on phones."),
+    ]);
+  }
+
   // The colour of your cursor (and the name tag above it) on the Pokémon hub's shared board.
   function cursorCard() {
     const current = cursorColorOf(loadSave());
@@ -194,14 +214,6 @@ export function renderSettings(container) {
       await regenerateInviteCode(cid, save.networkId);
       refresh();
     });
-    const pwInput = el("input", { type: "text", value: info.dmPassword });
-    pwInput.readOnly = true;
-    const regenPwBtn = el("button", { class: "btn secondary" }, "New Password");
-    regenPwBtn.addEventListener("click", async () => {
-      if (!confirm("The current DM password will stop working. Continue?")) return;
-      await regenerateDmPassword(cid, save.networkId);
-      refresh();
-    });
     // D&D only: which rules version the whole table plays by, so players never end up on different books
     const editionSel = el("select", {}, [el("option", { value: "2014" }, "2014 rules (SRD 5.1)"), el("option", { value: "2024" }, "2024 rules (SRD 5.2)")]);
     editionSel.value = info.edition || "2014";
@@ -218,7 +230,7 @@ export function renderSettings(container) {
       el("div", { class: "grid-2" }, [field("Campaign name", nameInput), renameBtn]),
       ...editionRow,
       el("div", { class: "grid-2" }, [field("Invite code", codeInput), regenCodeBtn]),
-      el("div", { class: "grid-2" }, [field("DM password", pwInput), regenPwBtn]),
+      el("p", { class: "view-sub" }, "DMs: you're always one. Make other members DMs (or stop them being one) in Members."),
     ]));
 
     const deleteBtn = el("button", { class: "btn secondary" }, "Delete Campaign");
@@ -239,15 +251,24 @@ export function renderSettings(container) {
     const info = await loadInfo();
     panel.innerHTML = "";
     if (!info?.id) { panel.appendChild(unavailable()); return; }
-    const trainers = await listTrainers("");
-    const nameById = new Map(trainers.map((t) => [t.id, t.name]));
+    // names for everyone, online or not (the roster), and who is a DM
+    const roster = (await getRoster()) || await listTrainers("");
+    const nameById = new Map(roster.map((t) => [t.id, t.name]));
+    const dmIds = new Set(info.dmIds || []);
     const rows = (info.memberIds || []).map((mid) => {
       const idLabel = `${mid.slice(0, 14)}…`;
       const trainerName = nameById.get(mid);
       const label = trainerName ? `${trainerName} (${idLabel})` : idLabel;
       const isOwnerRow = mid === info.ownerId;
-      const row = el("div", { class: "settings-page-row" }, [el("span", {}, label + (isOwnerRow ? " (owner)" : ""))]);
+      const row = el("div", { class: "settings-page-row" }, [el("span", {}, label + (isOwnerRow ? " (owner, always a DM)" : ""))]);
       if (!isOwnerRow) {
+        // DM access: their DM tools (the hub's DM buttons, the Control Centre) appear or close straight away
+        const dmToggle = el("div", { class: "settings-dm-toggle", title: "Can use the DM tools" }, [el("span", {}, "DM")]);
+        dmToggle.prepend(toggleSwitch(dmIds.has(mid), async (on) => {
+          const res = await setCampaignDm(cid, mid, on);
+          if (!res || res.error) { alert(res?.error || "Couldn't change that. Check your connection."); refresh(); }
+        }));
+        row.append(dmToggle);
         const makeOwnerBtn = el("button", { class: "btn secondary" }, "Make Owner");
         makeOwnerBtn.addEventListener("click", async () => {
           if (!confirm(`Make ${label} the owner of this campaign? You'll become a regular member instead.`)) return;
@@ -289,6 +310,8 @@ export function renderSettings(container) {
     {
       id: "appearance", label: "Appearance", render: (panel) => {
         panel.appendChild(appearanceCard());
+        panel.appendChild(layoutCard());
+        panel.appendChild(soundCard());
         panel.appendChild(cursorCard());
         const windowSection = renderWindowSection();
         if (windowSection) panel.appendChild(windowSection);

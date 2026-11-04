@@ -18,6 +18,7 @@ import { startTrainerPresenceWatcher } from "./trainerPresence.js";
 import { mountShortcuts } from "./shortcuts.js";
 import { installTooltips } from "./tooltip.js";
 import { mountCosmicParallax } from "./cosmicParallax.js";
+import { watchLayout } from "./mobileMode.js";
 import { NAV_ICONS } from "./navIcons.js";
 import { mountLavaToggle, goToFloor } from "./lavaTheme.js";
 import {
@@ -42,7 +43,41 @@ const navToggle = document.getElementById("navToggle");
 let state = null;
 let current = null;
 
-function setView(name, { initial = false } = {}) {
+// Phone layout: page changes run through a view transition (supported by Safari and Chrome), so the old page fades into
+// the new one and the white dot glides between pages instead of vanishing (it has the same view-transition-name on
+// every page: the hub's wheel dot, and #mDot elsewhere). Skipped on first load and for reduced motion.
+function setView(name, opts = {}) {
+  const phone = document.documentElement.classList.contains("m");
+  if (phone && !opts.initial && !document.hidden && document.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches && VIEWS[name] && name !== current) {
+    // the page change never waits on the animation: if the transition hasn't swapped the page within 400ms (no frames
+    // being drawn, say), it happens anyway
+    let done = false;
+    const go = () => { if (done) return; done = true; setViewNow(name, opts); };
+    try { document.startViewTransition(go); } catch { go(); }
+    setTimeout(go, 400);
+    return;
+  }
+  setViewNow(name, opts);
+}
+
+// The phone layout's dot on pages other than the hub: the same white circle, in the same place, taking you back to the
+// hub (the hub's own dot opens the wheel). Not on the full-screen Whiteboard or Battle screens, which have their own
+// controls at the bottom.
+const DOT_HOME = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10"/></svg>';
+function syncPhoneDot(name) {
+  let dot = document.getElementById("mDot");
+  const want = document.documentElement.classList.contains("m") && !["hub", "planner", "battleview"].includes(name);
+  if (!want) { dot?.remove(); return; }
+  if (!dot) {
+    dot = el("button", { id: "mDot", type: "button", class: "wheel-dot m-dot", "aria-label": "Back to the hub" });
+    dot.innerHTML = DOT_HOME;
+    dot.addEventListener("click", () => setView("hub"));
+    document.body.append(dot);
+  }
+}
+window.addEventListener("layout-changed", () => syncPhoneDot(current));
+
+function setViewNow(name, { initial = false } = {}) {
   if (!VIEWS[name] || !state) return;
   if (GATED_VIEWS.has(name) && gatePass !== name) name = activeSystem().defaultView;
   gatePass = null;
@@ -50,6 +85,7 @@ function setView(name, { initial = false } = {}) {
   current = name;
   document.documentElement.classList.toggle("planner-full", name === "planner");   // the whiteboard is a full-screen page, no tower behind it
   document.documentElement.classList.toggle("hub-full", name === "hub");
+  document.documentElement.classList.toggle("mapeditor-full", name === "mapeditor");   // full screen, like the hub
   document.documentElement.classList.toggle("admin-full", name === "admin");
   // every page is a floor of the Lava Tower, in menu order: the first page is the roof
   const floorBtn = sideNav.querySelector(`.nav-item[data-view="${name}"]`);
@@ -57,7 +93,11 @@ function setView(name, { initial = false } = {}) {
   document.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
   sideNav.classList.remove("open");
   mainView.dataset.view = name; // lets the stylesheet lay each page out for wide screens
+  // the page's entrance (css/vvd.css: the title blurs in) plays only when you open a page, never when it redraws itself
+  mainView.classList.remove("v-enter"); void mainView.offsetWidth; mainView.classList.add("v-enter");
+  clearTimeout(setView.enterTimer); setView.enterTimer = setTimeout(() => mainView.classList.remove("v-enter"), 900);
   VIEWS[name].render(mainView, state);
+  syncPhoneDot(current);
   window.scrollTo(0, 0);
   mainView.scrollTop = 0; // the page scrolls inside <main>, so a long page would otherwise leave the next one scrolled down
   playViewEnter();
@@ -187,7 +227,14 @@ onHiddenViewsChanged(updateNavVisibility);
 applyTheme();
 mountLavaToggle({ get: getTheme, set: setTheme });
 installTooltips();
+// No browser right-click menu anywhere in the app (it reads as a web page, and the board has its own menus). Text
+// boxes keep it, so copy and paste still work there.
+document.addEventListener("contextmenu", (e) => {
+  if (e.target.closest?.("input, textarea, [contenteditable=''], [contenteditable='true']")) return;
+  e.preventDefault();
+});
 mountCosmicParallax();
+watchLayout();   // the phone layout follows the device (js/mobileMode.js)
 
 // Every trainer/battle/NPC/etc. endpoint is scoped to one campaign now (see
 // server.py) -- nothing past this point can run until one is selected.

@@ -180,7 +180,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     const head = el("div", { class: "pl-node-head" }, [icon(meta.icon, 16), el("span", { class: "pl-node-kind" }, typeLabel), title]);
     const acts = el("div", { class: "pl-node-acts" });
     if (!readonly) {
-      acts.append(iconBtn("pin", n.mapLink ? "Linked to a place on a map" : "Link to a place on a map", () => openMapLink({ node: n, edit, drawNodes, openMap: (link) => openDrawer(extras.find((x) => x.id === "maps"), link), getPlan, mutatePlan, uid })));
+      acts.append(iconBtn("pin", n.mapLink ? "Linked to a place on a map" : "Link to a place on a map", () => openMapLink({ node: n, edit, drawNodes, openMap: (link) => { const x = extras.find((e) => e.id === "maps"); if (x) openDrawer(x, link); else openMapPage(link); }, getPlan, mutatePlan, uid })));
       if (n.type === "gen") acts.append(iconBtn("refresh", "Roll again", () => reroll(n)));
       if (n.type === "dungeon") acts.append(iconBtn(n.expanded ? "collapse" : "expand", n.expanded ? "Collapse" : "Expand to see every room and add notes", () => toggleDungeon(n)));
       acts.append(iconBtn("close", "Remove from the board", async () => {
@@ -292,6 +292,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
       if (ev.target.closest("input, button")) return;
       ev.preventDefault(); ev.stopPropagation();
       capture(handleEl, ev.pointerId);
+      n = nodeOf(board, n.id) || n;   // edit() reloads the board, so use its copy: the links are drawn from it and follow the node
       const sx = ev.clientX, sy = ev.clientY, ox = n.x, oy = n.y, z = view().z;
       e.classList.add("dragging");
       const plug = n.type === "libmon" || n.type === "libtrainer";
@@ -321,6 +322,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     handleEl.addEventListener("pointerdown", (ev) => {
       ev.preventDefault(); ev.stopPropagation();
       capture(handleEl, ev.pointerId);
+      n = nodeOf(board, n.id) || n;   // the board's current copy, so its links redraw as it grows
       const sx = ev.clientX, sy = ev.clientY, ow = n.w, oh = n.h, z = view().z;
       const move = (m) => { n.w = Math.max(170, Math.round(ow + (m.clientX - sx) / z)); n.h = Math.max(110, Math.round(oh + (m.clientY - sy) / z)); place(e, n); drawLinks(); };
       const up = () => {
@@ -1050,4 +1052,10 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
 
   let last = null; try { last = localStorage.getItem("pokemon-dnd-planner-board"); } catch { /* storage blocked */ }
   openBoard(last);
+}
+
+// Pokémon campaigns keep the Map editor on its own page: a node's map link opens it there, on that label
+function openMapPage(link) {
+  try { sessionStorage.setItem("mapeditor-open", JSON.stringify(link || null)); } catch { /* storage blocked: it opens on the first map */ }
+  location.hash = "mapeditor";
 }

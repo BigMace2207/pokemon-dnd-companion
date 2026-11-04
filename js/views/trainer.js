@@ -80,8 +80,20 @@ export function renderTrainer(container, state) {
     onSelect: (file) => { t.sprite = file; persist(); },
   });
 
+  // Save and load live as two icons beside the heading; each opens a small panel under it (sheetTools below)
+  const sheetPanel = el("div", { class: "sheet-tools-panel", hidden: "" });
+  const SAVE_D = "M5 3h11l3 3v15H5zM8 3v6h8V3M8 21v-7h8v7";
+  const LOAD_D = "M12 3v12M7 10l5 5 5-5M4 17v4h16v-4";
+  const iconBtn = (label, d) => {
+    const b = el("button", { type: "button", class: "sheet-tool", "aria-label": label, title: label, "aria-expanded": "false" });
+    b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+    return b;
+  };
+  const saveIcon = iconBtn("Save character", SAVE_D);
+  const loadIcon = iconBtn("Load character", LOAD_D);
   container.appendChild(el("div", { class: "card" }, [
-    el("h4", {}, "Trainer Information"),
+    el("div", { class: "sheet-head" }, [el("h4", {}, "Trainer Information"), el("div", { class: "sheet-tools" }, [saveIcon, loadIcon])]),
+    sheetPanel,
     el("div", { class: "grid-3" }, [field("Name", nameInput), field("Trainer ID", idInput), field("Gender", genderInput)]),
     el("div", { class: "grid-3" }, [field("Age", ageInput), field("Occupation", occupationInput), field("Origin Region", regionInput)]),
     el("div", { class: "grid-3" }, [field("Cash (£)", cashInput), field("Badges (0–8)", badgesInput), field("Proficiency Bonus", profBonusInput)]),
@@ -152,14 +164,26 @@ export function renderTrainer(container, state) {
     }
   });
 
-  container.appendChild(el("div", { class: "card" }, [
-    el("h4", {}, "Save / Load Character"),
-    el("div", { class: "grid-2" }, [saveAsBtn, saveMsg]),
-    el("div", { class: "grid-3" }, [field("Saved characters", savedSelect), loadBtn, deleteBtn]),
-    el("h4", { style: "margin-top:16px" }, "Backup to a File"),
-    el("div", { class: "grid-3" }, [exportBtn, importBtn, exportMsg]),
-    importInput,
-  ]));
+  // the two panels: Save (under this name, or to a file) and Load (a saved name, or a file)
+  saveAsBtn.textContent = "Save under this name";
+  exportBtn.textContent = "Save to a file";
+  importBtn.textContent = "Load from a file";
+  const panels = {
+    save: [el("div", { class: "sheet-tools-row" }, [saveAsBtn, exportBtn]), el("div", { class: "sheet-tools-row" }, [saveMsg, exportMsg])],
+    load: [el("div", { class: "sheet-tools-row" }, [savedSelect, loadBtn, deleteBtn]), el("div", { class: "sheet-tools-row" }, [importBtn, importInput])],
+  };
+  let openPanel = null;
+  function showPanel(which) {
+    openPanel = openPanel === which ? null : which;
+    saveIcon.setAttribute("aria-expanded", String(openPanel === "save"));
+    loadIcon.setAttribute("aria-expanded", String(openPanel === "load"));
+    saveIcon.classList.toggle("on", openPanel === "save");
+    loadIcon.classList.toggle("on", openPanel === "load");
+    sheetPanel.toggleAttribute("hidden", !openPanel);
+    sheetPanel.replaceChildren(...(openPanel ? panels[openPanel] : []));
+  }
+  saveIcon.addEventListener("click", () => showPanel("save"));
+  loadIcon.addEventListener("click", () => showPanel("load"));
 
   // --- Ability scores ---
   // Score + bonus-assignment layout modeled on Baldur's Gate 3's character

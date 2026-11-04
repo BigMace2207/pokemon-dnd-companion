@@ -96,6 +96,11 @@ async function applyDirectives(state) {
         if (to > from && state) await handleLevelUp(state, mon, from, to);
         addLogEntry(`The DM leveled up ${mon.nickname || mon.name}: ${from} → ${to}`);
       }
+    } else if (d.kind === "giveEgg") {
+      // an egg from the DM: what's inside stays on the server until you hatch it (js/eggs.js)
+      save.eggs = Array.isArray(save.eggs) ? save.eggs : [];
+      if (!save.eggs.some((e) => e.id === d.payload.eggId)) save.eggs.push({ id: d.payload.eggId, received: Date.now() });
+      addLogEntry("The DM gave you an Egg. Something is moving inside...");
     } else if (d.kind === "giveItem") {
       addBagItem(save, d.payload.name, d.payload.qty || 1);
       addLogEntry(`The DM gave you ${d.payload.qty || 1}× ${d.payload.name}.`);

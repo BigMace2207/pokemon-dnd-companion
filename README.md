@@ -46,6 +46,15 @@
   dragged onto the board as a card (it asks for a level, which you can skip; your own team keeps theirs). The stars drift with a slight parallax as you pan, and the board starts roomy. Pinging can target a note, card or button: hover to highlight it, click to ripple
   round it. The Campaign Planner and Library are buttons down the hub's right-hand side, and the planner shares the
   hub's dark glass look (new boards start on the "Cosmic" background)
+- Styled after vvd.world (studied with the Taste skill): white text at fixed opacities, glass panels with hairline
+  borders instead of shadows, white pill buttons, serif titles that blur in when a page opens
+- A separate phone layout (automatic on phones, or Settings -> Appearance -> Phone layout), built on Apple's interface
+  guidelines: the hub's tools and pages sit on one radial wheel (tap the dot, spin the ring to bring other options
+  round, with momentum and a soft stop at each end), panels are bottom sheets you drag down to close, two fingers pinch
+  to zoom the board, and everything stays clear of the notch and home indicator with 44pt touch targets. The white
+  dot stays in place on every page (elsewhere it takes you back to the hub) and glides between pages
+- Dragging things on the hub: they dip when pressed, lift and lean with their speed, leave a fading trail in their
+  colour, and settle with a spring when let go
 - Pokédex and Move Dex covering 1301 Pokémon, with forms, evolutions and stats
 - Stat calculator that loads your saved Pokémon
 - My Team, Bag and Trainer Sheet built from the rulebook, with named saves
@@ -68,13 +77,18 @@
   fog of war (shared or private, how far players see, brush the mist away, cover it again)
 - The Whiteboard has a Dex button too: drag a Pokémon out of it onto the board or into a Team slot, give it a level,
   and it is generated with the moves it knows by then
-- SOUND and PARTY pull tabs (DM only, lower down the right edge, once the DM password is in): the music board and sound
+- SOUND and PARTY pull tabs (DM only, lower down the right edge): the music board and sound
   effects, and every trainer's Pokémon with health, status, ability, item, moves and bag (also the Control Centre's
   Players tab)
 - Hub encounter buttons: an NPC trainer or wild Pokémon from the libraries, or an encounter rolled in the Campaign
   Planner. Hovering shows the first Pokémon's level, with its sprite or a question mark (the DM chooses); the DM's click
   starts that battle with every online trainer's lead Pokémon and opens Battle Control
-- Per-campaign invite code and DM password
+- Per-campaign invite code; DM access is given and taken away by the owner (Settings -> Members), and the owner is always a DM. Taking it away closes that person's DM tools straight away
+- Mystery Eggs: the DM gives one from Control Centre -> DM Tools with a Pokémon inside that only the server knows; it sits in the player's Key Items until they hatch it at level 1
+- Moves are checked: a Pokémon can only know moves it learns by level up at or below its level, or egg moves
+- Hub sounds: soft, spatial Web Audio sounds for clicks, drags, drops and pings (Settings -> Appearance -> Hub sounds)
+- Map editor: its own page (the map button on the hub, left of the Whiteboard)
+- The cosmic sky has Rayquaza as a constellation; the sign-in page is always in the cosmic theme
 
 **Dungeons & Dragons 5e** (pick it when you create a campaign)
 - Character builder and a full sheet: abilities, skills, saves, HP and death saves, spell slots and spellbooks, inventory and encumbrance, features and choices, level-up and rests, multiclassing

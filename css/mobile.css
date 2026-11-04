@@ -1,0 +1,202 @@
+/* ===========================================================================
+   The phone layout: a separate copy of the interface for iPhones and other phones, on when <html> has the class "m"
+   (js/layout-init.js decides: a coarse pointer on a viewport up to 820px, or Settings -> Appearance). Desktop rules
+   live elsewhere; everything here is scoped to html.m so it never leaks into the desktop layout.
+
+   Apple's rules, applied (the apple-design and mobile-native skills):
+   - Edge to edge: content runs under the notch and home indicator, chrome is padded by env(safe-area-inset-*).
+   - Feedback on the press (:active), not on release; no grey tap flash; no 300ms tap delay; controls don't select.
+   - Inputs at 16px so iOS never zooms the page; pinch-zoom itself stays allowed (never disable zoom).
+   - One dot holds the hub's tools and pages (the radial wheel, js/mobile/wheel.js); panels become bottom sheets with
+     a grabber you can drag down; touch targets are at least 44pt.
+   - Materials: translucent chrome over the board, a dimming scrim only for modal things (the open wheel).
+   =========================================================================== */
+
+/* ---- the platform layer: true on any touch screen, phone layout or not ---- */
+html { -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; }
+@media (pointer: coarse) {
+  input, textarea, select { font-size: 16px !important; }
+  button, a, [role="button"], .hub-tool, .hub-round, .wheel-item, .wheel-dot, .pull-tab { touch-action: manipulation; }
+  button, [role="button"], .hub-tool, .hub-round, .wheel-item, .wheel-dot, .pull-tab, .hub-team-mon, .hub-bag-item, .chip, .pill-btn {
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  }
+}
+html.m, html.m body { overscroll-behavior: none; }
+
+/* ---- every page: padded clear of the notch, the home indicator and the dock ---- */
+html.m .topbar { padding-top: env(safe-area-inset-top, 0px); height: calc(var(--topbar-h) + env(safe-area-inset-top, 0px)); }
+html.m #app { grid-template-rows: calc(var(--topbar-h) + env(safe-area-inset-top, 0px)) 1fr; }
+html.m .main {
+  padding-left: max(16px, env(safe-area-inset-left, 0px)) !important;
+  padding-right: max(44px, env(safe-area-inset-right, 0px)) !important;   /* clears the pull tabs on the right edge */
+  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+  -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+}
+html.m.hub-full .main { padding: 0 !important; }
+html.m h1.view-title { font-size: 34px; letter-spacing: -.02em; }
+html.m :is(button.btn, .pill-btn, .hub-pill) { min-height: 44px; }
+html.m .nav-toggle { width: 44px !important; height: 44px !important; }
+html.m .card { border-radius: 18px; }
+/* press feedback on touch: instant, on the press */
+html.m :is(button, .hub-tool, .hub-round, .card[role="button"], .hub-bag-item, .hub-team-mon):active { transform: scale(.97); transition: transform .1s var(--v-ease, ease-out); }
+/* the floating dice and bag sit above the home indicator */
+html.m #widgetDock { margin-bottom: env(safe-area-inset-bottom, 0px); transition: opacity .2s var(--v-ease, ease-out); }
+/* while the wheel is open it has the bottom of the screen to itself */
+html.wheel-open #widgetDock { opacity: 0; pointer-events: none; }
+
+/* ---- the hub: the board edge to edge, one dot at the bottom ---- */
+html.m .hub { height: 100dvh; }
+html.m .hub :is(.hub-toolbar, .hub-quick, .hub-zoom, .hub-left-dock, .hub-top-right .hub-apps, .hub-gear) { display: none !important; }
+html.m .hub-top { padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px 0; }
+html.m .hub-title { padding: 6px 14px; }
+html.m .hub-title strong { font-size: 22px; }
+html.m .hub-top-right { gap: 8px; }
+html.m .hub-round, html.m .hub-people { min-height: 44px; }
+/* who's here: just the count, as a 44pt pill (tap for the list, as a sheet) */
+html.m .hub-people { display: flex !important; padding: 0 14px; }
+html.m .hub-people .hub-avatar:not(.self) { display: none; }
+html.m .hub-round { width: 44px; height: 44px; }
+html.m .hub-mini { top: calc(env(safe-area-inset-top, 0px) + 80px); left: 12px; transform: scale(.5); transform-origin: 0 0; }
+html.m .hub-mini-centre { width: 64px; height: 64px; }
+/* the tool options (pen colours, note colours, shapes...) float just above the dot, and scroll sideways if long */
+html.m .hub-subbar { bottom: calc(env(safe-area-inset-bottom, 0px) + 96px) !important; max-width: calc(100vw - 24px); overflow-x: auto; scrollbar-width: none; justify-content: flex-start; }
+html.m .hub-subbar::-webkit-scrollbar { display: none; }
+html.m .hub-sendto { right: 12px !important; bottom: calc(env(safe-area-inset-bottom, 0px) + 96px) !important; }
+html.m .hub-hover { display: none !important; }   /* no hover on touch */
+html.m .hub-empty { padding: 0 24px; text-align: center; }
+
+/* the wheel: hidden on the desktop layout */
+.hub-wheel { display: none; }
+html.m .hub-wheel { display: block; position: absolute; inset: 0; z-index: 40; pointer-events: none; }
+.wheel-scrim { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
+.hub-wheel.open .wheel-scrim { pointer-events: auto; }
+.wheel-dot {
+  position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); width: 64px; height: 64px; margin-left: -32px;
+  display: grid; place-items: center; border-radius: 50%; border: 0; padding: 0; cursor: pointer; pointer-events: auto;
+  background: #fff; color: #171717; box-shadow: 0 8px 28px rgba(0, 0, 0, .45), 0 0 0 6px rgba(255, 255, 255, .08);
+  transition: transform .12s var(--v-ease, ease-out), box-shadow .2s var(--v-ease, ease-out);
+}
+.wheel-dot svg { width: 26px; height: 26px; }
+.wheel-dot:active { transform: scale(.92); }
+.hub-wheel.open .wheel-dot { box-shadow: 0 8px 28px rgba(0, 0, 0, .45), 0 0 0 10px rgba(255, 255, 255, .14); }
+/* the ring and the spin pad are centred on the dot */
+/* the ring is a point at the dot's centre (the options are placed round it); the spin pad is a half disc over it */
+.wheel-ring { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 52px); width: 0; height: 0; }
+.wheel-pad { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); width: 392px; height: 236px; margin-left: -196px; border-radius: 196px 196px 0 0; }
+.hub-wheel.open .wheel-pad { pointer-events: auto; touch-action: none; }
+.wheel-item {
+  position: absolute; left: -30px; top: -30px; width: 60px; height: 60px; display: grid; place-items: center; padding: 0;
+  border-radius: 50%; border: 1px solid rgba(255, 255, 255, .14); background: rgba(23, 23, 23, .82); color: #fff; cursor: pointer;
+  backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%);
+  opacity: 0; will-change: transform, opacity; touch-action: none;
+}
+.wheel-ico svg { width: 24px; height: 24px; display: block; }
+.wheel-label { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 12px; font-weight: 600; letter-spacing: .01em; color: rgba(255, 255, 255, .85); text-shadow: 0 1px 6px rgba(0, 0, 0, .8); pointer-events: none; }
+.wheel-item.top { border-color: rgba(255, 255, 255, .45); }
+.wheel-item.on { background: #fff; color: #171717; }
+.wheel-item:active { filter: brightness(1.3); }
+.wheel-caption {
+  position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 52px + 132px + 74px); transform: translateX(-50%);
+  font-family: var(--font-head, Georgia, serif); font-size: 24px; letter-spacing: -.02em; color: #fff; opacity: 0; white-space: nowrap; pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) { .wheel-dot, .wheel-item { transition: none; } }
+
+/* ---- bottom sheets: the hub's panels slide up from the bottom with a grabber, and drag down to close ---- */
+html.m :is(.hub-bag-drop, .hub-people-drop, .hub-dex, .hub-drawer, .hub-menu) {
+  position: fixed !important; left: 0 !important; right: 0 !important; top: auto !important; bottom: 0 !important;
+  width: auto !important; min-width: 0 !important; max-height: 78dvh; overflow: auto; overscroll-behavior: contain;
+  border-radius: 22px 22px 0 0 !important; border-bottom: 0 !important;
+  padding: 26px max(16px, env(safe-area-inset-left, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-right, 0px)) !important;
+  background: rgba(23, 23, 23, .94) !important; backdrop-filter: blur(24px) saturate(140%); -webkit-backdrop-filter: blur(24px) saturate(140%);
+  z-index: 60 !important; opacity: 1 !important;
+  transform: translateY(105%); transition: transform .45s cubic-bezier(.32, .72, 0, 1) !important;
+}
+html.m :is(.hub-bag-drop.open, .hub-people-drop.open, .hub-dex.open, .hub-drawer.open, .hub-menu.show) { transform: none; }
+html.m :is(.hub-bag-drop, .hub-people-drop, .hub-dex, .hub-drawer, .hub-menu)::before {
+  content: ""; position: absolute; top: 8px; left: 50%; width: 38px; height: 5px; margin-left: -19px; border-radius: 3px; background: rgba(255, 255, 255, .3);
+}
+html.m .hub-menu { pointer-events: none; }
+html.m .hub-menu.show { pointer-events: auto; }
+html.m .hub-menu-item { min-height: 48px; font-size: 16px; }
+html.m .hub-dex .hub-dex-row { min-height: 52px; }
+html.m .hub-bag-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+html.m .hub-bag-item { min-height: 52px; }
+html.m .hub-bag-tools { opacity: 1; }   /* no hover to reveal them on touch */
+html.m .level-ask { left: 12px !important; right: 12px; width: auto; top: auto !important; bottom: calc(env(safe-area-inset-bottom, 0px) + 100px); }
+@media (prefers-reduced-motion: reduce) {
+  html.m :is(.hub-bag-drop, .hub-people-drop, .hub-dex, .hub-drawer, .hub-menu) { transform: none; opacity: 0 !important; transition: opacity .2s ease !important; pointer-events: none; }
+  html.m :is(.hub-bag-drop.open, .hub-people-drop.open, .hub-dex.open, .hub-drawer.open, .hub-menu.show) { opacity: 1 !important; pointer-events: auto; }
+}
+
+/* the full map: the whole screen, legend as a sheet-like strip below */
+html.m .hub-map-full { inset: 0 !important; border-radius: 0; padding: calc(env(safe-area-inset-top, 0px) + 8px) 8px calc(env(safe-area-inset-bottom, 0px) + 8px); grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 38%; }
+html.m .hub-map-close { top: calc(env(safe-area-inset-top, 0px) + 14px); }
+html.m .hub-map-tools .hub-zoom-btn { min-width: 44px; min-height: 44px; }
+
+/* ---- other pages ---- */
+html.m .pull-tabs { transform: scale(.9); transform-origin: right center; }
+html.m .battle-menu-btn { min-height: 52px; font-size: 16px; }
+html.m .bc-rail-btn { min-height: 56px; }
+html.m .cc-options { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; padding-bottom: 4px; }
+html.m .cc-option { flex: none; }
+html.m .pl-wb .pl-rail { bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); max-width: calc(100vw - 16px); overflow-x: auto; }
+
+/* ---- round 2 on the phone: fixes from testing on a real iPhone ---- */
+
+/* Safari's toolbar floats over the bottom of the page (iOS 26), and a 100dvh page runs underneath it. Fixed elements are
+   placed against the visible area (that's why the dice and bag buttons were fine), so everything that sits at the
+   bottom is fixed, not positioned inside the hub. */
+html.m .hub-wheel { position: fixed; }
+html.m .hub-subbar, html.m .hub-sendto { position: fixed; }
+
+/* the white dot: one circle in one place on every page. The hub's opens the wheel; elsewhere it takes you back to the
+   hub. Sharing a view-transition-name, it glides from page to page instead of disappearing (js/app.js setView). */
+.m-dot { display: none; }
+html.m .m-dot { display: grid; position: fixed; z-index: 45; }
+html.m .wheel-dot { view-transition-name: m-dot; }
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-group(m-dot) { animation-duration: .42s; animation-timing-function: cubic-bezier(.32, .72, 0, 1); }
+  ::view-transition-old(m-dot), ::view-transition-new(m-dot) { animation-duration: .22s; height: 100%; }
+  ::view-transition-old(root) { animation: m-page-out .2s cubic-bezier(.4, 0, 1, 1) both; }
+  ::view-transition-new(root) { animation: m-page-in .32s cubic-bezier(.32, .72, 0, 1) both; }
+}
+@keyframes m-page-out { to { opacity: 0; } }
+@keyframes m-page-in { from { opacity: 0; transform: translateY(10px); } }
+
+/* the Whiteboard uses the whole screen on a phone */
+html.m .main[data-view="planner"] { padding: 0 !important; }
+/* its bottom bar: icons only so all seven fit, fixed above Safari's toolbar, and no sideways scrolling (a scrolling
+   element with a backdrop blur can fail to paint its buttons in Safari) */
+html.m .pl-wb.full .pl-rail { position: fixed; overflow: visible; max-width: calc(100vw - 16px); padding: 5px; gap: 2px; bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); }
+html.m .pl-wb.full .pl-rail-btn { width: 46px; min-width: 46px; min-height: 46px; padding: 0; justify-content: center; }
+html.m .pl-wb.full .pl-rail-btn > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ---- Draw on a phone: the colours on a half circle round the white dot, the brush size on its right end (one button
+   that opens upward into the three sizes), a small Clear on its left. The dot's centre is 52px above the safe area. */
+.pen-arc { display: none; }
+html.m .pen-arc.show { display: block; position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 52px); width: 0; height: 0; z-index: 41; transition: opacity .18s var(--v-ease, ease-out); }
+html.m.wheel-open .pen-arc { opacity: 0; pointer-events: none; }
+html.m .pen-arc > * { position: absolute; left: 0; top: 0; }
+html.m .pen-arc-swatch { width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; padding: 0; cursor: pointer; background: var(--c);
+  border: 2px solid rgba(255, 255, 255, .18); box-shadow: 0 6px 18px rgba(0, 0, 0, .4);
+  transform: translate(var(--x), var(--y)); transition: transform .32s cubic-bezier(.34, 1.4, .64, 1), opacity .18s, border-color .15s; }
+html.m .pen-arc-swatch.on { border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .25), 0 6px 18px rgba(0, 0, 0, .4); }
+html.m .pen-arc-swatch:active { transform: translate(var(--x), var(--y)) scale(.9); }
+html.m .pen-arc.sizing .pen-arc-swatch { opacity: .2; pointer-events: none; }
+html.m .pen-arc.enter .pen-arc-swatch { animation: pen-arc-in .42s cubic-bezier(.34, 1.4, .64, 1) backwards; animation-delay: calc(var(--i) * 22ms); }
+@keyframes pen-arc-in { from { transform: translate(0, 0) scale(.3); opacity: 0; } }
+html.m .pen-arc-size { transform: translate(136px, -38px); }
+html.m .pen-arc-size .pen-size-now, html.m .pen-arc-size .pen-size-opt { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; background: rgba(20, 20, 24, .72); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-color: rgba(255, 255, 255, .2); }
+html.m .pen-arc-size .pen-size-opt { opacity: 0; pointer-events: none; transform: translate(0, 0) scale(.5); transition: transform .3s cubic-bezier(.34, 1.4, .64, 1), opacity .16s; }
+html.m .pen-arc-size.open .pen-size-opt { opacity: 1; pointer-events: auto; transform: translate(0, calc((var(--i) + 1) * -54px)); transition-delay: calc(var(--i) * 30ms); }
+html.m .pen-arc-size.open .pen-size-now { background: #fff; color: #171717; }
+html.m .pen-arc .pen-clear { transform: translate(calc(-120px - 50%), -50%); min-height: 34px; white-space: nowrap; background: rgba(20, 20, 24, .72); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+@media (prefers-reduced-motion: reduce) {
+  html.m .pen-arc.enter .pen-arc-swatch { animation: none; }
+  html.m .pen-arc-swatch, html.m .pen-arc-size .pen-size-opt { transition: opacity .15s; }
+}
+
+/* the wheel's pages: a dot for each, under the group's name (js/mobile/wheel.js) */
+.wheel-pages { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 238px); transform: translateX(-50%); display: flex; gap: 7px; opacity: 0; pointer-events: none; }
+.wheel-pages i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255, 255, 255, .3); transition: background-color .2s, transform .2s cubic-bezier(.23, 1, .32, 1); }
+.wheel-pages i.on { background: #fff; transform: scale(1.25); }

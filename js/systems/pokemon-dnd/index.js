@@ -4,6 +4,7 @@
 
 import { loadData } from "../../data.js";
 import { renderPokedex } from "../../views/pokedex.js";
+import { renderMapEditor } from "../../views/mapEditor.js";
 import { renderMoves } from "../../views/moves.js";
 import { renderStatCalc } from "../../views/statcalc.js";
 import { renderTypeChart } from "../../views/typechart.js";
@@ -75,7 +76,7 @@ export default {
     { id: "party", label: "PARTY", title: "The party", render: (host, state) => renderDmParty(host, state), dm: true, wide: true },
   ],
   // pages that aren't in the sidebar but can still be opened (the hub's Pokédex and Move Dex pull-outs link to them)
-  hiddenViews: [{ id: "pokedex", label: "Pokédex", render: renderPokedex }, { id: "moves", label: "Move Dex", render: renderMoves }],
+  hiddenViews: [{ id: "pokedex", label: "Pokédex", render: renderPokedex }, { id: "moves", label: "Move Dex", render: renderMoves }, { id: "mapeditor", label: "Map editor", render: renderMapEditor }],
   directiveViews: ["team", "trainer", "battleview", "bag"],
   loadData,
   mount(state) { mountQuickConsole(state); },

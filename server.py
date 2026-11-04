@@ -264,6 +264,7 @@ def default_campaign_state():
         "npcTrainers": {},   # id -> {name, team: {party: [mon, ...]}} -- DM's reusable NPC roster
         "wildPokemon": {},   # id -> mon -- DM's reusable wild-encounter roster
         "dmInbox": [],       # [ {id, fromName, text, ts} ] -- notes from players, DM-only to read
+        "eggs": {},          # eggId -> {id, to, species, given, hatched} -- what's inside stays here until the player hatches it
         "fullTurn": {"combatants": [], "currentIndex": 0, "round": 1, "background": "", "spreadHitsAllies": False, "phase": "draft"},
         "playerSaves": {},   # networkId -> {"current": <save object>, "named": {slotName: <save object>}}
         "partyMap": None,    # the one map the DM shares with the table: {name, image, w, h, pins[{..., revealed}], tokens[], updated}
@@ -426,10 +427,24 @@ def mark_dirty():
     CAMPAIGNS_DIRTY = True
 
 
+def has_dm_access(entry, acc):
+    """DM access comes from the campaign, not a password: the owner always has it, and anyone the owner makes a DM
+    (meta.dmAccounts, account ids) until they take it away."""
+    if not acc or not entry:
+        return False
+    meta = entry["meta"]
+    return meta.get("ownerId") in (acc.get("linkedIds") or []) or acc["id"] in (meta.get("dmAccounts") or [])
+
+
+def dm_member_ids(entry):
+    """The members (trainer ids) whose account has DM access, for the owner's Members list."""
+    return [mid for mid in entry["meta"].get("memberIds") or [] if has_dm_access(entry, account_owning_network_id(mid))]
+
+
 def campaign_summary(cid, entry, is_owner):
     """is_owner must come from the request's signed-in session (see
     Handler._owns_campaign), never from an id the client merely claims: it
-    gates the invite code and DM password."""
+    gates the invite code and the member list."""
     meta = entry["meta"]
     out = {
         "id": cid,
@@ -442,8 +457,8 @@ def campaign_summary(cid, entry, is_owner):
     }
     if is_owner:
         out["inviteCode"] = meta["inviteCode"]
-        out["dmPassword"] = meta["dmPassword"]
         out["memberIds"] = meta.get("memberIds") or []
+        out["dmIds"] = dm_member_ids(entry)
         out["ownerId"] = meta["ownerId"]
     return out
 
@@ -1222,7 +1237,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if rec["exp"] < time.time():
             DM_TOKENS.pop(token, None)
             return False
-        return rec["cid"] == cid
+        if rec["cid"] != cid:
+            return False
+        # checked every time, so taking someone's DM access away stops their token at once
+        if not has_dm_access(CAMPAIGNS.get(cid), ACCOUNTS.get(rec.get("acc"))):
+            DM_TOKENS.pop(token, None)
+            return False
+        return True
 
     def _require_dm(self, data, cid):
         return self._dm_ok(data.get("token"), cid)
@@ -2179,10 +2200,26 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     mark_dirty()
                     return self._send_json(campaign_summary(cid, entry, True))
 
-                if action == "regenerate-dm-password":
+                if action == "set-dm":
+                    # the owner makes a member a DM, or stops them being one (their DM tools close straight away)
                     if not is_owner:
                         return self._send_json({"error": "owner only"}, 403)
-                    entry["meta"]["dmPassword"] = new_code()
+                    target = data.get("memberId")
+                    if target not in (entry["meta"].get("memberIds") or []):
+                        return self._send_json({"error": "not a member"}, 404)
+                    target_acc = account_owning_network_id(target)
+                    if not target_acc:
+                        return self._send_json({"error": "that member hasn't made an account yet"}, 409)
+                    if entry["meta"].get("ownerId") in (target_acc.get("linkedIds") or []):
+                        return self._send_json({"error": "the owner is always a DM"}, 400)
+                    dms = entry["meta"].setdefault("dmAccounts", [])
+                    if data.get("dm") is True:
+                        if target_acc["id"] not in dms:
+                            dms.append(target_acc["id"])
+                    else:
+                        entry["meta"]["dmAccounts"] = [a for a in dms if a != target_acc["id"]]
+                        for tok in [t for t, rec in DM_TOKENS.items() if rec.get("cid") == cid and rec.get("acc") == target_acc["id"]]:
+                            del DM_TOKENS[tok]
                     mark_dirty()
                     return self._send_json(campaign_summary(cid, entry, True))
 
@@ -2373,7 +2410,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     **({"fileId": file_id} if file_id is not None else {"image": image}), "w": dim(raw.get("w")), "h": dim(raw.get("h")),
                     "pins": clean_map_pins(raw.get("pins")),
                     "tokens": merge_map_tokens(old.get("tokens", []) if same else [], clean_map_tokens(raw.get("tokens")), members),
-                    "fog": clean_fog(raw.get("fog"), map_fog(old)), "reveals": old.get("reveals", {}) if same else {},
+                    # a new map goes up hidden in fog, so nobody glimpses it before the DM is ready; the same map keeps its fog
+                    "fog": clean_fog(raw.get("fog"), map_fog(old) if same else {**FOG_DEFAULT, "enabled": True}),
+                    "reveals": old.get("reveals", {}) if same else {},
                     "updated": time.time(),
                 }
                 mark_dirty()
@@ -2406,7 +2445,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 HUB_PINGS[cid] = pings
                 hub = state["hub"]
                 sees_dm_notes = self._dm_ok(data.get("token"), cid)
-                out = {"rev": hub["rev"], "activeButton": hub.get("activeButton"), "backdrop": hub.get("backdrop"),
+                out = {"rev": hub["rev"], "isDm": has_dm_access(entry, acc), "activeButton": hub.get("activeButton"), "backdrop": hub.get("backdrop"),
                        "cursors": [{"id": k, **{f: c.get(f) for f in ("name", "color", "x", "y", "down", "draft")}} for k, c in cursors.items() if k != nid],
                        "pings": [{f: pg.get(f) for f in ("id", "by", "x", "y", "item", "color", "name")} for pg in pings]}
                 if data.get("since") != hub["rev"]:
@@ -2537,6 +2576,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 mark_dirty()
                 return self._send_json({"ok": True})
 
+            if parts[1:] == ["egg", "hatch"]:
+                # only the player the egg was given to can hatch it, and only then do they find out what it was
+                nid, egg_id = data.get("id"), data.get("eggId")
+                if nid not in mine:
+                    return self._send_json({"error": "not your identity"}, 403)
+                egg = state.setdefault("eggs", {}).get(egg_id) if isinstance(egg_id, str) else None
+                if not egg or egg["to"] != nid:
+                    return self._send_json({"error": "no such egg"}, 404)
+                if egg["hatched"]:
+                    return self._send_json({"error": "it has already hatched", "species": egg["species"]}, 409)
+                egg["hatched"] = True
+                egg["hatchedAt"] = time.time()
+                mark_dirty()
+                return self._send_json({"ok": True, "species": egg["species"]})
+
             if parts[1:] == ["fullturn", "playeraction"]:
                 if data.get("networkId") not in mine and not self._dm_ok(data.get("token"), cid):
                     return self._send_json({"error": "not your identity"}, 403)
@@ -2581,13 +2635,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 ck, cck = f"dm:{self._client_key()}", f"dmc:{cid}"
                 if rate_blocked(ck, RATE_LIMIT_CLIENT) or rate_blocked(cck, RATE_LIMIT_CAMPAIGN):
                     return self._send_json({"ok": False, "error": "too many attempts, try again in a few minutes"}, 429)
-                if secrets.compare_digest(str(data.get("password") or ""), str(entry["meta"]["dmPassword"])):
+                if has_dm_access(entry, acc):
                     token = secrets.token_hex(24)
-                    DM_TOKENS[token] = {"cid": cid, "exp": time.time() + DM_TOKEN_TTL}
+                    DM_TOKENS[token] = {"cid": cid, "exp": time.time() + DM_TOKEN_TTL, "acc": acc["id"]}
                     return self._send_json({"ok": True, "token": token})
-                rate_fail(ck)
-                rate_fail(cck)
-                return self._send_json({"ok": False}, 401)
+                return self._send_json({"ok": False, "error": "You don't have DM access in this campaign. The owner can give it in Settings, Members."}, 403)
 
             if parts[1:] == ["dm", "action"]:
                 if not self._require_dm(data, cid):
@@ -2643,6 +2695,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             queue_directive(state, target_id, "setLevel", {"monId": mon_id, "level": level})
             log_battle(state, "Dungeon Master", data.get("logText") or f"{(data.get('trainerName') or 'A trainer')}'s {(data.get('monName') or 'Pokémon')} was granted levels by the DM — now Level {level}.")
             return {"ok": True}
+
+        if action == "giveEgg":
+            species = _text(data.get("species"), 40)
+            if not species or not isinstance(target_id, str) or not target_id:
+                return {"error": "pick a trainer and a Pokémon"}
+            egg_id = secrets.token_hex(6)
+            state.setdefault("eggs", {})[egg_id] = {"id": egg_id, "to": target_id, "species": species, "given": time.time(), "hatched": False,
+                                                    "trainerName": _text(data.get("trainerName"), MAX_NAME)}
+            queue_directive(state, target_id, "giveEgg", {"eggId": egg_id})   # the player gets the egg, never what's in it
+            return {"ok": True, "eggId": egg_id}
+
+        if action == "listEggs":
+            return {"ok": True, "eggs": sorted(state.get("eggs", {}).values(), key=lambda e: -e["given"])}
 
         if action == "giveItem":
             name = (data.get("name") or "").strip()

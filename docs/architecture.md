@@ -28,7 +28,7 @@ data/                 Pokémon D&D rules data (a new system adds data/<id>/)
 
 ## What is "shell" and what is "system"
 
-Shell (shared): campaigns and invites, the DM password/token, trainers/players
+Shell (shared): campaigns and invites, DM access (owner-granted, `meta.dmAccounts`) and DM tokens, trainers/players
 online, the shared Battle Log, DM notes, directives transport, themes,
 settings, dice tray, sprites for the UI chrome.
 
@@ -97,7 +97,7 @@ DOM with `el()` and load lazily.
 - **Multiplayer uses the existing transports, so the server is unchanged**: presence (`team.dnd`) feeds
   the party view; the DM tracker publishes its public view through the `/api/fullturn` slot; HP and
   condition changes reach a player's sheet as DM directives; rolls go to the Battle Log.
-- DM pages sit behind the campaign's DM password (`dmAccess.js`).
+- DM pages need DM access, which the owner gives per member; `dmAccess.js` gets a DM token with no password, and the server re-checks access every time a token is used (`_dm_ok`), so revoking works at once. The hub sync returns `isDm` so the DM tools appear or close live.
 
 ## Keywords, hover cards and unfinished characters
 
@@ -167,7 +167,7 @@ Node-tested (`tests/js`), as is the board geometry (`board.test.mjs`). The serve
 
 ## Control Centre
 
-`controlcentre.js` (after the DM password) shows big options in a row: Overview, Battle Control, Players, NPC Library,
+`controlcentre.js` (DMs only) shows big options in a row: Overview, Battle Control, Players, NPC Library,
 Wild Library and DM Tools. The Overview (`dmOverview.js`) reads the same endpoints players and Battle Control use
 (`/api/roster` with the DM token: every member, online or not, with party, bag and money from their live presence or
 last saved copy; `/api/fullturn`, the DM inbox, `/api/battlelog`) every 4 seconds and redraws only
@@ -179,6 +179,17 @@ Dragging a team Pokémon or a bag item onto the hub's Send To target sends it wi
 `cash`) and takes it out of the sender's save once the server accepts it. The receiver's hub polls its inbox every few
 seconds and applies gifts straight into the save (ids remembered in localStorage so a lost acknowledgement never adds a
 gift twice). `/api/roster` without the DM token gives only names, portraits and who's online.
+
+## Phone layout
+
+A separate copy of the interface for phones, switched by a class on `<html>`: `js/layout-init.js` (a classic script in
+`<head>`, before first paint) adds `m` for a coarse pointer on a viewport up to 820px, or as forced in Settings
+(`localStorage` key `pkdnd-layout`: auto / phone / desktop). `js/mobileMode.js` keeps it live (rotation, resizing) and
+fires `layout-changed`. Everything phone-only is in `css/mobile.css` under `html.m`, so the desktop layout never changes.
+On the hub, `js/mobile/wheel.js` mounts a radial wheel (hidden on desktop) whose options hub.js supplies, and turns the
+bag, Dex, people list, encounters drawer and menus into drag-to-dismiss bottom sheets (`sheetDrag`). Motion follows
+Apple's rules: springs with a damping ratio and response that start from the current value (interruptible), momentum
+projection on release, rubber-banding at the ends, and reduced motion swapping springs for jumps.
 
 ## The hub map and fog of war
 
@@ -299,3 +310,32 @@ Inter was dropped as too generic. If you add a family, add it to the `<link>` in
 
 `tools/export_rulebook.py` converts the vault's `Rulebook/*.md` to `data/pokemon-dnd/rulebook.json`
 (the static server blocks `.md`). `js/views/rulebook.js` renders it. Re-run the exporter after editing the vault.
+
+## Eggs, move rules and hub sounds
+
+- Eggs: the DM action `giveEgg` stores `state.eggs[id]` (with the species, never sent to the player) and queues a `giveEgg`
+  directive; the player's save gets `save.eggs`. `POST /api/egg/hatch` (owner of the egg only) reveals the species once;
+  `js/eggs.js` makes the level-1 Pokémon with `startingMoves`.
+- Moves: `js/levelUp.js` `canKnowMove` — level-up moves at or below the Pokémon's level, or egg moves. The team page
+  refuses other typed moves and marks existing ones (`.move-invalid`).
+- Hub sounds: `js/hubSound.js` synthesises everything with Web Audio (no files), pans by screen x, and runs through a
+  generated reverb. The AudioContext is made on the first gesture; `pkdnd-hub-sound` = "off" turns it off on a device.
+- Draw on a phone: the pen's colours sit on a half circle round the wheel dot (`.pen-arc`), with one brush-size button that
+  opens into the three sizes; on a computer the same size button is in the bar above the tools.
+- The phone wheel (`js/mobile/wheel.js`) is paged by group: a sideways swipe turns exactly one page (flick or a third of
+  the way), never more, with dots for the pages.
+- The Map editor is its own page for Pokémon campaigns (`js/views/mapEditor.js`, hub button left of the Whiteboard); a
+  Whiteboard node's map link opens it through `sessionStorage` "mapeditor-open". D&D 5e keeps it as a Whiteboard drawer.
+- Rayquaza's constellation (`js/constellation.js`, one SVG: a faint outline image `sprites/sky/rayquaza-lines.png` plus gold
+  four-point stars along the body, star-chart style) is in the cosmic sky (`cosmicParallax.js`), the hub's
+  starfield and the sign-in page (`loginGate.js`, always cosmic, not saved as the device theme).
+- The nebula (`js/nebula.js`: violet smoke clouds, breathing light flares, drifting shards; CSS animations on
+  transform/opacity only) sits behind the stars in the cosmic sky and the hub. The star layers also rise slowly forever.
+- The hub sky zooms with the board about the same point (stars grow and shrink in place), and pans with parallax.
+- The Map editor page uses `renderMapsTab(..., { hubLayout: true })`: the map fills the page over the sky, sections
+  (Your maps, Labels, Hub map) open as glass panels from a hub-style bar (`mountHubLayout`).
+- A newly published hub map starts with fog on; republishing the same map keeps its fog.
+- The app blocks the browser's right-click menu except in text boxes (`app.js`). The Bag's add box uses `makeCombo`,
+  its list moved onto the page so it isn't clipped.
+- Hub panning is transform-only: `applyView` moves the dot grid and star layers with `transform`/`translate` (wrapped by a
+  tile) and only touches CSS variables when the zoom changes, on those layers, never on `.hub` (that restyled every card).

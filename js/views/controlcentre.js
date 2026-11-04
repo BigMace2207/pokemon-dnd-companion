@@ -15,6 +15,7 @@ import { makeTrainerSpritePicker } from "../trainerSpritePicker.js";
 import { npcToText, parseNpcText, parseTeamText } from "../teamExport.js";
 import { getViewState, setViewState } from "../viewState.js";
 import { renderDmParty } from "./dmParty.js";
+import { getRoster } from "../network.js";
 import { renderDmOverview } from "./dmOverview.js";
 import { refreshPullTabs } from "../logDrawer.js";
 import { makeSavedMonPicker } from "../savedMonPicker.js";
@@ -23,49 +24,16 @@ import { learnableMoveNames } from "../levelUp.js";
 import { HEAL_ITEMS, STATUS_HEAL_ITEMS } from "../battleItems.js";
 import { tmMoveNames, tmName } from "../bagItems.js";
 
-const TOKEN_KEY = "pokemon-dnd-dm-token";
+import { ensureDmToken, NO_DM_TEXT } from "../systems/dnd5e/dmAccess.js";
 
+// Only DMs get in: the owner, and members the owner has made DMs (Settings -> Members). No password; if this account
+// isn't a DM here, the page says who can change that.
 export async function renderControlCentre(container, state) {
   container.innerHTML = "";
   container.appendChild(el("h1", { class: "view-title" }, "Control Centre"));
-
-  const token = localStorage.getItem(TOKEN_KEY);
-  if (!token) {
-    renderLogin(container, state);
-    return;
-  }
-  container.appendChild(el("p", { class: "view-sub" }, "Checking session…"));
-  const stillValid = await checkDmToken(token);
-  container.innerHTML = "";
-  container.appendChild(el("h1", { class: "view-title" }, "Control Centre"));
-  if (!stillValid) {
-    localStorage.removeItem(TOKEN_KEY);
-    container.appendChild(el("p", { class: "formula-note" }, "Your session ended (the server was probably restarted) — log in again."));
-    renderLogin(container, state);
-    return;
-  }
+  const token = await ensureDmToken();
+  if (!token) { container.appendChild(el("div", { class: "card" }, [el("p", { class: "view-sub" }, NO_DM_TEXT)])); refreshPullTabs(); return; }
   renderMain(container, state, token);
-}
-
-function renderLogin(container, state) {
-  container.appendChild(el("p", { class: "view-sub" }, "Dungeon Master access only."));
-  const pwInput = el("input", { type: "password", placeholder: "Password" });
-  const errorMsg = el("p", { class: "formula-note", style: "display:none;color:var(--bad)" }, "Incorrect password.");
-  const btn = el("button", { class: "btn" }, "Enter");
-  async function attempt() {
-    btn.disabled = true; btn.textContent = "Checking…";
-    const res = await dmLogin(pwInput.value);
-    btn.disabled = false; btn.textContent = "Enter";
-    if (res?.ok) {
-      localStorage.setItem(TOKEN_KEY, res.token);
-      renderControlCentre(container, state);
-    } else {
-      errorMsg.style.display = "block";
-    }
-  }
-  btn.addEventListener("click", attempt);
-  pwInput.addEventListener("keydown", (e) => { if (e.key === "Enter") attempt(); });
-  container.appendChild(el("div", { class: "card" }, [field("Password", pwInput), btn, errorMsg]));
 }
 
 // The Control Centre: a header with the table at a glance (who's online, the encounter, unread messages), one row of
@@ -73,8 +41,6 @@ function renderLogin(container, state) {
 // they're to hand on any page once the DM password is in.
 function renderMain(container, state, token) {
   refreshPullTabs();   // the DM's own pull tabs appear now that the password is in
-  const logoutBtn = el("button", { class: "btn secondary cc-logout" }, "Lock DM tools");
-  logoutBtn.addEventListener("click", () => { localStorage.removeItem(TOKEN_KEY); refreshPullTabs(); renderControlCentre(container, state); });
 
   // The page is an open board like the hub: a row of big options at the top (Overview first, then the four places
   // you act from), and the Overview itself is one large live board of everything (js/views/dmOverview.js).
@@ -98,7 +64,7 @@ function renderMain(container, state, token) {
   const tabBtns = tabNames.map((name) => el("button", { type: "button", class: "cc-option" + (name === activeTabName ? " active" : "") + (name === "DM Tools" ? " minor" : ""), role: "tab", "aria-selected": String(name === activeTabName) }, [
     el("span", { class: "cc-option-icon", "aria-hidden": "true" }, ICON[name]), el("span", { class: "cc-option-text" }, [el("strong", {}, name), el("span", {}, SUB[name])]),
   ]));
-  container.appendChild(el("div", { class: "cc-head" }, [el("div", { class: "cc-options", role: "tablist" }, tabBtns), logoutBtn]));
+  container.appendChild(el("div", { class: "cc-head" }, [el("div", { class: "cc-options", role: "tablist" }, tabBtns)]));
 
   const body = el("div", { class: "cc-body" });
   container.appendChild(body);
@@ -116,7 +82,7 @@ function renderMain(container, state, token) {
 export function renderSoundDrawer(host, token) {
   const music = el("div"), sfx = el("div");
   host.replaceChildren(music, sfx);
-  if (!token) { music.append(el("p", { class: "view-sub" }, "Enter the DM password in the Control Centre first.")); return; }
+  if (!token) { music.append(el("p", { class: "view-sub" }, "Only the campaign's DMs can use this.")); return; }
   renderMusicBoard(music, token);
   renderSoundEffects(sfx);
 }
@@ -373,6 +339,42 @@ function renderDmTools(body, state, token) {
       giveItemBtn,
       giveItemOut,
     ]),
+  ]));
+
+  // --- Give: Egg. The player gets a Mystery Egg; only the server knows what's inside until they hatch it (js/eggs.js).
+  const eggTrainer = el("select", {}, [el("option", { value: "" }, "Loading trainers…")]);
+  getRoster(token).then((rows) => {
+    eggTrainer.replaceChildren(...((rows || []).length ? rows.map((t) => el("option", { value: t.id }, `${t.name}${t.online ? "" : " (offline)"}`)) : [el("option", { value: "" }, "Nobody in the campaign yet")]));
+  });
+  const eggSpecies = makeCombo({ options: state.pokemon.map((x) => x.name), placeholder: "Which Pokémon is inside? (only you will know)" });
+  const eggBtn = el("button", { class: "btn" }, "Give Egg");
+  const eggOut = el("div", { class: "formula-note" }, "");
+  const eggList = el("div", { class: "cc-eggs" });
+  async function drawEggs() {
+    const res = await dmAction(token, "listEggs", {});
+    const eggs = res?.eggs || [];
+    eggList.replaceChildren(...(eggs.length ? eggs.slice(0, 12).map((e) => el("div", { class: "settings-page-row" }, [
+      el("span", {}, `${e.species} → ${e.trainerName || "a trainer"}`),
+      el("span", { class: "view-sub" }, e.hatched ? "Hatched" : "Still an egg"),
+    ])) : [el("p", { class: "view-sub" }, "No eggs given yet.")]));
+  }
+  eggBtn.addEventListener("click", async () => {
+    const species = eggSpecies.inputEl.value.trim();
+    const targetId = eggTrainer.value;
+    const trainerName = eggTrainer.selectedOptions[0]?.textContent.replace(/ \(offline\)$/, "") || "A trainer";
+    if (!species || !targetId) { eggOut.textContent = "Pick a trainer and a Pokémon first."; return; }
+    if (!state.pokemonByName.get(species)) { eggOut.textContent = `"${species}" isn't in the Pokédex.`; return; }
+    const res = await dmAction(token, "giveEgg", { targetId, species, trainerName });
+    eggOut.textContent = res?.ok ? `${trainerName} got a Mystery Egg. It hatches into ${species} at level 1 when they open it.` : (res?.error || "Couldn't give it.");
+    eggSpecies.setValue("");
+    drawEggs();
+  });
+  drawEggs();
+  body.appendChild(el("div", { class: "card" }, [
+    el("h4", {}, "Give: Egg"),
+    el("p", { class: "view-sub" }, "A Mystery Egg goes in their bag as a Key Item. They can't see what's inside until it hatches, at level 1."),
+    el("div", { class: "grid-2" }, [field("Trainer", eggTrainer), field("Pokémon inside", eggSpecies)]),
+    eggBtn, eggOut, eggList,
   ]));
 
   // --- Personal note (any online trainer, not just Combatant A) + direct battle log post ---

@@ -81,9 +81,6 @@ export function renameCampaign(id, name, networkId) {
 export function regenerateInviteCode(id, networkId) {
   return postJSON(`/api/campaigns/${encodeURIComponent(id)}/regenerate-code`, { networkId });
 }
-export function regenerateDmPassword(id, networkId) {
-  return postJSON(`/api/campaigns/${encodeURIComponent(id)}/regenerate-dm-password`, { networkId });
-}
 export function removeCampaignMember(id, memberId, networkId) {
   return postJSON(`/api/campaigns/${encodeURIComponent(id)}/remove-member`, { memberId, networkId });
 }
@@ -237,9 +234,15 @@ export async function getDmInbox(token) {
 }
 
 // --- DM Control Centre ---
-export async function dmLogin(password) {
-  return postJSON("/api/dm/login", { password });
+// DM access belongs to your account: the campaign owner gives it (and can take it away) in Settings -> Members. There is
+// no password; signing in as the DM just asks the server for a DM token for your session.
+export async function dmLogin() {
+  return postJSON("/api/dm/login", {});
 }
+export function setCampaignDm(id, memberId, dm) {
+  return postJSON(`/api/campaigns/${encodeURIComponent(id)}/set-dm`, { memberId, dm });
+}
+export function hatchEgg(id, eggId) { return postJSON("/api/egg/hatch", { id, eggId }); }
 export async function checkDmToken(token) {
   if (!token) return false;
   const res = await getJSON(`/api/dm/check?token=${encodeURIComponent(token)}`);

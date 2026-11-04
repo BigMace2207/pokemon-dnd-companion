@@ -420,6 +420,12 @@ class MapFog(Base):
     def view(self, tok, nid):
         return call(self.base, "GET", f"/api/partymap?campaignId={self.cid}&id={nid}", token=tok)[1]["map"]
 
+    def test_a_new_hub_map_starts_hidden_in_fog(self):
+        self.assertTrue(self.view(self.mia, "id-mia")["fog"]["enabled"], "players mustn't glimpse a new map before the DM is ready")
+        self.post("/api/partymap/fog", {"token": self.dm, "fog": {"enabled": False}}, self.owner)
+        self.post("/api/partymap", {"token": self.dm, "map": self.map}, self.owner)
+        self.assertFalse(self.view(self.mia, "id-mia")["fog"]["enabled"], "republishing the same map keeps the DM's fog choice")
+
     def test_players_move_only_themselves_and_the_mist_clears_where_they_go(self):
         self.assertEqual(self.post("/api/partymap/fog", {"fog": {"enabled": True, "shared": False}}, self.mia)[0], 403)
         self.assertEqual(self.post("/api/partymap/fog", {"token": self.dm, "fog": {"enabled": True, "shared": False, "radius": .1}}, self.owner)[0], 200)
@@ -445,6 +451,50 @@ class MapFog(Base):
         self.assertTrue(out["fog"]["enabled"])
         self.post("/api/partymap/fog", {"token": self.dm, "op": "reset"}, self.owner)
         self.assertNotIn([.5, .5], self.view(self.mia, "id-mia")["reveals"], "reset covers the DM's brushing again")
+
+
+class DmAccess(Base):
+    def setUp(self):
+        super().setUp()
+        self.owner, self.mia = self.register("o@example.com", "id-owner"), self.register("m@example.com", "id-mia")
+        self.cid, self.entry = self.make_campaign("id-owner", "Table")
+        self.entry["meta"]["memberIds"].append("id-mia")
+
+    def login(self, tok):
+        return call(self.base, "POST", "/api/dm/login", {"campaignId": self.cid}, token=tok)
+
+    def set_dm(self, tok, dm):
+        return call(self.base, "POST", f"/api/campaigns/{self.cid}/set-dm", {"memberId": "id-mia", "dm": dm}, token=tok)
+
+    def test_the_owner_gives_and_takes_away_dm_access(self):
+        self.assertEqual(self.login(self.owner)[0], 200, "the owner is always a DM, no password")
+        self.assertEqual(self.login(self.mia)[0], 403)
+        self.assertEqual(self.set_dm(self.mia, True)[0], 403, "only the owner decides")
+        self.assertEqual(self.set_dm(self.owner, True)[1]["dmIds"], ["id-owner", "id-mia"])
+        status, out = self.login(self.mia)
+        self.assertEqual(status, 200)
+        tok = out["token"]
+        act = lambda: call(self.base, "POST", "/api/dm/action", {"campaignId": self.cid, "token": tok, "action": "listEggs"}, token=self.mia)
+        self.assertEqual(act()[0], 200)
+        sync = lambda: call(self.base, "POST", "/api/hub/sync", {"campaignId": self.cid, "id": "id-mia", "since": -1}, token=self.mia)[1]["isDm"]
+        self.assertTrue(sync())
+        self.set_dm(self.owner, False)
+        self.assertEqual(act()[0], 403, "the token stops working the moment access is taken away")
+        self.assertEqual(self.login(self.mia)[0], 403)
+        self.assertFalse(sync(), "the hub tells Mia, so her DM tools close")
+        self.assertEqual(call(self.base, "POST", f"/api/campaigns/{self.cid}/set-dm", {"memberId": "id-owner", "dm": False}, token=self.owner)[0], 400)
+
+    def test_eggs_keep_their_secret_until_they_hatch(self):
+        dm = self.login(self.owner)[1]["token"]
+        out = call(self.base, "POST", "/api/dm/action", {"campaignId": self.cid, "token": dm, "action": "giveEgg", "targetId": "id-mia", "species": "Dratini"}, token=self.owner)[1]
+        egg = out["eggId"]
+        directives = call(self.base, "GET", f"/api/directives/id-mia?campaignId={self.cid}", token=self.mia)[1]
+        self.assertNotIn("Dratini", json.dumps(directives), "the player is told about the egg, not what's inside")
+        self.assertIn(egg, json.dumps(directives))
+        self.assertEqual(call(self.base, "POST", "/api/egg/hatch", {"campaignId": self.cid, "id": "id-owner", "eggId": egg}, token=self.owner)[0], 404, "not their egg")
+        status, out = call(self.base, "POST", "/api/egg/hatch", {"campaignId": self.cid, "id": "id-mia", "eggId": egg}, token=self.mia)
+        self.assertEqual((status, out["species"]), (200, "Dratini"))
+        self.assertEqual(call(self.base, "POST", "/api/egg/hatch", {"campaignId": self.cid, "id": "id-mia", "eggId": egg}, token=self.mia)[0], 409, "an egg hatches once")
 
 
 class BattleTurns(Base):

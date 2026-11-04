@@ -54,7 +54,7 @@ html.planner-full body { background: #09090b; }
 
 /* the canvas outside the paper: the hub's dark dotted space */
 .pl-wb .pl-viewport { background-color: #09090b; background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, .1) 1px, transparent 1.4px); background-size: 28px 28px; }
-.pl-wb .pl-paper { border: 1px dashed rgba(255, 255, 255, .18); border-radius: 18px; box-shadow: 0 30px 90px rgba(0, 0, 0, .6); }
+.pl-wb .pl-paper { border: 1px dashed rgba(255, 255, 255, .18); border-radius: 0; box-shadow: 0 30px 90px rgba(0, 0, 0, .6); }
 .pl-wb .pl-hint { border: 1px solid var(--p-line-2); border-radius: 999px; background: var(--p-glass); color: var(--p-dim); backdrop-filter: blur(14px); padding: 10px 20px; }
 .pl-wb .pl-viewport.drop { outline: 2px dashed rgba(255, 255, 255, .5); }
 
@@ -129,3 +129,80 @@ html.planner-full body { background: #09090b; }
 /* a node lands with a little shake (added, or put down after a move) */
 @media (prefers-reduced-motion: no-preference) { .pl-node.pl-shake { animation: pl-shake .45s cubic-bezier(.36, .07, .19, .97); } }
 @keyframes pl-shake { 0%, 100% { transform: translate(0, 0) rotate(0); } 15% { transform: translate(-4px, 1px) rotate(-1.2deg); } 30% { transform: translate(4px, -1px) rotate(1deg); } 45% { transform: translate(-3px, 0) rotate(-.6deg); } 60% { transform: translate(2px, 0) rotate(.4deg); } 80% { transform: translate(-1px, 0); } }
+
+/* ---- the Map editor's own page (js/views/mapEditor.js): the map in the middle fills the height, tools both sides ---- */
+.me-page { display: flex; flex-direction: column; min-height: calc(100dvh - 120px); }
+.me-body { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; color: var(--v-1, #fafafa); }
+.me-body .pl-map-layout.three { gap: calc(14px * var(--s)); }
+.me-body .pl-map-layout.three .pl-map-wrap { min-height: max(420px, calc(100dvh - 300px)); }
+.me-body .pl-map-wrap { min-height: 420px; }
+
+/* ---- the Map editor laid out like the hub (js/planner/mapsTab.js mountHubLayout): the map fills the page over the
+   cosmic sky, hub pill bars float on top, and each section opens as a glass panel ---- */
+html.mapeditor-full { --topbar-h: 0px; }
+html.mapeditor-full .topbar { display: none; }
+html.mapeditor-full .main { padding: 0; overflow: hidden; }
+html.mapeditor-full .main::after { display: none; }
+.me-page { min-height: 0; }
+.me-body { position: relative; height: 100dvh; overflow: hidden; }
+.me-hub { --h-glass: rgba(24, 24, 27, .78); --h-line: rgba(255, 255, 255, .09); --h-line-2: rgba(255, 255, 255, .16);
+  --h-text: #fafafa; --h-dim: #a1a1aa; --h-faint: #71717a; --h-ease: cubic-bezier(.32, .72, 0, 1);
+  position: absolute; inset: 0; color: var(--h-text); font-family: "Space Grotesk", system-ui, sans-serif; }
+/* the map: the whole page, transparent past its edges so the sky shows */
+.me-hub .pl-map-viewer { position: absolute; inset: 0; display: block; }
+.me-hub .pl-map-frame { position: absolute; inset: 0; }
+.me-hub .pl-map-wrap { position: absolute; inset: 0; height: auto; min-height: 0; background: transparent; border: 0; border-radius: 0; }
+.me-hub .pl-map-stage { box-shadow: 0 0 0 1px rgba(255, 255, 255, .12), 0 30px 120px rgba(0, 0, 0, .7); }
+.me-hub .pl-map-hint { position: absolute; left: 50%; bottom: calc(80px * var(--s)); transform: translateX(-50%); margin: 0; white-space: nowrap; color: var(--h-faint); pointer-events: none; }
+.me-hub .pl-map-empty { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(420px, calc(100% - 32px)); text-align: center;
+  padding: 24px; background: var(--h-glass); border: 1px solid var(--h-line); border-radius: 22px; backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+/* top left: home, the title, and the section buttons (hub .hub-title / .hub-quick / .hub-tool) */
+.me-top { position: absolute; z-index: 5; top: calc(16px * var(--s)); left: calc(16px * var(--s)); display: flex; align-items: center; gap: calc(10px * var(--s)); flex-wrap: wrap; }
+.me-top .hub-quick .hub-tool.on { background: #fff; color: #0b0b0c; }
+/* the map's name and actions: a pill bar at the top right, the tools a pill bar at the bottom */
+.me-hub .pl-map-head { position: absolute; z-index: 4; top: calc(16px * var(--s)); right: calc(64px * var(--s)); margin: 0 !important; display: flex; align-items: center; gap: calc(8px * var(--s));
+  padding: 4px 4px 4px calc(16px * var(--s)); background: var(--h-glass); border: 1px solid var(--h-line); border-radius: 999px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.me-hub .pl-map-name { font-family: var(--font-head); font-weight: 400; font-size: calc(18px * var(--s)); max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.me-hub .pl-map-actions { gap: 2px; }
+.me-hub .pl-map-tools { position: absolute; z-index: 4; top: auto; right: auto; left: 50%; bottom: calc(22px * var(--s)); transform: translateX(-50%); max-width: calc(100% - 32px); flex-wrap: nowrap; gap: 2px;
+  padding: 4px; background: var(--h-glass); border: 1px solid var(--h-line); border-radius: 999px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.me-hub :is(.pl-map-actions, .pl-map-tools) .btn { font: inherit; font-size: calc(14px * var(--s)); min-height: 0; color: var(--h-dim); background: transparent; border: 0; border-radius: 999px;
+  padding: calc(8px * var(--s)) calc(13px * var(--s)); box-shadow: none; white-space: nowrap; transition: color .15s, background-color .15s, transform .15s var(--h-ease); }
+.me-hub :is(.pl-map-actions, .pl-map-tools) .btn:active { transform: scale(.96); }
+.me-hub :is(.pl-map-actions, .pl-map-tools) .btn:not(.secondary):not(.danger) { background: #fff; color: #0b0b0c; }   /* the tool that's on (adding a label, brushing) */
+.me-hub .pl-map-actions .btn.danger { color: #fca5a5; background: transparent !important; border: 0 !important; }
+@media (hover: hover) and (pointer: fine) {
+  .me-hub :is(.pl-map-actions, .pl-map-tools) .btn.secondary:hover { color: var(--h-text); background: rgba(255, 255, 255, .07); }
+  .me-hub .pl-map-actions .btn.danger:hover { color: #fff; background: #ff5a4e; }
+}
+/* the section panels: glass, floating, under the top bars */
+.me-panel { position: absolute; z-index: 6; top: calc(76px * var(--s)); max-height: calc(100% - 76px * var(--s) - 86px * var(--s)); width: min(360px, calc(100% - 32px)); overflow: auto; overscroll-behavior: contain;
+  padding: calc(12px * var(--s)); background: var(--h-glass); border: 1px solid var(--h-line-2); border-radius: calc(22px * var(--s)); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .5); }
+.me-panel[hidden] { display: none; }
+.me-panel.left { left: calc(16px * var(--s)); }
+.me-panel.right { right: calc(64px * var(--s)); }
+.me-panel > .card { margin: 0; background: transparent; border: 0; padding: 0; box-shadow: none; }
+.me-panel .pl-banner { margin-top: 10px; }
+@media (prefers-reduced-motion: no-preference) {
+  .me-panel:not([hidden]) { animation: me-panel-in .26s cubic-bezier(.23, 1, .32, 1); }
+  .me-panel.left:not([hidden]) { transform-origin: top left; }
+  .me-panel.right:not([hidden]) { transform-origin: top right; }
+}
+@keyframes me-panel-in { from { opacity: 0; transform: scale(.96) translateY(-6px); } }
+/* a phone: the bars stack at the top, the panels are sheets from the bottom */
+html.m .me-top { top: calc(env(safe-area-inset-top, 0px) + 10px); left: 10px; right: 10px; }
+html.m .me-top .hub-title { display: none; }
+html.m .me-hub .pl-map-head { top: calc(env(safe-area-inset-top, 0px) + 64px); left: 10px; right: 10px; overflow-x: auto; scrollbar-width: none; }
+html.m .me-hub .pl-map-tools { position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); overflow-x: auto; scrollbar-width: none; }
+html.m .me-hub .pl-map-hint { display: none; }
+html.m .me-panel { position: fixed; left: 0 !important; right: 0 !important; top: auto; bottom: 0; width: auto; max-height: 62dvh; border-radius: 22px 22px 0 0;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); }
+/* a narrower window: the map's name and actions drop under the section bar instead of running into it */
+@media (max-width: 1180px) {
+  html:not(.m) .me-hub .pl-map-head { top: calc(72px * var(--s) + 8px); right: auto; left: calc(16px * var(--s)); max-width: calc(100% - 96px); overflow-x: auto; scrollbar-width: none; }
+  html:not(.m) .me-panel { top: calc(128px * var(--s) + 16px); max-height: calc(100% - 128px * var(--s) - 16px - 86px * var(--s)); }
+}
+/* the Map editor is a full-screen page like the hub: no page entrance (a slide on its wrapper would lay the editor out
+   in a different box for its first frames, and it would visibly resize when the slide ended) */
+html.mapeditor-full .main.view-enter > * { animation: none; }

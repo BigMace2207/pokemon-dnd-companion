@@ -36,7 +36,8 @@ export function renderPlanner(container) {
     const extras = [
       // Pokémon campaigns have no Notebook here: the DM's private notes are DM-only notes on the hub instead
       ...(system === "pokemon-dnd" ? [] : [{ id: "notes", label: dm ? "Notebook (private)" : "Notes (shared with your DM)", icon: "note", render: (host) => renderNotesTab(host, shared) }]),
-      { id: "maps", label: dm ? "Map editor" : "Maps", icon: "map", full: true, render: (host, close, arg) => renderMapsTab(host, shared, arg) },
+      // Pokémon campaigns have the Map editor as its own page (a hub button, js/views/mapEditor.js)
+      ...(system === "pokemon-dnd" ? [] : [{ id: "maps", label: dm ? "Map editor" : "Maps", icon: "map", full: true, render: (host, close, arg) => renderMapsTab(host, shared, arg) }]),
       { id: "partymap", label: dm ? "Hub map (what players see)" : "Hub map", icon: "compass", render: (host) => renderPartyMapTab(host) },
     ];
     if (dm) {
@@ -66,7 +67,7 @@ function sharingPanel(host) {
 }
 
 function lockedDmTab(host, onUnlocked) {
-  host.append(el("p", { class: "view-sub" }, "The DM gets scenarios and a view of every player's plans. Enter the campaign's DM password to unlock them on this device."));
+  host.append(el("p", { class: "view-sub" }, "The DM gets scenarios and a view of every player's plans."));
   const gate = el("div");
   host.append(gate);
   withDm(gate, () => { onUnlocked(); }, { title: "Unlock DM tools" });

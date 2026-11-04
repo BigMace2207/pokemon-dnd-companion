@@ -1268,3 +1268,25 @@ a, button, input, select, textarea, label, .nav-item, .pill-btn { touch-action: 
 .name-gate { max-width: calc(560px * var(--s) + 80px); margin: 10vh auto 0; display: grid; gap: calc(12px * var(--s)); }
 .name-gate .field { display: grid; gap: 6px; }
 .name-gate .btn { justify-self: start; }
+
+/* moves a Pokemon cannot know at its level (js/views/team.js flag) and a typed move that was turned away */
+.move-invalid { border-color: rgba(255, 90, 78, .6) !important; box-shadow: 0 0 0 1px rgba(255, 90, 78, .35); }
+.move-rejected { animation: move-rejected .32s ease-out; }
+@keyframes move-rejected { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+@media (prefers-reduced-motion: reduce) { .move-rejected { animation: none; } }
+
+/* trainer sheet: save and load as two icons beside the Trainer Information heading (js/views/trainer.js) */
+.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: calc(8px * var(--s)); }
+.sheet-head h4 { margin: 0; }
+.sheet-tools { display: flex; gap: calc(6px * var(--s)); }
+.sheet-tool { width: calc(36px * var(--s)); height: calc(36px * var(--s)); min-width: 32px; min-height: 32px; display: grid; place-items: center; padding: 0; border-radius: 50%; cursor: pointer;
+  border: 1px solid var(--border); background: transparent; color: var(--text-dim, var(--text)); transition: background-color .15s, color .15s, transform .12s; }
+.sheet-tool svg { width: calc(18px * var(--s)); height: calc(18px * var(--s)); min-width: 16px; min-height: 16px; }
+.sheet-tool:active { transform: scale(.93); }
+.sheet-tool.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .sheet-tool:hover { color: var(--text); background: rgba(127, 127, 127, .12); } }
+.sheet-tools-panel { margin: calc(10px * var(--s)) 0 calc(4px * var(--s)); padding: calc(10px * var(--s)); border-radius: calc(12px * var(--s)); border: 1px solid var(--border); display: grid; gap: calc(8px * var(--s)); }
+.sheet-tools-panel[hidden] { display: none; }
+.sheet-tools-row { display: flex; flex-wrap: wrap; align-items: center; gap: calc(8px * var(--s)); }
+.sheet-tools-row select { flex: 1 1 calc(160px * var(--s)); }
+.sheet-tools-row .view-sub:empty { display: none; }

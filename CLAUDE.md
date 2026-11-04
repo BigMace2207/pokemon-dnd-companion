@@ -11,7 +11,7 @@ feature docs.
 
 ```
 python server.py [port]                    # default 8850; serves the app + /api
-python -m unittest discover -s tests -v    # ~55s, 88 tests, run before every commit
+python -m unittest discover -s tests -v    # ~60s, 91 tests, run before every commit
 python tools/test_server.py --admin you@example.com   # throwaway local copy on :8860; code emails go to an outbox folder
 node --test tests/js/*.test.mjs            # D&D rules engine, <1s (use the glob, not the folder)
 ```
@@ -39,6 +39,10 @@ a proxy), `PKDND_BACKUP_DIR`, `PKDND_BACKUP_INTERVAL`, `PKDND_GOOGLE_CLIENT_ID`,
   sit beside it. `data/` rules JSON. `sprites/` images.
 - `js/systems/dnd5e/` the D&D 5e system (engine is DOM-free, tested in `tests/js`); `js/library/` the
   e-reader; `js/lavaTheme.js` the lava theme's ambient layer. See docs/architecture.md.
+- `css/vvd.css` vvd.world's taste over the Pokémon (cosmic) theme: white-at-opacity text, glass with hairlines instead of
+  shadows, white pills, serif titles. `css/mobile.css` + `js/mobile/` + `js/mobileMode.js` the separate phone layout,
+  on when `<html>` has class `m` (`js/layout-init.js` sets it before first paint: coarse pointer and up to 820px, or
+  Settings -> Appearance -> Phone layout). Scope every phone rule under `html.m`.
 - `js/views/hub.js` the Pokémon hub (shared board, live cursors, the DM's encounter buttons; the only way into Battle);
   `js/views/admin.js` the admin console (admins only).
 - `js/views/planner.js` + `js/planner/` the Campaign Planner (players share notes/checklists with the DM via `/api/plan`;
@@ -52,7 +56,7 @@ a proxy), `PKDND_BACKUP_DIR`, `PKDND_BACKUP_INTERVAL`, `PKDND_GOOGLE_CLIENT_ID`,
 campaign member can see every other member's id (the online list), so ids are
 not secrets. The session (`Authorization: Bearer`) decides who you are:
 campaign data needs a signed-in *member*; acting as a player needs an id linked
-to your account; owner actions and the DM password/invite code need your
+to your account; owner actions (giving DM access) and the invite code need your
 account to *own* the campaign. See `Handler._member_account` / `_owns_campaign`
 and `CampaignAuthorization` in the tests. New endpoints must follow this, with a
 test, and every client `fetch` must send the session (use `network.js`; raw
