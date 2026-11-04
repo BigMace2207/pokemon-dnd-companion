@@ -38,6 +38,7 @@ import { hubSound } from "../hubSound.js";
 import { wheelIntent, wheelPx } from "../wheelIntent.js";
 import { rayquazaConstellation } from "../constellation.js";
 import { nebulaLayer } from "../nebula.js";
+import { createStarCanvas, HUB_STAR_LAYERS } from "../starCanvas.js";
 import { cursorColorOf } from "../cursorColor.js";
 import { listFiles, uploadFile, fileUrl } from "../network.js";
 import { fetchMe, logout } from "../account.js";
@@ -135,11 +136,12 @@ export function renderHub(container, state) {
   const root = el("div", { class: "hub", style: `--me:${me.color}` });
   const backdropLayer = el("div", { class: "hub-backdrop", "aria-hidden": "true" });
   const dots = el("div", { class: "hub-dots", "aria-hidden": "true" });
-  // The starfield belongs to the board, like the dots: four repeating star patterns (css/hub.css .hub-starfield) whose
-  // position and size follow the pan and zoom, each fading in and out on its own rhythm so the stars twinkle.
-  const stars = el("div", { class: "hub-stars", "aria-hidden": "true" }, [1, 2, 3, 4].map((n) => el("div", { class: `hub-starfield s${n}` })));
-  // each layer: its tile size (css/hub.css) and how much of the pan it follows (parallax, the faintest slowest)
-  const starLayers = [[520, 0.72], [430, 0.58], [610, 0.85], [370, 0.44]].map(([tile, par], i) => [stars.children[i], tile, par]);
+  // The starfield belongs to the board, like the dots: four repeating star patterns drawn on one screen-sized canvas
+  // (js/starCanvas.js) that follow the pan (with parallax) and the zoom, each star twinkling on its own rhythm.
+  const starCv = createStarCanvas(HUB_STAR_LAYERS, "hub-star-canvas");
+  const stars = el("div", { class: "hub-stars", "aria-hidden": "true" }, [starCv.canvas]);
+  // how much of a pan each layer follows (parallax: the faintest slowest)
+  const starLayers = [0.72, 0.58, 0.85, 0.44];
   let shownK = null;
   // Rayquaza's constellation, far off: it follows a fifth of the pan, from wherever the board opened
   stars.prepend(nebulaLayer("hub-nebula"));   // violet smoke, light flares and drifting shards, behind the stars
@@ -158,7 +160,11 @@ export function renderHub(container, state) {
     const near = (d) => Math.max(0, Math.min(1, 1 - d / 260)).toFixed(2);
     const k = view.k;
     const d = { left: view.x + bounds.x0 * k, right: r.width - (view.x + bounds.x1 * k), top: view.y + bounds.y0 * k, bottom: r.height - (view.y + bounds.y1 * k) };
-    for (const side of ["left", "right", "top", "bottom"]) edgeGlow.querySelector(`.hub-edge-${side}`).style.setProperty("--m", near(-d[side]));
+    for (const side of ["left", "right", "top", "bottom"]) {
+      const node = edgeGlow.querySelector(`.hub-edge-${side}`), m = near(-d[side]);
+      node.style.setProperty("--m", m);
+      node.classList.toggle("near", m > 0);   // the mist only swirls (animates) on a side you can see it on
+    }
   }
   const world = el("div", { class: "hub-world" });
   const ink = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -701,7 +707,6 @@ export function renderHub(container, state) {
       shownK = view.k;
       world.style.setProperty("--ik", String(1 / view.k));   // undoes the zoom for things that keep their size (cursors)
       dots.style.setProperty("--grid", `${28 * view.k}px`);
-      stars.style.setProperty("--zk", String(view.k));        // the stars grow and shrink with the board
       zoomLabel.textContent = `${Math.round(view.k * 100)}%`;
     }
     const wrap = (v, size) => ((v % size) + size) % size - size;   // a tile's worth of offset, so the layer never runs out
@@ -715,10 +720,9 @@ export function renderHub(container, state) {
       if (f === 1) return { x: pos.x + (view.x - lastView.x) * par, y: pos.y + (view.y - lastView.y) * par };
       return { x: view.x - ox + (ox + pos.x - lastView.x) * f, y: view.y - oy + (oy + pos.y - lastView.y) * f };
     };
-    starLayers.forEach(([node, tile, par], i) => {
-      const at = skyPos[i] = follow(skyPos[i], par, -90, -90), t = tile * view.k;   // each layer's box starts 90px up and left
-      node.style.translate = `${wrap(at.x, t).toFixed(2)}px ${wrap(at.y, t).toFixed(2)}px`;
-    });
+    starLayers.forEach((par, i) => { skyPos[i] = follow(skyPos[i], par); });
+    starCv.setOffsets(skyPos);
+    starCv.setScale(view.k);
     // the constellation stays where it is when you zoom and only grows or shrinks about its own centre; a pan drifts it
     // a fifth of the way, like something far off
     conPos = !conPos || !lastView ? { x: 0, y: 0 } : f === 1 ? { x: conPos.x + (view.x - lastView.x) * 0.2, y: conPos.y + (view.y - lastView.y) * 0.2 } : conPos;
@@ -1202,6 +1206,7 @@ export function renderHub(container, state) {
     const old = [...backdropLayer.querySelectorAll("img")];
     const retire = () => old.forEach((img) => { img.classList.remove("in"); setTimeout(() => img.remove(), 1600); });
     root.classList.toggle("cosmic", !backdrop);
+    starCv.setActive(!backdrop);   // the stars are faded out under a backdrop map: don't keep drawing them
     if (!backdrop) { retire(); return; }
     const url = await fileUrl(backdrop.fileId);
     if (!url || shownBackdrop !== key) return;

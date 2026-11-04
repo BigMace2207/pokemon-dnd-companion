@@ -160,7 +160,7 @@
 .sky-constellation { right: 5vw; top: 10vh; }
 .constellation .con-art { opacity: .3; filter: drop-shadow(0 0 3px rgba(150, 175, 255, .55)); }
 .constellation .con-lines line { stroke: rgba(255, 236, 190, .55); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-linecap: round; }
-.constellation .con-star { fill: #ffd977; filter: drop-shadow(0 0 2px rgba(255, 210, 110, .9)); }
+.constellation .con-star { fill: #ffd977; }   /* the halo circles behind give the glow: a filter here re-rendered the whole SVG each twinkle */
 @media (prefers-reduced-motion: no-preference) {
   .constellation .con-star.tw { animation: con-twinkle var(--d, 3s) ease-in-out infinite alternate; }
 }
@@ -194,7 +194,7 @@ html.m .sky-constellation { width: 62vw; right: 4vw; top: 9vh; }
 
 /* ---- the nebula (js/nebula.js): violet smoke, breathing light flares and drifting shards behind the stars ---- */
 .nebula { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.neb-cloud { position: absolute; border-radius: 50%; mix-blend-mode: screen; will-change: transform; }
+.neb-cloud { position: absolute; border-radius: 50%; will-change: transform; }
 .neb-cloud.c1 { left: 18%; top: -18%; width: 70vmax; height: 46vmax; opacity: .55;
   background: radial-gradient(closest-side at 50% 55%, rgba(206, 186, 255, .42), rgba(140, 104, 230, .22) 45%, transparent 75%),
               radial-gradient(closest-side at 30% 40%, rgba(255, 220, 245, .16), transparent 70%); }
@@ -205,7 +205,7 @@ html.m .sky-constellation { width: 62vw; right: 4vw; top: 9vh; }
               radial-gradient(closest-side at 70% 65%, rgba(190, 120, 255, .18), transparent 70%); }
 .neb-cloud.c4 { left: 20%; bottom: -30%; width: 80vmax; height: 40vmax; opacity: .4;
   background: radial-gradient(closest-side, rgba(150, 120, 255, .26), rgba(70, 50, 170, .1) 60%, transparent 85%); }
-.neb-flare { position: absolute; border-radius: 50%; mix-blend-mode: screen; will-change: transform, opacity; }
+.neb-flare { position: absolute; border-radius: 50%; will-change: transform, opacity; }
 .neb-flare.f1 { left: 46%; top: 6%; width: 34vmax; height: 34vmax; margin-left: -17vmax;
   background: radial-gradient(closest-side, rgba(255, 245, 255, .3), rgba(214, 190, 255, .16) 30%, rgba(150, 110, 255, .06) 60%, transparent 75%); }
 .neb-flare.f2 { left: 78%; top: 58%; width: 18vmax; height: 18vmax; margin-left: -9vmax;
@@ -236,16 +236,19 @@ html.m .sky-constellation { width: 62vw; right: 4vw; top: 9vh; }
 html.m .neb-shard:nth-child(2n) { display: none; }   /* fewer on a phone */
 #cosmicSky .nebula { z-index: 0; }
 
-/* the cosmic sky's star layers float upward like the nebula's shards (the `translate` property, so the mouse/scroll
-   parallax on `transform` in js/cosmicParallax.js still applies); each loops by exactly its own tile */
-.sky-layer { bottom: -560px; }
-@media (prefers-reduced-motion: no-preference) {
-  .sky-layer:nth-child(2) { animation: sky-rise-300 80s linear infinite; }
-  .sky-layer:nth-child(3) { animation: sky-rise-380 70s linear -30s infinite; }
-  .sky-layer:nth-child(4) { animation: sky-rise-220 100s linear -60s infinite; }
-  .sky-layer:nth-child(5) { animation: sky-rise-460 56s linear -20s infinite; }
-}
-@keyframes sky-rise-300 { from { translate: 0 0; } to { translate: 0 -300px; } }
-@keyframes sky-rise-380 { from { translate: 0 0; } to { translate: 0 -380px; } }
-@keyframes sky-rise-220 { from { translate: 0 0; } to { translate: 0 -220px; } }
-@keyframes sky-rise-460 { from { translate: 0 0; } to { translate: 0 -460px; } }
+
+/* ---- the graphics setting (js/gfx.js, <html data-gfx>): what's switched off on medium and low ---- */
+/* glass panels blurring what's behind them: a moving sky has to be re-blurred every frame, the dearest effect there is.
+   Medium and low use solid glass instead (each panel's own colour, a touch more opaque). */
+:root:is([data-gfx="medium"], [data-gfx="low"]) * { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+:root:is([data-gfx="medium"], [data-gfx="low"]) :is(.hub-toolbar, .hub-quick, .hub-title, .hub-people, .hub-round, .hub-team, .hub-subbar, .hub-zoom, .wheel-item, .me-panel, .pl-map-head, .pl-map-tools) { background-color: rgba(24, 24, 27, .94); }
+/* the nebula: still on medium (with a few shards), only the faint still clouds on low */
+:root:is([data-gfx="medium"], [data-gfx="low"]) :is(.neb-cloud, .neb-flare) { animation: none !important; will-change: auto; }
+:root[data-gfx="medium"] .neb-shard:nth-child(n+17) { display: none; }   /* the first ten shards (children 7-16) */
+:root[data-gfx="low"] :is(.neb-shard, .neb-flare) { display: none; }
+/* low: no constellation twinkle, no comets, no drag trails, no edge mist swirl */
+:root:is([data-gfx="medium"], [data-gfx="low"]) .constellation .con-star { animation: none !important; }
+:root[data-gfx="low"] :is(.hub-comet, .hub-trail) { display: none; }
+:root[data-gfx="low"] .hub-edge > span > i { animation: none !important; }
+/* without the blur, the see-through cards need a solid dark fill so their text stays readable over the sky */
+:root[data-theme="cosmic"]:is([data-gfx="medium"], [data-gfx="low"]) :is(.card, .table-wrap, .pull-panel, .pl-drawer, .hub-drawer, .hub-dex, .hub-people-drop) { background-color: rgba(20, 20, 24, .93); }

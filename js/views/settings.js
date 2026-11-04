@@ -1,4 +1,5 @@
 import { el, field } from "../components.js";
+import { getGfx, setGfx } from "../gfx.js";
 import { hubSound, hubSoundOn, setHubSoundOn } from "../hubSound.js";
 import { getForcedTheme, getTheme, setTheme, getLavaFx, setLavaFx, getHiddenViews, setViewHidden, getSelectedCampaignId, clearSelectedCampaignId } from "../deviceSettings.js";
 import {
@@ -123,6 +124,15 @@ export function renderSettings(container) {
       el("h4", {}, "Appearance"), group,
       el("p", { class: "view-sub", style: "margin-top:12px" }, "Lava Tower: a grey-brick tower wall with lava, cracks of light and crumbling stone. The flame button in the top bar toggles it too."),
       el("h4", {}, "Lava effects"), fx,
+    ]);
+  }
+
+  // Graphics (js/gfx.js): how much of the cosmic sky moves, for slower phones and laptops
+  function graphicsCard() {
+    const group = pillGroup([["low", "Low"], ["medium", "Medium"], ["high", "High"]], getGfx(), (level) => setGfx(level));
+    return el("div", { class: "card" }, [
+      el("h4", {}, "Graphics"), group,
+      el("p", { class: "view-sub", style: "margin-top:12px" }, "High: the full sky, with stars at full speed, a drifting nebula and frosted glass. Medium (the default): the same sky at a gentler pace, a still nebula and solid glass. Low: a still sky that only moves when you pan or zoom. Pick a lower setting if the hub feels slow on this device."),
     ]);
   }
 
@@ -311,6 +321,7 @@ export function renderSettings(container) {
       id: "appearance", label: "Appearance", render: (panel) => {
         panel.appendChild(appearanceCard());
         panel.appendChild(layoutCard());
+        panel.appendChild(graphicsCard());
         panel.appendChild(soundCard());
         panel.appendChild(cursorCard());
         const windowSection = renderWindowSection();

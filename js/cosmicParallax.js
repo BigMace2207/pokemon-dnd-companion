@@ -10,17 +10,15 @@
 
 import { rayquazaConstellation } from "./constellation.js";
 import { nebulaLayer } from "./nebula.js";
+import { createStarCanvas, HUB_STAR_LAYERS } from "./starCanvas.js";
 
-const LAYERS = [
-  // [CSS background, tile size (px), mouse travel (px), scroll rate]
-  ["radial-gradient(circle at 12% 18%, rgba(255,255,255,.8) 0 1px, transparent 1.6px)", 300, 14, 0.12],
-  ["radial-gradient(circle at 63% 72%, rgba(255,255,255,.55) 0 1px, transparent 1.5px)", 380, 24, 0.2],
-  ["radial-gradient(circle at 38% 46%, rgba(255,255,255,.45) 0 .8px, transparent 1.3px)", 220, 8, 0.07],
-  ["radial-gradient(circle at 86% 29%, rgba(255,255,255,.7) 0 1.1px, transparent 1.7px)", 460, 34, 0.3],
-  ["radial-gradient(circle at 1px 1px, rgba(255,255,255,.07) 1px, transparent 1.4px)", 28, 4, 0.04],
-];
+// The stars are the hub's four patterns, drawn on one canvas (js/starCanvas.js: it twinkles them and makes them rise).
+// Each layer here: how far it travels with the mouse (px) and with scrolling (a fraction of the scroll).
+const STAR_MOTION = [[14, 0.12], [24, 0.2], [8, 0.07], [34, 0.3]];
+// The faint dot grid stays a CSS layer (a tiny tile, moved only with transform): [background, tile, mouse px, scroll rate]
+const LAYERS = [["radial-gradient(circle at 1px 1px, rgba(255,255,255,.07) 1px, transparent 1.4px)", 28, 4, 0.04]];
 const SMOOTH_MS = 140;
-const CON_AMP = 20, CON_RATE = 0.1;   // the Rayquaza constellation: a far-off layer, it never wraps (there's only one)   // how quickly the stars catch up with the mouse (time constant)
+const CON_AMP = 20, CON_RATE = 0.1;   // the Rayquaza constellation: a far-off layer, it never wraps (there's only one)
 
 export function mountCosmicParallax() {
   if (document.getElementById("cosmicSky")) return;
@@ -35,14 +33,17 @@ export function mountCosmicParallax() {
     sky.append(l);
     return l;
   });
-  sky.prepend(nebulaLayer());   // the violet smoke and light, behind the star layers
+  const starCv = createStarCanvas(HUB_STAR_LAYERS, "sky-star-canvas");
+  sky.prepend(nebulaLayer(), starCv.canvas);   // the violet smoke and light, then the stars, behind the dot grid
   const con = rayquazaConstellation("sky-constellation");
   sky.append(con);
   document.body.prepend(sky);
+  starCv.start();
   if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
 
   let mx = 0, my = 0, sc = 0;            // where the input says the sky should be
   const cur = LAYERS.map(() => ({ x: 0, y: 0 }));
+  const starAt = STAR_MOTION.map(() => ({ x: 0, y: 0 }));
   const conAt = { x: 0, y: 0 };
   let raf = 0, last = 0;
   const frame = (now) => {
@@ -58,6 +59,12 @@ export function mountCosmicParallax() {
       const wrapY = (((c.y % tile) + tile) % tile) - tile;   // the pattern repeats, so wrap by one tile
       layers[i].style.transform = `translate3d(${c.x.toFixed(2)}px, ${wrapY.toFixed(2)}px, 0)`;
     });
+    STAR_MOTION.forEach(([amp, rate], i) => {
+      const tx = -mx * amp, ty = -my * amp - sc * rate, c = starAt[i];
+      c.x += (tx - c.x) * k; c.y += (ty - c.y) * k;
+      if (Math.abs(tx - c.x) > 0.05 || Math.abs(ty - c.y) > 0.05) moving = true;
+    });
+    starCv.setOffsets(starAt);
     const cx = -mx * CON_AMP, cy = -my * CON_AMP - sc * CON_RATE;   // glides like the star layers
     conAt.x += (cx - conAt.x) * k; conAt.y += (cy - conAt.y) * k;
     con.style.transform = `translate3d(${conAt.x.toFixed(2)}px, ${conAt.y.toFixed(2)}px, 0)`;

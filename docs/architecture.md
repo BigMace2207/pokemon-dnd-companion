@@ -341,5 +341,10 @@ Inter was dropped as too generic. If you add a family, add it to the `<link>` in
   scroll pans, a pinch (ctrlKey) or a mouse wheel notch zooms; a gesture keeps its meaning until the wheel goes quiet.
 - The hub's constellation only scales about its centre when zooming (it drifts a fifth of a pan).
 - Opening or reloading a campaign always starts on the system's `defaultView` (the hub for Pokémon), not the page in the URL.
+- Performance: the stars (hub and cosmic sky) are one screen-sized canvas, `js/starCanvas.js` (the old CSS star tiles were
+  many screens of animated texture: hundreds of MB of graphics memory on a phone). The graphics setting `js/gfx.js`
+  (`<html data-gfx>`, set before paint in layout-init.js; Settings -> Appearance -> Graphics, default medium) gates the rest:
+  medium/low drop backdrop-filter blur (re-blurring a moving sky every frame), nebula drift and most shards; low also
+  stills the stars and drops comets, trails and the constellation twinkle. The edge mist only animates on a visible side.
 - Hub panning is transform-only: `applyView` moves the dot grid and star layers with `transform`/`translate` (wrapped by a
   tile) and only touches CSS variables when the zoom changes, on those layers, never on `.hub` (that restyled every card).

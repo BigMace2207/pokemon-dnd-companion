@@ -9,3 +9,11 @@
   var phone = pref === "phone" || (pref !== "desktop" && auto);
   document.documentElement.classList.toggle("m", phone);
 })();
+
+// The graphics setting (js/gfx.js), also before first paint so the heavy effects never start on Low or Medium.
+// Keep the key and default in sync with js/gfx.js.
+(function () {
+  var g = "medium";
+  try { var v = localStorage.getItem("pkdnd-gfx"); if (v === "low" || v === "medium" || v === "high") g = v; } catch (e) { /* storage blocked */ }
+  document.documentElement.setAttribute("data-gfx", g);
+})();
