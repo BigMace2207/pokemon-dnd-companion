@@ -1,5 +1,5 @@
-// The Campaign Planner whiteboard, and the whole planner interface. An endless pan/zoom canvas fills the page; a slim rail
-// on the left holds the nodes you can add (notes, checklists, sticky notes, dungeons, every generator), and drawers on the
+// The Whiteboard (once the Campaign Planner), and its whole interface. An endless pan/zoom canvas fills the page; a bar
+// at the bottom middle (like the hub's tool bar) holds the nodes you can add (notes, checklists, sticky notes, dungeons, every generator), and drawers on the
 // right hold the longer tools (maps, scenarios, party plans). The paper grows when a node nears an edge (board.js), the
 // background can be swapped or uploaded, and "sessions" are drawn round groups of nodes (box or freehand). A node can sit
 // in several sessions, and each session has its own colour and label.
@@ -24,7 +24,11 @@ import { KINDS, kindOf } from "./kinds.js";
 import { cleanMon, TEAM_MAX } from "./board.js";
 import { getNpcs, getNpc, getWildList, getWildMon } from "../network.js";
 import { spriteUrl } from "../sprites.js";
-import { trainerSpriteUrl } from "../trainerSpritePicker.js";
+import { trainerSpriteUrl, openTrainerPortraitPicker } from "../trainerSpritePicker.js";
+import { dexPanel, CARD_MIME } from "../hubDex.js";
+import { pokemonState } from "./textGens.js";
+import { generateMon } from "./pokeGenerators.js";
+import { askLevel } from "../levelAsk.js";
 
 const SIZE = { note: [300, 240], list: [280, 300], gen: [320, 260], text: [210, 150], dungeon: [380, 320], libmon: [230, 190], libtrainer: [260, 240] };
 const SLOT_KINDS = new Set(["trainer", "gym", "wildmon"]);
@@ -308,6 +312,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
         const { x, y } = n;
         edit((b) => { const t = nodeOf(b, n.id); if (t) { t.x = x; t.y = y; syncSessions(b, t); } grow(b); });
         applyBounds(); drawSessions();
+        if (x !== ox || y !== oy) shake(e);   // put down somewhere new
       };
       handleEl.addEventListener("pointermove", move); handleEl.addEventListener("pointerup", up); handleEl.addEventListener("pointercancel", up);
     });
@@ -394,6 +399,32 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     applyBounds(); drawNodes();
     nodeEls.get(node.id)?.style.setProperty("z-index", String(++zTop));
     closeFly();
+    fitNode(node.id, 0, () => shake(nodeEls.get(node.id)));   // sized to its text, then it lands with a little shake
+  }
+
+  // a quick wobble when a node lands (added, or put down after a move); none for reduced motion
+  function shake(e) {
+    if (!e || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    e.classList.remove("pl-shake"); void e.offsetWidth; e.classList.add("pl-shake");
+    setTimeout(() => e.classList.remove("pl-shake"), 480);
+  }
+
+  // A new node grows until all its text shows: wider first for a lot of text, then as tall as it needs.
+  function fitNode(id, pass = 0, onDone = null) {
+    requestAnimationFrame(() => {
+      const e = nodeEls.get(id);
+      if (!e) return;
+      const body = e.querySelector(".pl-node-body");
+      const over = Math.max(body ? body.scrollHeight - body.clientHeight : 0, e.scrollHeight - e.clientHeight);
+      if (over <= 2) { onDone?.(); return; }
+      const n = board.nodes.find((x) => x.id === id);
+      if (!n) return;
+      const widen = pass === 0 && over > 260 && n.w < 460;
+      edit((b) => { const x = b.nodes.find((y) => y.id === id); if (!x) return; if (widen) x.w = 460; else x.h = Math.min(1600, x.h + over + 10); });
+      drawNodes();
+      if (widen) fitNode(id, 1, onDone);
+      else requestAnimationFrame(() => onDone?.());
+    });
   }
 
   async function reroll(n) {
@@ -428,7 +459,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
       railBtn("text", "Sticky", "sticky", { spec: () => ({ type: "text" }) }),
       railBtn("dungeon", "Dungeon", "dungeon", { fly: true }),
       railBtn("gens", "Generate", "dice", { fly: true }),
-      ...(pokemon ? [railBtn("libs", "Libraries", "paw", { fly: true })] : []),
+      ...(pokemon ? [railBtn("libs", "Libraries", "paw", { fly: true }), dexRailBtn()] : []),
       ...(p.notes.length || p.lists.length ? [railBtn("saved", "Saved", "saved", { fly: true })] : []),
     );
   }
@@ -471,11 +502,49 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     vp.classList.remove("drop");
     if (readonly) return;
     ev.preventDefault();
+    const dexCard = ev.dataTransfer.getData(CARD_MIME);
+    if (dexCard) { dropFromDex(dexCard, { x: ev.clientX, y: ev.clientY }, (mon) => addNode({ type: "libmon", mon, source: { kind: "wild", id: "" } }, toWorld(ev.clientX, ev.clientY))); return; }
     let spec; try { spec = JSON.parse(ev.dataTransfer.getData("text/plain")); } catch { return; }
     if (!spec || spec.pl !== 1) return;
     const from = spec.from;
     addNode(spec, toWorld(ev.clientX, ev.clientY)).then(() => { if (from) takeFromTeam(from.nodeId, from.index); });
   });
+
+  // ---- the Dex (Pokémon campaigns): the same pull-out as the hub's; a Pokémon dragged out of it (or placed with +) is
+  // generated at the level you give, with the moves it would know by then, as a card or straight into a Team slot.
+  let dexEl = null, dexKind = null;
+  function dexRailBtn() {
+    const fresh = railBtn("dex", "Dex", "scroll").cloneNode(true);   // railBtn's look, without its flyout click
+    fresh.classList.toggle("active", !!dexEl);
+    fresh.addEventListener("click", () => toggleDex(dexEl ? null : "pokemon"));
+    return fresh;
+  }
+  async function toggleDex(kind) {
+    dexEl?.remove(); dexEl = null; dexKind = kind;
+    if (kind) {
+      const state = await pokemonState();
+      dexEl = dexPanel(state, kind, {
+        onSwitch: (k) => toggleDex(k),
+        onClose: () => toggleDex(null),
+        openFull: () => { location.hash = kind === "pokemon" ? "pokedex" : "moves"; },
+        onPlace: (card) => { const r = vp.getBoundingClientRect(); dropFromDex(JSON.stringify(card), { x: r.left + r.width / 2, y: r.top + r.height / 2 }, (mon) => addNode({ type: "libmon", mon, source: { kind: "wild", id: "" } })); },
+      });
+      dexEl.classList.add("pl-dex");
+      shell.append(dexEl);
+      void dexEl.offsetWidth; dexEl.classList.add("open");
+      dexEl.focusSearch();
+    }
+    drawRail();
+  }
+  async function dropFromDex(raw, screen, place) {
+    let card; try { card = JSON.parse(raw); } catch { return; }
+    if (card.type !== "mon") { toast("Only Pokémon can be placed from the Dex here.", "bad"); return; }
+    const level = await askLevel({ x: screen.x, y: screen.y, name: card.name, required: true, initial: card.level || "" });
+    if (!level) return;
+    const mon = generateMon(await pokemonState(), card.name, level);
+    if (!mon) { toast(`Couldn't find ${card.name} in the Pokédex.`, "bad"); return; }
+    place(mon);
+  }
 
   // ---- slots: trainer identity and team (Pokémon trainer, gym leader and wild encounter nodes) ----------------------
   const monSprite = (m) => (m?.dex ? el("img", { class: "pl-mon-sprite", src: spriteUrl(m.dex), alt: "", loading: "lazy" }) : el("span", { class: "pl-mon-ball", "aria-hidden": "true" }));
@@ -502,13 +571,25 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     wrap.append(teamSlot(n));
     return wrap;
   }
+  // a portrait for a trainer or gym leader: shown in its Trainer slot here and on its encounter button on the hub
+  function pickPortrait(n) {
+    openTrainerPortraitPicker({ current: n.identity?.sprite || "", onSelect: (file) => {
+      edit((b) => {
+        const x = nodeOf(b, n.id); if (!x) return;
+        x.identity = { name: x.identity?.name || x.title || "Trainer", npcId: x.identity?.npcId || "", sprite: file || "" };
+      });
+      drawNodes();
+    } });
+  }
   function trainerSlot(n) {
     const who = n.identity;
     const slot = el("div", { class: `pl-slot pl-slot-trainer${who ? " filled" : ""}`, "data-slot": "trainer", "data-node": n.id }, who
       ? [who.sprite ? el("img", { class: "pl-trainer-sprite small", src: trainerSpriteUrl(who.sprite), alt: "" }) : el("span", { class: "pl-avatar small" }, who.name[0].toUpperCase()),
         el("span", { class: "pl-slot-label" }, [el("strong", {}, who.name), el("span", { class: "dnd-tiny dnd-muted" }, who.npcId ? "From the NPC Library" : "Trainer")]),
+        readonly ? null : iconBtn("person", "Choose a portrait", () => pickPortrait(n)),
         readonly ? null : iconBtn("close", "Clear the trainer", () => { edit((b) => { const x = nodeOf(b, n.id); if (x) delete x.identity; }); drawNodes(); })].filter(Boolean)
-      : [el("span", { class: "pl-socket", "aria-hidden": "true" }), el("span", { class: "pl-slot-empty" }, readonly ? "No trainer" : "Trainer: drop one from the Libraries here")]);
+      : [el("span", { class: "pl-socket", "aria-hidden": "true" }), el("span", { class: "pl-slot-empty" }, readonly ? "No trainer" : "Trainer: drop one from the Libraries here, or"),
+        readonly ? null : btn("Choose a portrait", () => pickPortrait(n), "btn secondary tiny")].filter(Boolean));
     if (!readonly) acceptDrops(slot, n, () => 0);
     return slot;
   }
@@ -559,6 +640,13 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     slot.addEventListener("drop", async (ev) => {
       ev.preventDefault(); ev.stopPropagation();
       slot.classList.remove("hot"); showInsert(slot, -1); vp.classList.remove("drop");
+      const dexCard = ev.dataTransfer.getData(CARD_MIME);
+      if (dexCard) {
+        if (slot.dataset.slot !== "team") { toast("Pokémon go in the Team slot.", "bad"); return; }
+        const at = indexAt(ev.clientY);
+        dropFromDex(dexCard, { x: ev.clientX, y: ev.clientY }, (mon) => addToTeam(n.id, mon, at));
+        return;
+      }
       let spec; try { spec = JSON.parse(ev.dataTransfer.getData("text/plain")); } catch { return; }
       if (!spec || spec.pl !== 1) return;
       const at = indexAt(ev.clientY);
@@ -640,6 +728,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
   function openDrawer(x, arg = null) {
     if (!x || (drawerId === x.id && !arg)) { drawerId = null; drawer.hidden = true; drawer.replaceChildren(); drawTop(); return; }
     drawerId = x.id; closeFly(); bgPanel.hidden = true;
+    drawer.classList.toggle("full", !!x.full);   // a whole page over the board (the Map editor)
     const body = el("div", { class: "pl-drawer-body" });
     drawer.replaceChildren(el("div", { class: "pl-drawer-head" }, [el("h3", {}, x.label), iconBtn("close", "Close", () => openDrawer(null))]), body);
     drawer.hidden = false;

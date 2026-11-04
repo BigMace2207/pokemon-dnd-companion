@@ -306,7 +306,7 @@ class Accounts(ServerCase):
         status, out2 = self.login(email="nobody@example.com")
         self.assertEqual((status, out2["error"]), (401, out["error"]), "unknown email must look identical")
         self.assertEqual(self.register(nid="trainer-Z")[0], 409)            # same email
-        self.assertEqual(self.register(email="b@example.com")[0], 409)      # id already linked elsewhere
+        self.assertEqual(self.register(email="b@example.com")[0], 200)      # id already linked elsewhere: the new account gets its own
         self.assertEqual(self.register(email="not-an-email", nid="q")[0], 400)
         self.assertEqual(self.register(email="c@example.com", password="short", nid="q")[0], 400)
         self.assertEqual(call(self.base, "GET", "/api/auth/me")[0], 401)

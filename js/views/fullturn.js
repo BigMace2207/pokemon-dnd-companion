@@ -21,7 +21,7 @@ import {
 import { megaFormFor } from "../data.js";
 import { makeSavedMonPicker } from "../savedMonPicker.js";
 import { HEAL_ITEMS } from "../battleItems.js";
-import { dmAction, postBattleLog, getFullTurn, sendToTrainer, getBackgroundFiles, listTrainers } from "../network.js";
+import { dmAction, postBattleLog, getFullTurn, sendToTrainer, getBackgroundFiles } from "../network.js";
 import { computeBattleDamage, moveEffectivenessSummary } from "../battleMath.js";
 import { targetKindForMove, resolveSpreadTargets, sideIsDefeated } from "../moveTargeting.js";
 import { registerInterval } from "../intervals.js";
@@ -39,9 +39,48 @@ function cloneMon(mon) {
   return JSON.parse(JSON.stringify(mon));
 }
 
+// Layout: the battle itself fills the page, seen from the side of whoever's turn it is (the same screen players get; on
+// an NPC's or wild Pokémon's turn the DM plays it from there). A bar above it runs the turn (phase, round, who's up,
+// Next Turn). Pull-out drawers on the left add combatants, show the roster and set the scene; "DM Control" (bottom
+// right) has the full console for anything else: any move, ball or item for whoever's up, Mega Evolution, running.
 export function renderFullTurn(container, state, token) {
   container.innerHTML = "";
   container.appendChild(el("h1", { class: "view-title" }, "Battle Control"));
+  const bar = el("div", { class: "bc-bar" });
+  const stage = el("div", { class: "bc-stage" });
+  const rail = el("div", { class: "bc-rail", role: "toolbar", "aria-label": "Battle tools" });
+  const shell = el("div", { class: "bc-shell" }, [bar, el("div", { class: "bc-main" }, [rail, stage])]);
+  container.appendChild(shell);
+  // the drawers: left ones slide over the battle from the rail, DM Control from the right
+  const drawers = {};
+  let openDrawer = null;
+  function makeDrawer(id, title, side = "left") {
+    const body = el("div", { class: "bc-drawer-body" });
+    const close = el("button", { type: "button", class: "bc-drawer-close", "aria-label": "Close" }, "×");
+    close.addEventListener("click", () => toggleDrawer(null));
+    const node = el("aside", { class: `bc-drawer ${side}`, "aria-label": title }, [el("div", { class: "bc-drawer-head" }, [el("strong", {}, title), close]), body]);
+    shell.append(node);
+    drawers[id] = { node, body };
+    return body;
+  }
+  function toggleDrawer(id) {
+    openDrawer = openDrawer === id ? null : id;
+    for (const [k, d] of Object.entries(drawers)) d.node.classList.toggle("open", k === openDrawer);
+    shell.querySelectorAll("[data-drawer]").forEach((b) => b.classList.toggle("on", b.dataset.drawer === openDrawer));
+  }
+  const railBtn = (id, label, icon) => {
+    const b = el("button", { type: "button", class: "bc-rail-btn", "data-drawer": id, title: label }, [el("span", { "aria-hidden": "true" }, icon), el("span", {}, label)]);
+    b.addEventListener("click", () => toggleDrawer(id));
+    return b;
+  };
+  const addBody = makeDrawer("add", "Add combatants");
+  const rosterBody = makeDrawer("roster", "Roster and turn order");
+  const setupBody = makeDrawer("setup", "Battle setup");
+  const dmBody = makeDrawer("dm", "DM Control", "right");
+  rail.append(railBtn("add", "Add", "＋"), railBtn("roster", "Roster", "☰"), railBtn("setup", "Setup", "⚙"));
+  const dmBtn = el("button", { type: "button", class: "bc-dm-btn", "data-drawer": "dm" }, "DM Control");
+  dmBtn.addEventListener("click", () => toggleDrawer("dm"));
+  shell.append(dmBtn);
 
   // combatants: [{ id, sourceKind, sourceId, sourceLabel, mon, priority, tiebreak, megaEvolved, megaFrom, side }]
   // side is "A" or "B" — used to sort out enemies vs. allies for the
@@ -59,10 +98,33 @@ export function renderFullTurn(container, state, token) {
   // before "live" opens up the real interactive battle screen. See the
   // phase buttons in renderRoundCard() and the gate in battleview.js's poll().
   let phase = "draft"; // "draft" | "vs" | "live"
+  let acted = null;     // what the player on turn chose (server-side; cleared when the turn moves on)
 
+  // turnId tells the server (and every player's screen) exactly whose turn it is: the order here is sorted by speed,
+  // which only this console can work out.
   async function persist() {
-    await dmAction(token, "fullTurnSave", { combatants, currentIndex, round, background, spreadHitsAllies, phase });
+    const turnId = combatants.length ? activeCombatant()?.id || null : null;
+    lastRemote = remoteSig({ combatants, currentIndex, round, phase, turnId, acted });
+    await dmAction(token, "fullTurnSave", { combatants, currentIndex, round, background, spreadHitsAllies, phase, turnId });
   }
+
+  // Players' moves change HP and record their choice on the server, so this console keeps itself up to date (without
+  // this, clicking Next Turn would save over a player's damage with an old copy). It never redraws while you're typing.
+  let lastRemote = "";
+  const remoteSig = (f) => JSON.stringify([f.combatants?.map((c) => [c.id, c.mon?.currentHp, c.mon?.status, c.mon?.id]), f.currentIndex, f.round, f.phase, f.turnId, f.acted?.combatantId, f.acted?.text]);
+  registerInterval(setInterval(async () => {
+    if (document.hidden || !document.body.contains(container)) return;
+    const remote = await getFullTurn();
+    if (!remote || !Array.isArray(remote.combatants)) return;
+    const sig = remoteSig(remote);
+    if (sig === lastRemote) return;
+    if (container.contains(document.activeElement) && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+    lastRemote = sig;
+    combatants = remote.combatants; currentIndex = remote.currentIndex || 0; round = remote.round || 1;
+    phase = ["draft", "vs", "live"].includes(remote.phase) ? remote.phase : phase;
+    acted = remote.acted || null;
+    render();
+  }, 3000));
 
   function speciesFor(mon) { return state.pokemonByName.get(mon.name); }
   function statsFor(mon) {
@@ -93,7 +155,7 @@ export function renderFullTurn(container, state, token) {
 
   // ---------------- Roster builder ----------------
 
-  container.appendChild(makeSavedMonPicker({
+  addBody.appendChild(makeSavedMonPicker({
     title: "Add Combatant From…",
     defaultSource: "player",
     onPick: (mon, entry) => {
@@ -115,17 +177,13 @@ export function renderFullTurn(container, state, token) {
   }));
 
   const presentationCard = el("div", { class: "card" });
-  const roundCard = el("div", { class: "card" });
+  const setupExtras = el("div", { class: "card" });
+  const roundCard = bar;
   const rosterWrap = el("div");
-  const previewCard = el("div", { class: "card" });
-  const previewSelectWrap = el("div");
-  const previewBattleWrap = el("div");
   const turnCard = el("div");
-  container.appendChild(presentationCard);
-  container.appendChild(roundCard);
-  container.appendChild(rosterWrap);
-  container.appendChild(previewCard);
-  container.appendChild(turnCard);
+  setupBody.append(presentationCard, setupExtras);
+  rosterBody.append(rosterWrap);
+  dmBody.append(turnCard);
 
   function activeCombatant() {
     const order = orderedList();
@@ -162,57 +220,51 @@ export function renderFullTurn(container, state, token) {
 
   function renderRoundCard() {
     roundCard.innerHTML = "";
-
-    // Draft → VS Screen → Live: build the roster in private, optionally
-    // show everyone the Side A vs Side B intro card, then reveal the real
-    // interactive battle screen — see the gate in battleview.js's poll().
-    const phaseBtns = ["draft", "vs", "live"].map((p) => {
-      const btn = el("button", { class: "pill-btn" + (phase === p ? " active" : "") }, PHASE_INFO[p].label);
+    // Draft → VS Screen → Live: build the roster in private, optionally show everyone the Side A vs Side B intro card,
+    // then reveal the real interactive battle screen (the gate in battleview.js's poll()).
+    const phases = el("div", { class: "bc-phases", role: "group", "aria-label": "Phase" }, ["draft", "vs", "live"].map((p) => {
+      const btn = el("button", { type: "button", class: phase === p ? "on" : "", title: PHASE_INFO[p].banner }, PHASE_INFO[p].label);
       btn.addEventListener("click", () => { phase = p; persist(); render(); });
       return btn;
+    }));
+    const order = orderedList();
+    const up = order.length ? activeCombatant() : null;
+    const fainted = (c) => currentHpFor(c.mon) === 0;
+    const aDown = sideIsDefeated("A", combatants, fainted), bDown = sideIsDefeated("B", combatants, fainted);
+    const info = !order.length ? el("span", { class: "bc-info" }, "No combatants yet: open Add")
+      : aDown || bDown ? el("span", { class: `bc-info ${aDown ? "bad" : "good"}` }, aDown ? "DEFEAT: Side A is wiped out" : "VICTORY: Side B is wiped out")
+      : el("span", { class: "bc-info" }, [el("b", {}, `Round ${round}`), " · Up now: ", el("b", {}, up ? labelFor(up) : "?")]);
+    // A player on turn makes one choice (a move, an item, running, switching or something else); then it's yours.
+    const choice = up && (up.sourceKind === "player" || up.sourceKind === "team") && phase === "live"
+      ? (acted && acted.combatantId === up.id ? el("span", { class: "bc-choice done" }, [el("b", {}, "Their choice: "), acted.text || acted.kind]) : el("span", { class: "bc-choice" }, "Waiting for them to choose…"))
+      : null;
+    const nextBtn = order.length ? el("button", { type: "button", class: "btn bc-next" }, "Next Turn ▶") : null;
+    nextBtn?.addEventListener("click", () => {
+      let steps = 0;
+      do {
+        currentIndex++;
+        if (currentIndex >= order.length) { currentIndex = 0; round++; }
+        steps++;
+      } while (currentHpFor(order[currentIndex].mon) === 0 && steps < order.length);
+      persist(); render();
     });
+    roundCard.append(phases, el("span", { class: `bc-phase-note ${PHASE_INFO[phase].tone}` }, PHASE_INFO[phase].label === "Live" ? "Players can act" : phase === "vs" ? "Players see the intro" : "Hidden from players"), info, ...[choice, nextBtn].filter(Boolean));
+
+    // the rest lives in Setup
+    setupExtras.innerHTML = "";
     const clearLogBtn = el("button", { class: "btn secondary" }, "Clear Battle Log");
     clearLogBtn.addEventListener("click", async () => {
       if (!confirm("Clear the shared Battle Log for everyone? This can't be undone.")) return;
       await dmAction(token, "battleLogClear", {});
     });
-    roundCard.appendChild(el("div", { class: "result-banner " + PHASE_INFO[phase].tone }, PHASE_INFO[phase].banner));
-    roundCard.appendChild(el("div", { class: "grid-3", style: "margin-bottom:8px" }, phaseBtns));
-    roundCard.appendChild(el("div", { style: "margin-bottom:12px" }, clearLogBtn));
-
-    const fainted = (c) => currentHpFor(c.mon) === 0;
-    const sideADefeated = sideIsDefeated("A", combatants, fainted);
-    const sideBDefeated = sideIsDefeated("B", combatants, fainted);
-    if (sideADefeated || sideBDefeated) {
-      roundCard.appendChild(el("div", { class: "result-banner " + (sideADefeated ? "bad" : "good"), style: "font-size:1.2em;text-align:center;margin-bottom:8px" },
-        sideADefeated ? "DEFEAT — Side A has been wiped out" : "VICTORY — Side B has been wiped out"));
-    }
-
-    const order = orderedList();
-    roundCard.appendChild(el("div", { class: "grid-2" }, [
-      el("div", { class: "result-banner neutral" }, `Round ${round}`),
-      order.length ? el("div", { class: "result-banner good" }, `Up now: ${labelFor(order[currentIndex] || order[0])}`) : el("div", { class: "result-banner neutral" }, "No combatants yet"),
-    ]));
-    if (order.length) {
-      const nextBtn = el("button", { class: "btn" }, "Next Turn ▶");
-      nextBtn.addEventListener("click", () => {
-        let steps = 0;
-        do {
-          currentIndex++;
-          if (currentIndex >= order.length) { currentIndex = 0; round++; }
-          steps++;
-        } while (currentHpFor(order[currentIndex].mon) === 0 && steps < order.length);
-        persist(); render();
-      });
-      const resetBtn = el("button", { class: "btn secondary" }, "New Round (reset order)");
-      resetBtn.addEventListener("click", () => { currentIndex = 0; round = 1; combatants.forEach((c) => { c.tiebreak = null; }); persist(); render(); });
-      const endBtn = el("button", { class: "btn secondary" }, "End Encounter (clear all)");
-      endBtn.addEventListener("click", () => {
-        if (!confirm("Clear the whole roster? This can't be undone.")) return;
-        combatants = []; currentIndex = 0; round = 1; targetId = null; phase = "draft"; persist(); render();
-      });
-      roundCard.appendChild(el("div", { class: "grid-3" }, [nextBtn, resetBtn, endBtn]));
-    }
+    const resetBtn = el("button", { class: "btn secondary" }, "New Round (reset order)");
+    resetBtn.addEventListener("click", () => { currentIndex = 0; round = 1; combatants.forEach((c) => { c.tiebreak = null; }); persist(); render(); });
+    const endBtn = el("button", { class: "btn secondary" }, "End Encounter (clear all)");
+    endBtn.addEventListener("click", () => {
+      if (!confirm("Clear the whole roster? This can't be undone.")) return;
+      combatants = []; currentIndex = 0; round = 1; targetId = null; phase = "draft"; persist(); render();
+    });
+    setupExtras.append(el("h4", {}, "Encounter"), el("div", { class: "bc-stack" }, [resetBtn, endBtn, clearLogBtn]));
   }
 
   // ---------------- Roster table ----------------
@@ -280,7 +332,7 @@ export function renderFullTurn(container, state, token) {
     bgSelect.appendChild(el("option", { value: "" }, "None (default gradient)"));
     files.forEach((f) => bgSelect.appendChild(el("option", { value: f }, f.replace(/\.png$/i, "").replace(/_/g, " "))));
     bgSelect.value = files.includes(background) ? background : "";
-    bgSelect.addEventListener("change", () => { background = bgSelect.value; persist(); renderPreview(); });
+    bgSelect.addEventListener("change", () => { background = bgSelect.value; persist().then(() => battle?.refresh()); });
 
     const alliesCheck = el("input", { type: "checkbox" });
     alliesCheck.checked = spreadHitsAllies;
@@ -293,65 +345,22 @@ export function renderFullTurn(container, state, token) {
     ]));
   }
 
-  // ---------------- Trainer viewpoint: literal copy of the Battle tab ----------------
-  // Rather than a separate hand-built preview, this embeds the exact same
-  // renderBattleView() the "Battle" nav page uses (see battleview.js's
-  // `options` param), pointed at whichever online trainer the DM picks from
-  // the dropdown — so what the DM sees here is pixel-for-pixel what that
-  // trainer's own device shows, polling included.
-  let previewIntervalIds = [];
-  let previewTrainerId = null;
-  let previewTrainerName = "";
-
-  function myRegisterInterval(id) {
-    previewIntervalIds.push(id);
-    // Still routed through the real registerInterval too, as a safety net —
-    // clearAllIntervals() (fired on every top-level router switch) will
-    // stop this even if the DM navigates away from Control Centre entirely
-    // without the dropdown's own teardown ever running again.
-    registerInterval(id);
-  }
-  function teardownPreviewBattle() {
-    previewIntervalIds.forEach((id) => clearInterval(id));
-    previewIntervalIds = [];
-  }
-  function mountPreviewBattle() {
-    teardownPreviewBattle();
-    if (!previewTrainerId) { previewBattleWrap.innerHTML = ""; return; }
-    renderBattleView(previewBattleWrap, state, {
-      networkId: previewTrainerId, trainerName: previewTrainerName,
-      registerIntervalFn: myRegisterInterval, embedded: true,
-    });
-  }
-
-  async function renderPreview() {
-    previewCard.innerHTML = "";
-    previewCard.appendChild(el("h4", {}, "Battle View — Trainer Viewpoint"));
-
-    const trainers = await listTrainers("");
-    if (!trainers.length) {
-      previewCard.appendChild(el("p", { class: "view-sub" }, "No trainers online yet."));
-      teardownPreviewBattle();
-      previewTrainerId = null;
-      return;
+  // ---------------- The battle, seen as whoever's turn it is ----------------
+  // The same screen players get (renderBattleView), in its DM mode: on an NPC's or wild Pokémon's turn the DM picks the
+  // move from it, and the result lands here (dmSubmit); on a player's turn it shows what they're choosing.
+  async function dmSubmit({ combatants: next, logTexts }) {
+    for (const n of next || []) {
+      const c = combatants.find((x) => x.id === n.id);
+      if (!c || n.mon?.currentHp === c.mon.currentHp || n.mon?.currentHp === undefined) continue;
+      c.mon.currentHp = n.mon.currentHp;
+      // reaches a player's own save, or the NPC / wild library entry, without a second log line
+      await dmAction(token, "setHp", { targetId: c.sourceId, targetKind: toServerTargetKind(c.sourceKind), monId: c.mon.id, absolute: c.mon.currentHp, delta: null, inBattle: false });
     }
-    if (!previewTrainerId || !trainers.some((t) => t.id === previewTrainerId)) {
-      previewTrainerId = trainers[0].id;
-      previewTrainerName = trainers[0].name;
-    }
-    const select = el("select", {}, trainers.map((t) => el("option", { value: t.id }, t.name)));
-    select.value = previewTrainerId;
-    select.addEventListener("change", () => {
-      const t = trainers.find((x) => x.id === select.value);
-      if (!t) return;
-      previewTrainerId = t.id;
-      previewTrainerName = t.name;
-      mountPreviewBattle();
-    });
-    previewCard.appendChild(field("Viewing as", select));
-    previewCard.appendChild(previewBattleWrap);
-    mountPreviewBattle();
+    for (const t of logTexts || []) await postLog(t);
+    await persist();
+    render();
   }
+  const battle = renderBattleView(stage, state, { embedded: true, dm: { submit: dmSubmit, log: (text) => postLog(text) } });
 
   // ---------------- Active turn: moves, bag, mega, run ----------------
 
@@ -439,6 +448,7 @@ export function renderFullTurn(container, state, token) {
 
     const resultOut = el("div", { class: "formula-note" }, "");
     turnCard.appendChild(el("div", { class: "card" }, [
+      el("p", { class: "view-sub" }, "Act for whoever's up with anything here; the battle view in the middle is the usual way."),
       el("h4", {}, `Turn: ${labelFor(active)}`),
       field("Target", targetSelect),
       el("div", { class: "grid-2" }, [
@@ -624,8 +634,8 @@ export function renderFullTurn(container, state, token) {
   function render() {
     renderRoundCard();
     renderRoster();
-    renderPreview();
     renderTurnCard();
+    battle?.refresh();
   }
 
   (async () => {
@@ -634,6 +644,8 @@ export function renderFullTurn(container, state, token) {
       combatants = saved.combatants;
       currentIndex = saved.currentIndex || 0;
       round = saved.round || 1;
+      acted = saved.acted || null;
+      lastRemote = remoteSig(saved);
       background = saved.background || "";
       spreadHitsAllies = !!saved.spreadHitsAllies;
       phase = ["draft", "vs", "live"].includes(saved.phase) ? saved.phase : "draft";

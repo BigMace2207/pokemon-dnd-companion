@@ -51,7 +51,7 @@ export function renderPartyTab(panel, { token, onLoaded }) {
       ...plans.map((p) => pill(p.name || "Player", p.id, `${openItems(p.plan).length} open`)),
     );
     if (status) { body.replaceChildren(el("div", { class: "card" }, el("p", { class: "view-sub" }, status))); return; }
-    if (!plans.length) { body.replaceChildren(el("div", { class: "card" }, [el("h4", {}, "No plans shared yet"), el("p", { class: "view-sub" }, "When your players write notes or checklists in their Campaign Planner, they show up here. They are shared automatically.")])); return; }
+    if (!plans.length) { body.replaceChildren(el("div", { class: "card" }, [el("h4", {}, "No plans shared yet"), el("p", { class: "view-sub" }, "When your players write notes or checklists on their Whiteboard, they show up here. They are shared automatically.")])); return; }
     if (selected !== "all" && !plans.some((p) => p.id === selected)) selected = "all";
     body.replaceChildren(selected === "all" ? everyone() : player(plans.find((p) => p.id === selected)));
   }

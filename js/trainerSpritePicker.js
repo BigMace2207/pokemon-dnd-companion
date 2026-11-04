@@ -83,3 +83,8 @@ export function makeTrainerSpritePicker({ initial = "", onSelect = () => {} } = 
   wrap.setValue = (file) => setPreview(file || "");
   return wrap;
 }
+
+// Opens the portrait chooser straight away (no inline preview), e.g. for a gym leader on the Whiteboard.
+export function openTrainerPortraitPicker({ current = "", onSelect = () => {} } = {}) {
+  makeTrainerSpritePicker({ initial: current, onSelect }).querySelector(".trainer-sprite-picker-controls .btn").click();
+}

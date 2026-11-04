@@ -17,7 +17,7 @@ const CAMPAIGN_KEY = "pokemon-dnd-campaign-id";
 // center. Once a hidden page is shown (see setViewHidden), it stays shown
 // on this device from then on, even after picking a different trainer
 // name -- this is a one-time default, not something re-applied each visit.
-const DEFAULT_HIDDEN_VIEWS = ["statcalc", "damagecalc", "tierguide", "controlcentre"];
+const DEFAULT_HIDDEN_VIEWS = ["statcalc", "tierguide", "controlcentre"];
 
 // ---------------- Theme ----------------
 

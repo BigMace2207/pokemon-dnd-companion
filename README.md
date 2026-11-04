@@ -14,28 +14,63 @@
 ## Features
 
 **For players**
-- Pokémon campaigns have no sidebar: the Hub is home, every page is a round button on it (trainer pages and calculators
-  down the left, the planner, library, Control Centre and admin down the right), the Pokédex and Move Dex slide out,
-  the Rulebook, Type Chart and Move Tier Guide are pull tabs beside the log, and the top bar's home button comes back
+- Pokémon campaigns have no sidebar: the Hub is home. Beside its title, a bar holds My Team, Bag, Trainer, the Dex
+  (Pokédex and Move Dex in one pull-out) and the stat calculator; the Whiteboard and Control Centre buttons sit just left of the "N here" pill;
+  the "N here" pill drops down the trainers online; your team sits bottom left with each Pokémon's health (drag one
+  onto the board). The Rulebook, Type Chart, Move Tier Guide and Library are pull tabs beside the log (drag a panel's
+  edge to resize it), and the top bar's home button comes back
+- On the hub your trainer sits above your team (portrait, name, money): click it for the Trainer page, or drag it onto the
+  board for a card with your character's details. Team Pokémon dragged onto the board show their health and moves; Dex
+  Pokémon given a level show their stats at that level. The Bag is a drop-down: drag any item (your money is a Key Item)
+  onto the board, or drag a team Pokémon or an item onto Send To (bottom right) to give it to any player in the campaign,
+  saying how many when you have more than one. Gifts land in the other player's save next time their hub checks in.
+  Clicking a Pokémon, item, encounter or prop gives a little bounce and burst; the stars drift slowly and a comet goes by
+  now and then. The eraser removes things you drag it across and highlights what it's over; other players' cursors and strokes move
+  smoothly as they draw
+- The hub's minimap (top left) shows the map the DM puts on the hub, centred on you, with only the places they've made
+  visible. Drag it to look around; the button beside it brings it back to you. Click it for the full map: zoom, pan, a
+  legend of places and players, and drag your own token to move. With fog of war on, the map is hidden in mist that
+  clears where you go (shared between everyone, or each player's own, as the DM chooses)
+- Battles: on your turn choose FIGHT, BAG, POKÉMON (switch), RUN or OTHER (describe anything else). The choice is
+  final: a move's damage lands straight away, and your menu waits until the DM clicks Next Turn
 - The Hub: a shared whiteboard every player lands on, with notes, drawings and everyone's cursor live (in each player's
   own colour, picked in Settings > Appearance, with their name above it). The DM drags encounter buttons onto it, and
   they are the only way into the Battle screen. Pings (P or Alt+click) point something out to everyone, notes can be
   recoloured and resized, the corner buttons zoom and fit the board, clicking a player's avatar jumps to them, and
-  Ctrl+Z takes back what you last added. The board has a soft edge a little way past its content, which moves out as
-  things are placed near it, so you can't get lost in empty space. Text is typed straight onto the board. The DM can fade in one of their maps,
+  Ctrl+Z takes back what you last added. Shapes (box, circle, line, arrow) and a prop library (trees, rocks, buildings,
+  chests and more) are in the tool bar. The board has a soft edge a little way past its content, which moves out as
+  things are placed near it, so you can't get lost in empty space; a soft white mist gathers as you near it. Text is typed straight onto the board. The DM can fade in one of their maps,
   blurred, as the hub's backdrop. On the hub the app's top bar becomes round buttons (menu, theme, Settings, account),
   and Settings lives behind the gear there rather than in the Pokémon sidebar. Without a backdrop the hub is "cosmic",
   with twinkling stars. The Pokédex and Move Dex slide out from the hub's left edge, and any Pokémon or move can be
-  dragged onto the board as a card. Pinging can target a note, card or button: hover to highlight it, click to ripple
+  dragged onto the board as a card (it asks for a level, which you can skip; your own team keeps theirs). The stars drift with a slight parallax as you pan, and the board starts roomy. Pinging can target a note, card or button: hover to highlight it, click to ripple
   round it. The Campaign Planner and Library are buttons down the hub's right-hand side, and the planner shares the
   hub's dark glass look (new boards start on the "Cosmic" background)
 - Pokédex and Move Dex covering 1301 Pokémon, with forms, evolutions and stats
-- Stat and Damage calculators that load your saved Pokémon
+- Stat calculator that loads your saved Pokémon
 - My Team, Bag and Trainer Sheet built from the rulebook, with named saves
 - Graphical battle view with synced multiplayer battles
 
 **For the DM**
-- Control Centre with directives, NPC and wild libraries, messaging and logs
+- Control Centre laid out like the hub: big options for Overview, Battle Control, Players, NPC Library and Wild Library
+  (plus DM Tools for directives, gifts and notes). The Overview is one live board of everything: the battle (phase,
+  round, whose turn, their choice, every combatant's health), every trainer's Pokémon, held items, bag and money (away players
+  marked Offline, from their last save), player messages (dismiss them there) and the battle log
+- Battle Control: the battle itself in the middle, seen from whoever's turn it is; on an NPC's or wild Pokémon's turn
+  the DM plays it from the same menu players use. Phase, round and Next Turn sit above it; Add, Roster and Setup pull
+  out from the left; DM Control (below) has the full console
+- DM notes on the hub (DM note, beside Encounters): notes only the DM sees; the server never sends them to players.
+  Pokémon campaigns have no Notebook on the Whiteboard; these notes replace it
+- New players name their character before they first come into a Pokémon campaign
+- New Whiteboard nodes grow to fit all their text
+- The Whiteboard's Map editor (a full page: maps and labels on the left, the map in the middle, the hub, fog, players
+  and markers on the right): put a map on the hub, make places visible, place players and markers, and turn on the
+  fog of war (shared or private, how far players see, brush the mist away, cover it again)
+- The Whiteboard has a Dex button too: drag a Pokémon out of it onto the board or into a Team slot, give it a level,
+  and it is generated with the moves it knows by then
+- SOUND and PARTY pull tabs (DM only, lower down the right edge, once the DM password is in): the music board and sound
+  effects, and every trainer's Pokémon with health, status, ability, item, moves and bag (also the Control Centre's
+  Players tab)
 - Hub encounter buttons: an NPC trainer or wild Pokémon from the libraries, or an encounter rolled in the Campaign
   Planner. Hovering shows the first Pokémon's level, with its sprite or a question mark (the DM chooses); the DM's click
   starts that battle with every online trainer's lead Pokémon and opens Battle Control
@@ -51,7 +86,8 @@
 - DM screen, encounter builder with XP budgets, and campaign notes
 
 **Everywhere**
-- Campaign Planner (both games): one full-screen whiteboard, no tower behind it. A slim rail on the left adds nodes (notes, checklists, stickies, expandable dungeons with per-room notes, and every generator: Pokémon wild encounters, trainers, gym leaders, routes; D&D NPCs, encounters, taverns, loot...). Drag them around an endless board that grows as you near its edge, change or upload the background, and circle groups of nodes (box or freehand) into colour-coded "Session N" regions; a node can be in several sessions. The Notebook drawer holds searchable Markdown notes that can also be NPCs, quests (with status), locations and session recaps, with an export to Markdown (it replaces the old Campaign Notes page and imports its notes once). Maps, scenarios (DM) and party plans (DM) open as drawers. Players share their boards, notes and checklists with the DM automatically. In Pokémon campaigns, trainer, gym leader and wild encounter nodes have Trainer and Team slots like Scratch blocks: bring the DM's NPC trainers and wild Pokémon in with the Libraries button and drag them in (a trainer gives the node its name, sprite and team; Pokémon join the team, up to six, and can be dragged to reorder or back out). The hub battles those exact teams
+- Whiteboard (both games; once the Campaign Planner): one full-screen board, no tower behind it. A bar at the bottom adds nodes (notes, checklists, stickies, expandable dungeons with per-room notes, and every generator: Pokémon wild encounters, trainers, gym leaders, routes; D&D NPCs, encounters, taverns, loot...). Drag them around an endless board that grows as you near its edge, change or upload the background, and circle groups of nodes (box or freehand) into colour-coded "Session N" regions; a node can be in several sessions. The Notebook drawer holds searchable Markdown notes that can also be NPCs, quests (with status), locations and session recaps, with an export to Markdown (it replaces the old Campaign Notes page and imports its notes once). Maps, scenarios (DM) and party plans (DM) open as drawers. Players share their boards, notes and checklists with the DM automatically. In Pokémon campaigns, trainer, gym leader and wild encounter nodes have Trainer and Team slots like Scratch blocks: bring the DM's NPC trainers and wild Pokémon in with the Libraries button and drag them in (a trainer gives the node its name, sprite and team; Pokémon join the team, up to six, and can be dragged to reorder or back out). The hub battles those exact teams. Trainers and gym leaders can have a portrait, shown on the Whiteboard and on their
+  hub button. (The Campaign Planner is now called the Whiteboard; its add bar is at the bottom middle, like the hub's.)
 - Library: add your own PDF, EPUB, Word, text, Markdown and HTML books and read them in a built-in e-reader (they stay on your device; accounts the admin allows keep them on the server, private, on every device they sign in on)
 - Maps are stored on the server, so they follow you to every device: up to 10 per campaign (15 MB each) for everyone, unlimited (100 MB each) for accounts the admin allows
 - Cosmic theme: every Pokémon D&D page uses the hub's look (deep space, glass cards, white pill buttons); D&D campaigns keep the device's theme choice

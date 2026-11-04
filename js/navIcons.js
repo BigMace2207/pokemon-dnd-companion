@@ -12,7 +12,6 @@ export const NAV_ICONS = {
   pokedex: spriteIcon("sprites/icons/ball/poke.png"),
   moves: spriteIcon("sprites/icons/tm/normal.png"),
   statcalc: spriteIcon("sprites/icons/medicine/carbos.png"),
-  damagecalc: spriteIcon("sprites/icons/battle-item/x-attack.png"),
   battleview: spriteIcon("sprites/icons/storage/battle-pocket.png"),
   team: spriteIcon("sprites/icons/storage/pokemon-box.png"),
   bag: spriteIcon("sprites/icons/key-item/seal-bag.png"),

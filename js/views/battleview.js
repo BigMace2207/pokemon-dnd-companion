@@ -3,6 +3,10 @@
 // sprites; the other side along the top, front sprites), a turn-order strip,
 // and a FIGHT/BAG/POKÉMON/RUN menu like the games.
 //
+// Every choice on your turn (FIGHT, BAG, POKÉMON, RUN or OTHER) is final: it's sent to the server, which records it
+// as this turn's choice, and the menu locks ("Waiting for the DM…") until the DM starts the next turn in Battle
+// Control. The server knows whose turn it is from the DM's console (fullTurn.turnId).
+//
 // Playing a move on your own turn actually resolves it — rolls to-hit and
 // damage client-side (js/moveResolution.js, the same battleMath.js engine
 // the DM's Full Turn console uses) and submits the result to the server via
@@ -23,7 +27,7 @@ import { calcAllStats, BALL_TYPES } from "../calc.js";
 import { HEAL_ITEMS } from "../battleItems.js";
 import { spriteImg } from "../sprites.js";
 import { loadSave } from "../storage.js";
-import { getFullTurn, getBattleLog, sendNoteToDm, playMove, listTrainers, getNpcs } from "../network.js";
+import { getFullTurn, getBattleLog, playMove, playerAction, listTrainers, getNpcs } from "../network.js";
 import { trainerSpriteUrl } from "../trainerSpritePicker.js";
 import { registerInterval } from "../intervals.js";
 import { targetKindForMove, enemiesOf, resolveSpreadTargets, sideOf, combatantsBySide, sideIsDefeated } from "../moveTargeting.js";
@@ -81,7 +85,7 @@ function snapshotOf(fullTurn, logEntries) {
   const combatants = fullTurn.combatants.map((c) => [
     c.id, c.side, c.mon.currentHp, c.mon.status, c.mon.name, c.mon.nickname, c.mon.level, c.mon.item, c.mon.ability,
   ].join(":"));
-  return JSON.stringify([fullTurn.phase, fullTurn.background, fullTurn.currentIndex, fullTurn.round, fullTurn.spreadHitsAllies, combatants, logEntries.length, logEntries[logEntries.length - 1]?.id]);
+  return JSON.stringify([fullTurn.phase, fullTurn.background, fullTurn.currentIndex, fullTurn.round, fullTurn.turnId, fullTurn.acted?.combatantId, fullTurn.acted?.text, fullTurn.spreadHitsAllies, combatants, logEntries.length, logEntries[logEntries.length - 1]?.id]);
 }
 
 // options: only used when this screen is embedded somewhere other than its
@@ -91,13 +95,18 @@ function snapshotOf(fullTurn, logEntries) {
 //     move still goes through the same trainer-scoped server action, just
 //     attributed to them — a DM using this to act for an AFK player is a
 //     feature, not a bug, at this table.
+//   dm: the DM's Battle Control. The screen always shows the battle from the side of whoever's turn it is. On an NPC's
+//     or wild Pokémon's turn the DM uses the menu for it (dm.submit applies a move, dm.log records anything else); on a
+//     player's turn it shows what they're choosing, like their own screen does while they wait.
 //   embedded: true skips the "Battle" heading (the embedding page already
 //     has its own), and true also caller must route interval ids through
 //     registerIntervalFn so the outer page's own teardown covers them (the
 //     global clearAllIntervals() only fires on router-level navigation, not
 //     when this is re-rendered as a sub-component).
 export function renderBattleView(container, state, options = {}) {
-  const { networkId: overrideNetworkId, trainerName: overrideName, registerIntervalFn = registerInterval, embedded = false } = options;
+  const { networkId: overrideNetworkId, trainerName: overrideName, registerIntervalFn = registerInterval, embedded = false, dm = null } = options;
+  const isPlayerKind = (c) => c && (c.sourceKind === "player" || c.sourceKind === "team");
+  const dmDone = new Set();   // DM mode: the turns (turnId + round) the DM has already acted on
   container.innerHTML = "";
   if (!embedded) {
     // The Battle screen opens from the hub's encounter buttons, so that's the way back too.
@@ -138,13 +147,26 @@ export function renderBattleView(container, state, options = {}) {
   // instead of the text box being a separate block underneath it.
   container.appendChild(el("div", { class: "battle-stage" }, [sceneEl, dialogEl]));
 
-  function myMon() { return save.party[activeIndex] || null; }
+  function myMon() { return dm ? myCombatant()?.mon || null : save.party[activeIndex] || null; }
+  const dmTurnKey = () => `${fullTurn.turnId || activeCombatant()?.id}|${fullTurn.round}`;
+  // DM mode: is this an NPC's or wild Pokémon's turn (the DM's to play)?
+  const dmActs = () => !!dm && !!activeCombatant() && !isPlayerKind(activeCombatant());
+  // My choice this turn, if I've made it: the menu stays locked until the DM starts the next turn.
+  function myChoice() {
+    if (dmActs()) return dmDone.has(dmTurnKey()) ? { text: "Done. Click Next Turn when you're ready." } : null;
+    const mine = myCombatant();
+    return mine && fullTurn.acted && fullTurn.acted.combatantId === mine.id ? fullTurn.acted : null;
+  }
 
   function myCombatant() {
+    if (dm) return activeCombatant();   // the DM sees the battle as whoever's turn it is
     return fullTurn.combatants.find((c) => (c.sourceKind === "player" || c.sourceKind === "team") && c.sourceId === myNetworkId) || null;
   }
 
   function activeCombatant() {
+    // the DM's console says whose turn it is; the index below is the fallback for an older saved battle
+    const named = fullTurn.turnId && fullTurn.combatants.find((c) => c.id === fullTurn.turnId);
+    if (named) return named;
     const order = orderedList(state, fullTurn.combatants);
     if (!order.length) return null;
     const idx = Math.min(fullTurn.currentIndex, order.length - 1);
@@ -189,9 +211,27 @@ export function renderBattleView(container, state, options = {}) {
     showNext();
   }
 
-  function sendRequest(text) {
-    sendNoteToDm(myDisplayName, text);
-    flash("Sent to the Dungeon Master!");
+  async function sendRequest(text, kind = "other", extra = {}) {
+    const mine = myCombatant();
+    if (!mine) return;
+    if (dm) {
+      if (!dmActs()) return;
+      await dm.log(text);
+      dmDone.add(dmTurnKey());
+      menuMode = "root"; pendingTarget = null;
+      flash(text);
+      return;
+    }
+    submitting = true;
+    try {
+      const res = await playerAction({ networkId: myNetworkId, kind, text, ...extra });
+      if (!res || res.error) { flash(res?.error || "Couldn't reach the server — try again."); return; }
+      fullTurn = { ...fullTurn, acted: { combatantId: mine.id, kind, text } };
+      menuMode = "root"; pendingTarget = null;
+      flash("Sent to the Dungeon Master!");
+    } finally {
+      submitting = false;
+    }
   }
 
   const targetLabel = combatantLabel;
@@ -220,6 +260,17 @@ export function renderBattleView(container, state, options = {}) {
   // waiting on the round trip; the next poll reconciles with the server's
   // copy (which should already match, since this is exactly what was sent).
   async function submitTurn({ combatants, logTexts }) {
+    if (dm) {
+      submitting = true;
+      try {
+        await dm.submit({ combatants: combatants || fullTurn.combatants, logTexts });
+        if (combatants) fullTurn = { ...fullTurn, combatants };
+        dmDone.add(dmTurnKey());
+        renderScene(); renderTurnOrder();
+        lastSnapshot = snapshotOf(fullTurn, logEntries);
+      } finally { submitting = false; }
+      return;
+    }
     submitting = true;
     try {
       // Re-fetch the live turn counter right before advancing it — basing
@@ -227,22 +278,16 @@ export function renderBattleView(container, state, options = {}) {
       // let a device that missed a poll or two push a wrong index and desync
       // the table's turn order (symptom: the dialog gets stuck announcing
       // the same combatant's turn indefinitely).
+      // The move's damage applies now; the turn itself only moves on when the DM clicks Next Turn.
       const fresh = await getFullTurn();
       const base = (fresh && fresh.phase === "live" && Array.isArray(fresh.combatants)) ? fresh : fullTurn;
       const finalCombatants = combatants || base.combatants;
-      const order = orderedList(state, finalCombatants);
-      let newIndex = base.currentIndex;
-      let newRound = base.round;
-      let steps = 0;
-      do {
-        newIndex++;
-        if (newIndex >= order.length) { newIndex = 0; newRound += 1; }
-        steps++;
-      } while (order.length && currentHpFor(state, order[newIndex].mon) === 0 && steps < order.length);
-      fullTurn = { ...base, combatants: finalCombatants, currentIndex: newIndex, round: newRound };
+      const res = await playMove({ networkId: myNetworkId, combatants: finalCombatants, logTexts });
+      if (!res || res.error) { flash(res?.error || "Couldn't reach the server — try again."); return; }
+      const mine = myCombatant();
+      fullTurn = { ...base, combatants: finalCombatants, acted: { combatantId: mine?.id, kind: "move", text: logTexts?.[0] || "" } };
       renderScene();
       renderTurnOrder();
-      await playMove({ networkId: myNetworkId, combatants: finalCombatants, currentIndex: newIndex, round: newRound, logTexts });
       // The server now matches what's already on screen — reflect that so
       // the very next poll doesn't see a "change" and re-render for free.
       lastSnapshot = snapshotOf(fullTurn, logEntries);
@@ -455,7 +500,7 @@ export function renderBattleView(container, state, options = {}) {
   }
 
   function renderAll() {
-    if (fullTurn.phase === "vs") { renderVsScreen(); return; }
+    if (fullTurn.phase === "vs" && !dm) { renderVsScreen(); return; }
     renderScene();
     renderTurnOrder();
     if (!flashMessage) renderDialog();
@@ -500,9 +545,12 @@ export function renderBattleView(container, state, options = {}) {
     pokemonBtn.addEventListener("click", () => { menuMode = "pokemon"; renderDialog(); });
     runBtn.addEventListener("click", () => {
       const mon = myMon();
-      sendRequest(`${myDisplayName}'s ${mon?.nickname || mon?.name || "Pokémon"} wants to run from the encounter!`);
+      sendRequest(`${dm ? ownerName(myCombatant()) : myDisplayName}'s ${mon?.nickname || mon?.name || "Pokémon"} tries to run from the encounter!`, "run");
     });
-    return el("div", { class: "battle-menu-grid" }, [fightBtn, bagBtn, pokemonBtn, runBtn]);
+    const otherBtn = el("button", { class: "battle-menu-btn other" }, "OTHER");
+    otherBtn.addEventListener("click", () => { menuMode = "other"; renderDialog(); });
+    // the DM swaps an NPC's Pokémon from DM Control, so there's no POKÉMON button for them here
+    return el("div", { class: `battle-menu-grid ${dm ? "four" : "five"}` }, dm ? [fightBtn, bagBtn, runBtn, otherBtn] : [fightBtn, bagBtn, pokemonBtn, runBtn, otherBtn]);
   }
 
   function backButton() {
@@ -571,16 +619,26 @@ export function renderBattleView(container, state, options = {}) {
       box.appendChild(el("h4", {}, "Poké Balls"));
       box.appendChild(el("div", { class: "battle-menu-grid moves" }, BALL_TYPES.map((ball) => {
         const b = el("button", { class: "battle-menu-btn move" }, ball);
-        b.addEventListener("click", () => withEnemyTarget((opp) => sendRequest(`${myDisplayName} wants to throw a ${ball}${opp ? ` at ${targetLabel(opp)}` : ""}.`)));
+        b.addEventListener("click", () => withEnemyTarget((opp) => sendRequest(`${myDisplayName} throws a ${ball}${opp ? ` at ${targetLabel(opp)}` : ""}!`, "item")));
         return b;
       })));
       box.appendChild(el("h4", {}, "Healing"));
       box.appendChild(el("div", { class: "battle-menu-grid moves" }, HEAL_ITEMS.map((item) => {
         const b = el("button", { class: "battle-menu-btn move" }, item.name);
-        b.addEventListener("click", () => sendRequest(`${myDisplayName} wants to use a ${item.name} on ${mon?.nickname || mon?.name || "their Pokémon"}.`));
+        b.addEventListener("click", () => sendRequest(`${myDisplayName} uses a ${item.name} on ${mon?.nickname || mon?.name || "their Pokémon"}.`, "item"));
         return b;
       })));
       box.appendChild(backButton());
+    } else if (menuMode === "other") {
+      // anything that isn't a move, an item, a switch or running: describe it, and the DM decides what happens
+      box.appendChild(el("div", { class: "battle-prompt" }, "What do you do?"));
+      const text = el("textarea", { class: "battle-other-text", rows: "3", maxlength: "400", placeholder: "e.g. Mia climbs the tree to get a better view of the Onix", "aria-label": "Describe what you do" });
+      const send = el("button", { class: "btn" }, "Do it");
+      send.addEventListener("click", () => { const t = text.value.trim(); if (t) sendRequest(`${myDisplayName}: ${t}`, "other"); });
+      text.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send.click(); } });
+      box.appendChild(text);
+      box.appendChild(el("div", { class: "battle-other-row" }, [send, backButton()]));
+      setTimeout(() => text.focus(), 0);
     } else if (menuMode === "pokemon") {
       box.appendChild(el("div", { class: "battle-prompt" }, "Choose a Pokémon:"));
       box.appendChild(el("div", { class: "battle-party-list" }, save.party.filter((m) => m.name).map((m) => {
@@ -596,9 +654,9 @@ export function renderBattleView(container, state, options = {}) {
         const isDisabled = fainted || idx === activeIndex;
         const b = el("button", { class: "btn secondary battle-party-btn", disabled: isDisabled ? "" : null }, `${m.nickname || m.name} (Lv.${levelText(m.level)}) — ${fainted ? "Fainted" : (max === null ? "HP unknown" : `${cur}/${max} HP`)}`);
         if (!fainted && idx !== activeIndex) {
-          b.addEventListener("click", () => {
-            activeIndex = idx;
-            sendRequest(`${myDisplayName} is sending out ${m.nickname || m.name}!`);
+          b.addEventListener("click", async () => {
+            await sendRequest(`${myDisplayName} sends out ${m.nickname || m.name}!`, "switch", { monId: m.id });
+            if (myChoice()) activeIndex = idx;
             renderScene();
           });
         }
@@ -612,10 +670,19 @@ export function renderBattleView(container, state, options = {}) {
       // line, same as the real games' battle screen.
       if (!fullTurn.combatants.length) {
         box.appendChild(el("div", { class: "battle-prompt" }, "No encounter in progress right now."));
+      } else if (dm && !dmActs()) {
+        // a player's turn: show what they're doing; their own screen has the menu
+        const choice = fullTurn.acted && active && fullTurn.acted.combatantId === active.id ? fullTurn.acted : null;
+        box.appendChild(el("div", { class: "battle-prompt" }, choice ? `${combatantLabel(active)}: ${choice.text || choice.kind}` : `Waiting for ${active ? combatantLabel(active) : "the next turn"} to choose…`));
+        if (choice) box.appendChild(el("div", { class: "battle-waiting" }, "Resolve it, then click Next Turn."));
       } else if (!combatant) {
         box.appendChild(el("div", { class: "battle-prompt" }, "You're not in the DM's current encounter yet."));
+      } else if (myTurn && myChoice()) {
+        // chosen: locked until the DM starts the next turn
+        box.appendChild(el("div", { class: "battle-prompt" }, myChoice().text || "Your choice is in."));
+        box.appendChild(el("div", { class: "battle-waiting" }, "Waiting for the Dungeon Master to start the next turn…"));
       } else if (myTurn) {
-        box.appendChild(el("div", { class: "battle-prompt" }, `What will ${mon?.nickname || mon?.name || "your Pokémon"} do?`));
+        box.appendChild(el("div", { class: "battle-prompt" }, dm ? `${combatantLabel(combatant)}: what will it do?` : `What will ${mon?.nickname || mon?.name || "your Pokémon"} do?`));
         box.appendChild(menuGridButtons());
       } else {
         box.appendChild(el("div", { class: "battle-prompt" }, `Waiting for ${active ? combatantLabel(active) : "the next turn"}…`));
@@ -632,7 +699,7 @@ export function renderBattleView(container, state, options = {}) {
     // The DM can build/edit the roster in draft without it appearing here —
     // only "vs" (the intro card) or "live" (the full screen) — see the
     // phase buttons in the Battle Control console — actually shows up here.
-    const nextFullTurn = ft && Array.isArray(ft.combatants) ? (ft.phase && ft.phase !== "draft" ? ft : EMPTY_FULLTURN) : fullTurn;
+    const nextFullTurn = ft && Array.isArray(ft.combatants) ? (dm || (ft.phase && ft.phase !== "draft") ? ft : EMPTY_FULLTURN) : fullTurn;
     const nextLog = Array.isArray(log) ? log : logEntries;
 
     const snap = snapshotOf(nextFullTurn, nextLog);
@@ -647,7 +714,7 @@ export function renderBattleView(container, state, options = {}) {
     // there stale even while the text box below correctly starts saying
     // it's someone else's turn.
     const mine = myCombatant();
-    const nowMyTurn = mine !== null && mine === activeCombatant();
+    const nowMyTurn = mine !== null && mine === activeCombatant() && !myChoice();
     if (!nowMyTurn && menuMode !== "root") {
       menuMode = "root";
       pendingTarget = null;
@@ -658,4 +725,6 @@ export function renderBattleView(container, state, options = {}) {
 
   poll();
   registerIntervalFn(setInterval(poll, POLL_MS));
+  // the embedding page (Battle Control) asks for a fresh look right after it changes the battle itself
+  return { refresh: () => { lastSnapshot = null; return poll(); } };
 }

@@ -1,4 +1,4 @@
-// Campaign Planner: one full-screen page in every game system (Pokémon D&D and D&D 5e), different for the DM and players.
+// The Whiteboard (it used to be called the Campaign Planner; its page id is still "planner"): one full-screen page in every game system (Pokémon D&D and D&D 5e), different for the DM and players.
 //
 // The whiteboard (js/planner/boardView.js) is the whole interface. Notes, checklists, generator results and dungeons are
 // nodes you drag onto it. The longer tools open as drawers over the board, from buttons in its top bar:
@@ -34,9 +34,10 @@ export function renderPlanner(container) {
 
     const shared = { dm, system };
     const extras = [
-      { id: "notes", label: dm ? "Notebook (private)" : "Notes (shared with your DM)", icon: "note", render: (host) => renderNotesTab(host, shared) },
-      { id: "maps", label: "Maps", icon: "map", render: (host, close, arg) => renderMapsTab(host, shared, arg) },
-      { id: "partymap", label: dm ? "Party map (what players see)" : "Party map", icon: "compass", render: (host) => renderPartyMapTab(host) },
+      // Pokémon campaigns have no Notebook here: the DM's private notes are DM-only notes on the hub instead
+      ...(system === "pokemon-dnd" ? [] : [{ id: "notes", label: dm ? "Notebook (private)" : "Notes (shared with your DM)", icon: "note", render: (host) => renderNotesTab(host, shared) }]),
+      { id: "maps", label: dm ? "Map editor" : "Maps", icon: "map", full: true, render: (host, close, arg) => renderMapsTab(host, shared, arg) },
+      { id: "partymap", label: dm ? "Hub map (what players see)" : "Hub map", icon: "compass", render: (host) => renderPartyMapTab(host) },
     ];
     if (dm) {
       extras.push(

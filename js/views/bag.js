@@ -15,6 +15,7 @@ import { HEAL_ITEMS, STATUS_HEAL_ITEMS } from "../battleItems.js";
 import { addLogEntry } from "../log.js";
 import { attachInfoTooltip, tooltipTitle, tooltipRow } from "../infoTooltip.js";
 import { describeItem } from "../itemDescriptions.js";
+import { MONEY } from "../bagIcon.js";
 
 export function renderBag(container, state) {
   container.innerHTML = "";
@@ -35,6 +36,13 @@ export function renderBag(container, state) {
     const name = addCombo.inputEl.value.trim();
     const qty = Math.max(1, Number(qtyInput.value) || 1);
     if (!name) return;
+    if (name.toLowerCase() === MONEY.toLowerCase()) {
+      save.trainer.cash = (Number(save.trainer.cash) || 0) + qty;
+      addLogEntry(`Added £${qty} to your money.`);
+      addCombo.setValue(""); qtyInput.value = "1";
+      persist();
+      return;
+    }
     addBagItem(save, name, qty);
     addLogEntry(`Added ${qty}× ${name} to the Bag.`);
     addCombo.setValue(""); qtyInput.value = "1";
@@ -54,6 +62,18 @@ export function renderBag(container, state) {
     if (override) return { icon: override, isOverride: true };
     const resolved = resolveIcon(iconIndex, { name: rawName, section, moveType });
     return { icon: resolved || PLACEHOLDER_ICON, isOverride: false, unresolved: !resolved };
+  }
+
+  // your money, shown as a Key Item (it's the Trainer Sheet's cash)
+  function moneyCard(cash) {
+    const card = el("div", { class: "bag-item-card", style: "border-color:#facc15" }, [
+      el("div", { class: "bag-item-rarity-tag", style: "background:#facc15" }, "Money"),
+      el("img", { class: "bag-item-icon", src: iconPath("key-item", "coin-case.png"), alt: MONEY }),
+      el("div", { class: "bag-item-name" }, MONEY),
+      el("div", { class: "bag-item-count" }, `£${(Number(cash) || 0).toLocaleString()}`),
+    ]);
+    attachInfoTooltip(card, () => [tooltipTitle(MONEY), tooltipRow("Your money. Change it on the Trainer Sheet, or send some to another player from the hub's Bag.")]);
+    return card;
   }
 
   function bagItemCard(section, itemName, count) {
@@ -84,12 +104,13 @@ export function renderBag(container, state) {
     sectionsWrap.innerHTML = "";
     const bySection = { ball: [], medicine: [], tm: [], held: [], key: [] };
     bagEntries(save).forEach(([name, count]) => bySection[categorizeItem(name, state)].push([name, count]));
+    bySection.key.push([MONEY, Number(save.trainer.cash) || 0]);
 
     SECTION_ORDER.forEach((section) => {
-      const items = bySection[section].sort((a, b) => a[0].localeCompare(b[0]));
+      const items = bySection[section].sort((a, b) => (a[0] === MONEY ? -1 : b[0] === MONEY ? 1 : a[0].localeCompare(b[0])));
       sectionsWrap.appendChild(el("h4", {}, `${SECTION_LABELS[section]} (${items.length})`));
       sectionsWrap.appendChild(items.length
-        ? el("div", { class: "bag-grid" }, items.map(([name, count]) => bagItemCard(section, name, count)))
+        ? el("div", { class: "bag-grid" }, items.map(([name, count]) => (name === MONEY ? moneyCard(count) : bagItemCard(section, name, count))))
         : el("p", { class: "view-sub" }, "Nothing here yet."));
     });
   }

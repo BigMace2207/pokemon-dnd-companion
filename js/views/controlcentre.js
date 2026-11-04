@@ -14,6 +14,9 @@ import { computeBattleDamage } from "../battleMath.js";
 import { makeTrainerSpritePicker } from "../trainerSpritePicker.js";
 import { npcToText, parseNpcText, parseTeamText } from "../teamExport.js";
 import { getViewState, setViewState } from "../viewState.js";
+import { renderDmParty } from "./dmParty.js";
+import { renderDmOverview } from "./dmOverview.js";
+import { refreshPullTabs } from "../logDrawer.js";
 import { makeSavedMonPicker } from "../savedMonPicker.js";
 import { goToPokemon, goToStatCalc } from "../navState.js";
 import { learnableMoveNames } from "../levelUp.js";
@@ -65,39 +68,57 @@ function renderLogin(container, state) {
   container.appendChild(el("div", { class: "card" }, [field("Password", pwInput), btn, errorMsg]));
 }
 
+// The Control Centre: a header with the table at a glance (who's online, the encounter, unread messages), one row of
+// tabs, and the page below. Music and sound effects are the SOUND drawer on the right edge (with the PARTY one), so
+// they're to hand on any page once the DM password is in.
 function renderMain(container, state, token) {
-  const logoutBtn = el("button", { class: "btn secondary" }, "Log Out");
-  logoutBtn.addEventListener("click", () => { localStorage.removeItem(TOKEN_KEY); renderControlCentre(container, state); });
+  refreshPullTabs();   // the DM's own pull tabs appear now that the password is in
+  const logoutBtn = el("button", { class: "btn secondary cc-logout" }, "Lock DM tools");
+  logoutBtn.addEventListener("click", () => { localStorage.removeItem(TOKEN_KEY); refreshPullTabs(); renderControlCentre(container, state); });
 
+  // The page is an open board like the hub: a row of big options at the top (Overview first, then the four places
+  // you act from), and the Overview itself is one large live board of everything (js/views/dmOverview.js).
   const tabs = {
-    "DM Tools": (body) => renderDmTools(body, state, token),
+    "Overview": (body) => renderDmOverview(body, state, token, { go: (v) => open(VIEW_TAB[v] || "Overview") }),
     "Battle Control": (body) => renderFullTurn(body, state, token),
+    "Players": (body) => { body.replaceChildren(el("p", { class: "view-sub" }, "Every trainer online and their party: health, status, ability, held item, moves and bag. It keeps itself up to date.")); const host = el("div"); body.append(host); renderDmParty(host, state); },
     "NPC Library": (body) => renderNpcLibrary(body, state, token),
     "Wild Library": (body) => renderWildLibrary(body, state, token),
-    "Music Board": (body) => renderMusicBoard(body, token),
-    "Sound Effects": (body) => renderSoundEffects(body),
+    "DM Tools": (body) => renderDmTools(body, state, token),
   };
+  const VIEW_TAB = { battle: "Battle Control", players: "Players" };
+  const ICON = { "Overview": "◎", "Battle Control": "⚔", "Players": "☺", "NPC Library": "♟", "Wild Library": "✿", "DM Tools": "✎" };
+  const SUB = { "Overview": "Everything at once", "Battle Control": "Run the encounter", "Players": "Every party in full", "NPC Library": "Trainers and gym leaders", "Wild Library": "Wild Pokémon", "DM Tools": "Messages, gifts, notes" };
+  const legacy = { "Music Board": "Overview", "Sound Effects": "Overview" };
   const tabNames = Object.keys(tabs);
-  const savedTab = getViewState("controlcentre:tab", "DM Tools");
-  const activeTabName = tabNames.includes(savedTab) ? savedTab : "DM Tools";
-  const tabBtns = tabNames.map((name) => el("button", { class: "pill-btn" + (name === activeTabName ? " active" : "") }, name));
-  const tabRow = el("div", { class: "card" }, [...tabBtns, el("span", { style: "float:right" }, [logoutBtn])]);
-  container.appendChild(tabRow);
+  const savedTab = legacy[getViewState("controlcentre:tab", "Overview")] || getViewState("controlcentre:tab", "Overview");
+  const activeTabName = tabNames.includes(savedTab) ? savedTab : "Overview";
 
-  const body = el("div");
+  container.classList.add("cc-open");
+  const tabBtns = tabNames.map((name) => el("button", { type: "button", class: "cc-option" + (name === activeTabName ? " active" : "") + (name === "DM Tools" ? " minor" : ""), role: "tab", "aria-selected": String(name === activeTabName) }, [
+    el("span", { class: "cc-option-icon", "aria-hidden": "true" }, ICON[name]), el("span", { class: "cc-option-text" }, [el("strong", {}, name), el("span", {}, SUB[name])]),
+  ]));
+  container.appendChild(el("div", { class: "cc-head" }, [el("div", { class: "cc-options", role: "tablist" }, tabBtns), logoutBtn]));
+
+  const body = el("div", { class: "cc-body" });
   container.appendChild(body);
 
-  tabBtns.forEach((btn, i) => {
-    const name = tabNames[i];
-    btn.addEventListener("click", () => {
-      tabBtns.forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      setViewState("controlcentre:tab", name);
-      tabs[name](body);
-    });
-  });
-
+  function open(name) {
+    tabBtns.forEach((b, i) => { const on = tabNames[i] === name; b.classList.toggle("active", on); b.setAttribute("aria-selected", String(on)); });
+    setViewState("controlcentre:tab", name);
+    tabs[name](body);
+  }
+  tabBtns.forEach((btn, i) => btn.addEventListener("click", () => open(tabNames[i])));
   tabs[activeTabName](body);
+}
+
+// The SOUND drawer: the music board and the campaign's sound effects together (DM only; see logDrawer.js).
+export function renderSoundDrawer(host, token) {
+  const music = el("div"), sfx = el("div");
+  host.replaceChildren(music, sfx);
+  if (!token) { music.append(el("p", { class: "view-sub" }, "Enter the DM password in the Control Centre first.")); return; }
+  renderMusicBoard(music, token);
+  renderSoundEffects(sfx);
 }
 
 // ---------------- Shared: a single Pokémon's editable fields ----------------
@@ -522,7 +543,7 @@ async function renderMusicBoard(body, token) {
   body.innerHTML = "";
   body.appendChild(el("h4", {}, "Music Board"));
 
-  const grid = el("div", { class: "grid-3" });
+  const grid = el("div", { class: "grid-3 sound-grid" });
   body.appendChild(grid);
 
   const slots = await getMusicSlots();
@@ -551,7 +572,7 @@ async function renderSoundEffects(body) {
 
   const refreshBtn = el("button", { class: "btn secondary" }, "Refresh List");
   body.appendChild(refreshBtn);
-  const grid = el("div", { class: "grid-3", style: "margin-top:10px" });
+  const grid = el("div", { class: "grid-3 sound-grid", style: "margin-top:10px" });
   body.appendChild(grid);
 
   async function refresh() {

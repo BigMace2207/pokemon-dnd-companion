@@ -101,6 +101,11 @@ export async function listTrainers(excludeId) {
   const res = await getJSON(`/api/trainers?exclude=${encodeURIComponent(excludeId)}`);
   return res?.trainers || [];
 }
+// Everyone in the campaign, online or not. With the DM token, also each one's party, bag and money.
+export async function getRoster(dmToken = "") {
+  const res = await getJSON(`/api/roster${dmToken ? `?token=${encodeURIComponent(dmToken)}` : ""}`);
+  return res?.trainers || null;
+}
 export async function getTrainerTeam(id) {
   return getJSON(`/api/trainer/${encodeURIComponent(id)}`);
 }
@@ -124,6 +129,14 @@ export function getFullTurn() {
 // needed) — see server.py's _handle_player_move for what's actually
 // allowed here: HP/status changes and turn advancement on the existing
 // roster, never adding/removing/restructuring combatants.
+// A player's choice other than a move: kind "item" | "run" | "switch" (monId: a Pokémon from their party) | "other".
+// Like a move, it locks their turn until the DM starts the next one.
+export function playerAction(payload) {
+  let token;
+  try { token = localStorage.getItem("pokemon-dnd-dm-token") || undefined; } catch { /* ignore */ }
+  return postJSON("/api/fullturn/playeraction", token ? { ...payload, token } : payload);
+}
+
 export function playMove(payload) {
   // The DM token (if this device has one) lets the DM move for an away player.
   let token;
@@ -241,10 +254,16 @@ export async function getAllPlans(token) {
   return res?.plans || null;
 }
 // The one map the DM shares with the table. Players get only the places the DM has revealed; the DM token gets all of them.
-export async function getPartyMap(dmToken) {
-  const res = await getJSON(`/api/partymap${dmToken ? `?token=${encodeURIComponent(dmToken)}` : ""}`);
+// viewerId: who's looking (your own trainer id), for the fog of war: you see what you've uncovered.
+export async function getPartyMap(dmToken, viewerId = "") {
+  const q = [dmToken ? `token=${encodeURIComponent(dmToken)}` : "", viewerId ? `id=${encodeURIComponent(viewerId)}` : ""].filter(Boolean).join("&");
+  const res = await getJSON(`/api/partymap${q ? `?${q}` : ""}`);
   return res?.map ?? null;
 }
+// Move your own token on the shared map (with the DM token: anyone's); the mist clears round where it lands.
+export function moveOnMap({ id, tokenId, x, y, color, token }) { return postJSON("/api/partymap/move", { id, tokenId, x, y, color, token }); }
+// DM: fog settings ({enabled, shared, radius}), op "reveal" with pts to brush the mist away, or op "reset" to cover it all.
+export function setMapFog(token, fog, op = null, pts = null) { return postJSON("/api/partymap/fog", { token, fog, ...(op ? { op } : {}), ...(pts ? { pts } : {}) }); }
 export function publishPartyMap(token, map) { return postJSON("/api/partymap", { token, map }); }
 export function updatePartyMapLive(token, pins, tokens) { return postJSON("/api/partymap/live", { token, pins, tokens }); }
 export function clearPartyMap(token) { return postJSON("/api/partymap/clear", { token }); }
@@ -311,5 +330,5 @@ export function adminCommand(text) { return postJSON("/api/admin/command", { tex
 export function adminCampaign(id, action) { return postJSON("/api/admin/campaign", { id, action }); }
 
 // --- The Pokémon hub's shared board (server.py "The Pokémon hub") ---
-export function hubSync(id, since, cursor, ping = null) { return postJSON("/api/hub/sync", { id, since, cursor, ...(ping ? { ping } : {}) }); }
+export function hubSync(id, since, cursor, ping = null, token = null) { return postJSON("/api/hub/sync", { id, since, cursor, ...(ping ? { ping } : {}), ...(token ? { token } : {}) }); }   // token: the DM's, so DM-only notes come too
 export function hubOp(id, body, token) { return postJSON("/api/hub/op", { id, ...body, ...(token ? { token } : {}) }); }

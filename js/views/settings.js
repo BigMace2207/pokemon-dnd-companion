@@ -7,6 +7,8 @@ import {
 import { loadSave, writeSave } from "../storage.js";
 import { CURSOR_COLORS, cursorColorOf } from "../cursorColor.js";
 import { renderAccountCard } from "../accountCard.js";
+import { fetchMe } from "../account.js";
+import { renderAdmin } from "./admin.js";
 import { getViewState, setViewState } from "../viewState.js";
 import { activeSystem } from "../systems/registry.js";
 
@@ -298,13 +300,16 @@ export function renderSettings(container) {
       },
     },
     ...(activeSystem()?.noSidebar ? [] : [{ id: "pages", label: "Sidebar", render: (panel) => panel.appendChild(pagesCard()) }]),
+    { id: "admin", label: "Admin", adminOnly: true, render: (panel) => renderAdmin(panel) },   // always last; only for admins
   ];
 
   const tabBar = el("div", { class: "settings-tabs", role: "tablist" });
   const panel = el("div", { class: "settings-panel", role: "tabpanel" });
   let isOwner = false; // learned from the campaign info; reveals the Members tab
 
-  function visibleTabs() { return tabDefs.filter((t) => !t.ownerOnly || isOwner); }
+  let isAdmin = false;
+  fetchMe().then((acc) => { if (acc?.perms?.admin) { isAdmin = true; drawTabBar(getViewState(TAB_KEY, "account")); } });
+  function visibleTabs() { return tabDefs.filter((t) => (!t.ownerOnly || isOwner) && (!t.adminOnly || isAdmin)); }
 
   function drawTabBar(activeId) {
     tabBar.innerHTML = "";

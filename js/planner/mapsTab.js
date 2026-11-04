@@ -1,3 +1,9 @@
+// The Map editor (the DM's; players get the same tools for their own maps). One map can be shown on the hub: it
+// becomes the minimap and full map every player has (js/hubMap.js), with the places you reveal, everyone's tokens and,
+// if you turn it on, the fog of war. For that map this editor works on the live copy: tokens are where players have
+// actually moved them, the mist is drawn over the image (see-through for you), and "Brush away mist" clears it where you
+// drag.
+//
 // Maps: import your own map images and label them in the app. Pan with a drag, zoom with the wheel, the buttons or a
 // pinch; add a label with "+ Label" (or double-click the map), drag labels to move them, click one to edit its text,
 // icon, colour and note. Images are uploaded to the server (one file per map, in this campaign: 10 maps of up to 15 MB
@@ -25,7 +31,8 @@ async function mapImageUrl(m) {
   if (m.fileId) return fileUrl(m.fileId);
   return getImage(m.id).catch(() => null);
 }
-import { getAllPlans, publishPartyMap, updatePartyMapLive, clearPartyMap } from "../network.js";
+import { publishPartyMap, updatePartyMapLive, clearPartyMap, getRoster, getPartyMap, moveOnMap, setMapFog } from "../network.js";
+import { drawFog } from "../mapView.js";
 
 // Shrink a map image so it is small enough to share with the table (a JPEG up to 1600 px on its longest side).
 async function shrinkImage(dataUrl, max = 1600, limit = 2_300_000) {
@@ -48,7 +55,9 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
   const dm = !!shared.dm;
   let pendingFocus = arg?.pinId || null;     // asked to open on a particular label (from a whiteboard node's map link)
   let selected = (arg?.mapId && getPlan().maps.some((m) => m.id === arg.mapId) ? arg.mapId : null) || getPlan().maps[0]?.id || null;
-  let mode = "pan";            // "pan" or "add"
+  let mode = "pan";            // "pan", "add" (a label) or "reveal" (brush the fog away, on the hub's map)
+  let live = null;             // the hub's copy of this map (DM view) when the selected map is the one on the hub
+  let liveTimer2 = null;
   let showLabels = true;
   let imageUrl = null;
   const view = { x: 0, y: 0, k: 1, fit: 1 };
@@ -56,6 +65,7 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
   const listHost = el("div", { class: "dnd-list" });
   const viewerHost = el("div", { class: "pl-map-viewer" });
   const pinsHost = el("div", { class: "card pl-map-pins" });
+  const rightHost = el("div", { class: "pl-map-side right" });   // the hub, fog, players and markers
   const maps = () => getPlan().maps;
   const current = () => maps().find((m) => m.id === selected) || null;
 
@@ -105,10 +115,24 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
     clearTimeout(liveTimer);
     liveTimer = setTimeout(async () => {
       const m = maps().find((x) => x.shared), t = getDmToken();
-      if (m && t) { try { await updatePartyMapLive(t, m.pins, m.tokens || []); } catch { /* offline: it goes next time */ } }
+      // tokens: everyone on the hub's map (players may have put themselves there) plus any you've just placed
+      const tokens = live ? [...live.tokens, ...(m?.tokens || []).filter((x) => !live.tokens.some((y) => y.id === x.id))] : m?.tokens || [];
+      if (m && t) { try { await updatePartyMapLive(t, m.pins, tokens); } catch { /* offline: it goes next time */ } }
     }, 350);
   };
   const patchMap = (id, fn) => { mutatePlan((p) => { const m = p.maps.find((x) => x.id === id); if (m) fn(m); }); if (dm) pushLive(); };
+
+  async function loadLive() {
+    const m = current(), t = getDmToken();
+    live = m?.shared && dm && t ? await getPartyMap(t).catch(() => null) : null;
+    viewerHost.__live?.();
+    drawShare?.();
+  }
+  function startLive() {
+    clearInterval(liveTimer2);
+    loadLive();
+    liveTimer2 = setInterval(() => { if (!document.body.contains(viewerHost)) { clearInterval(liveTimer2); return; } if (!document.hidden && !viewerHost.__busy) loadLive(); }, 4000);
+  }
 
   function drawList() {
     const rows = maps();
@@ -116,7 +140,7 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
       const b = el("button", { type: "button", class: `dnd-list-item${m.id === selected ? " active" : ""}`, role: "option", "aria-selected": String(m.id === selected) }, [
         el("span", { class: "dnd-grow" }, m.name || "Map"), el("span", { class: "meta" }, `${m.pins.length} label${m.pins.length === 1 ? "" : "s"}`),
       ]);
-      b.addEventListener("click", async () => { selected = m.id; imageUrl = null; drawList(); await drawViewer(); });
+      b.addEventListener("click", async () => { selected = m.id; imageUrl = null; mode = "pan"; drawList(); await drawViewer(); startLive(); });
       return b;
     }) : [el("p", { class: "view-sub", style: "padding:12px" }, "No maps yet. Import an image to start labelling it.")]));
   }
@@ -126,6 +150,7 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
     const m = current();
     pinsHost.replaceChildren();
     if (!m) {
+      rightHost.replaceChildren();
       viewerHost.replaceChildren(el("div", { class: "pl-map-empty" }, [el("h4", {}, "Maps"), el("p", { class: "view-sub" }, "Import a map of your world, a dungeon, a town or a route. You can then label places on it, and the labels stay put as you zoom."), btn("Import a map", () => pickFile("image/*,.json").then(importFile), "btn")]));
       return;
     }
@@ -153,19 +178,26 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
         } catch { /* over the limit or offline: it stays on this device for now */ }
       }, 0);
     }
+    rightHost.replaceChildren(...(dm ? [shareBar(m)] : [el("div", { class: "card" }, [el("h4", {}, "Your map"), el("p", { class: "dnd-small dnd-muted" }, "Label places as you find them. The DM's map on the hub is in “Hub map”.")])]));
     const wrap = el("div", { class: "pl-map-wrap" });
     const stage = el("div", { class: "pl-map-stage", style: `width:${m.w}px;height:${m.h}px` });
     const img = el("img", { src: imageUrl, alt: m.name, draggable: "false" });
     img.style.cssText = "width:100%;height:100%;display:block;user-select:none;pointer-events:none";
-    stage.append(img);
+    const fogCv = el("canvas", { class: "mv-fog", "aria-hidden": "true" });
+    stage.append(img, fogCv);
     wrap.append(stage);
+    const drawLiveFog = () => { if (live && current()?.shared) drawFog(fogCv, { ...live, w: m.w, h: m.h }, { see: true }); else fogCv.hidden = true; };
+    drawLiveFog();
     const tools = el("div", { class: "pl-map-tools" }, [
       btn("+", () => zoomBy(1.3), "btn secondary tiny", { "aria-label": "Zoom in", title: "Zoom in" }),
       btn("−", () => zoomBy(1 / 1.3), "btn secondary tiny", { "aria-label": "Zoom out", title: "Zoom out" }),
       btn("Fit", () => { fit(); apply(); }, "btn secondary tiny"),
       btn(mode === "add" ? "Click the map…" : "+ Label", () => { mode = mode === "add" ? "pan" : "add"; wrap.classList.toggle("adding", mode === "add"); addBtn.textContent = mode === "add" ? "Click the map…" : "+ Label"; addBtn.classList.toggle("secondary", mode !== "add"); }, "btn secondary tiny", { id: "pl-add" }),
       btn(showLabels ? "Hide text" : "Show text", () => { showLabels = !showLabels; wrap.classList.toggle("no-text", !showLabels); labelsBtn.textContent = showLabels ? "Hide text" : "Show text"; }, "btn secondary tiny"),
-    ]);
+      dm && m.shared ? btn(mode === "reveal" ? "Brushing: drag on the map" : "Brush away mist", () => { mode = mode === "reveal" ? "pan" : "reveal"; wrap.classList.toggle("brushing", mode === "reveal"); brushBtn.textContent = mode === "reveal" ? "Brushing: drag on the map" : "Brush away mist"; brushBtn.classList.toggle("secondary", mode !== "reveal"); }, "btn secondary tiny") : null,
+    ].filter(Boolean));
+    const brushBtn = tools.children[5] || null;
+    wrap.classList.toggle("brushing", mode === "reveal");
     const addBtn = tools.children[3], labelsBtn = tools.children[4];
     wrap.classList.toggle("adding", mode === "add"); wrap.classList.toggle("no-text", !showLabels);
     viewerHost.replaceChildren(...[
@@ -187,7 +219,6 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
           btn("Delete", async () => { if (await confirmDialog(`Delete the map "${m.name}" and its ${m.pins.length} labels?`, { ok: "Delete", danger: true })) { await deleteImage(m.id).catch(() => {}); if (m.fileId) await deleteFile(m.fileId); mutatePlan((p) => { p.maps = p.maps.filter((x) => x.id !== m.id); }); drawUsage(); selected = maps()[0]?.id || null; imageUrl = null; drawList(); drawViewer(); } }, "btn danger tiny"),
         ]),
       ]),
-      dm ? shareBar(m) : null,
       el("div", { class: "pl-map-frame" }, [wrap, tools]),
       el("p", { class: "dnd-small dnd-muted" }, "Drag to pan, scroll or pinch to zoom, double-click to add a label, drag a label to move it."),
     ].filter(Boolean));
@@ -212,8 +243,9 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
       stage.querySelectorAll(".pl-pin, .pl-token").forEach((n) => n.remove());
       const cur = current();
       for (const p of cur.pins) stage.append(pinEl(cur, p));
-      if (dm) for (const t of cur.tokens || []) stage.append(tokenEl(cur, t));
+      if (dm) for (const t of (cur.shared && live ? live.tokens : cur.tokens) || []) stage.append(tokenEl(cur, t));
     }
+    viewerHost.__live = () => { if (document.body.contains(stage)) { drawLiveFog(); drawStagePins(); } };
     function tokenEl(cur, t) {
       const n = el("div", { class: "pl-token", style: `left:${t.x * cur.w}px;top:${t.y * cur.h}px;--c:${t.color || "#5aa8f0"}`, "data-tip": `${t.name} (drag to move)`, "data-tip-title": "Player" }, [el("span", { class: "pl-token-dot" }, (t.name || "?").trim().slice(0, 2).toUpperCase()), el("span", { class: "pl-pin-text" }, t.name)]);
       let drag = null;
@@ -226,8 +258,14 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
       });
       n.addEventListener("pointerup", async () => {
         if (!drag) return;
-        if (drag.moved && drag.pt) patchMap(cur.id, (x) => { const r = (x.tokens || []).find((q) => q.id === t.id); if (r) { r.x = clamp01(drag.pt.x); r.y = clamp01(drag.pt.y); } });
-        else if (await confirmDialog(`Take ${t.name} off the map?`, { ok: "Remove" })) { patchMap(cur.id, (x) => { x.tokens = (x.tokens || []).filter((q) => q.id !== t.id); }); drawStagePins(); drawShare?.(); }
+        if (drag.moved && drag.pt && cur.shared && live) {
+          // the hub's map: move it there (the mist clears round a player where they land)
+          const res = await moveOnMap({ id: t.id, tokenId: t.id, x: clamp01(drag.pt.x), y: clamp01(drag.pt.y), token: getDmToken() });
+          if (!res || res.error) toast(res?.error || "Couldn't move it.", "bad");
+          patchMap(cur.id, (x) => { const r = (x.tokens || []).find((q) => q.id === t.id); if (r) { r.x = clamp01(drag.pt.x); r.y = clamp01(drag.pt.y); } });
+          loadLive();
+        } else if (drag.moved && drag.pt) patchMap(cur.id, (x) => { const r = (x.tokens || []).find((q) => q.id === t.id); if (r) { r.x = clamp01(drag.pt.x); r.y = clamp01(drag.pt.y); } });
+        else if (await confirmDialog(`Take ${t.name} off the map?`, { ok: "Remove" })) { if (live) live.tokens = live.tokens.filter((q) => q.id !== t.id); patchMap(cur.id, (x) => { x.tokens = (x.tokens || []).filter((q) => q.id !== t.id); }); drawStagePins(); drawShare?.(); }
         drag = null;
       });
       return n;
@@ -263,11 +301,17 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
       setTimeout(() => stage.querySelectorAll(".pl-pin.flash").forEach((n) => n.classList.remove("flash")), 1600);
     }
 
-    // pointer interaction: pan, pinch, add a label
+    // pointer interaction: pan, pinch, add a label, brush the fog away
+    let brushPts = [], brushTimer = null;
+    async function flushBrush() {
+      const send = brushPts.splice(0, 400);
+      if (send.length) await setMapFog(getDmToken(), {}, "reveal", send).catch(() => null);
+      if (!brushPts.length) { viewerHost.__busy = false; }
+    }
     const pts = new Map();
     let panning = null, pinch = null;
     wrap.addEventListener("pointerdown", (e) => {
-      wrap.setPointerCapture(e.pointerId);
+      try { wrap.setPointerCapture(e.pointerId); } catch { /* that pointer is already gone */ }
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k: view.k }; panning = null; }
       else panning = { sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y, moved: false };
@@ -281,6 +325,15 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
         const d = Math.hypot(a.x - b.x, a.y - b.y);
         const target = pinch.k * (d / pinch.d);
         zoomAt((a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top, target / view.k);
+      } else if (panning && mode === "reveal" && live) {
+        const pt = toMap(e.clientX, e.clientY);
+        if (pt.x < 0 || pt.x > 1 || pt.y < 0 || pt.y > 1) return;
+        brushPts.push([pt.x, pt.y]);
+        live.reveals = [...(live.reveals || []), [pt.x, pt.y]];
+        viewerHost.__busy = true;
+        drawLiveFog();
+        clearTimeout(brushTimer);
+        brushTimer = setTimeout(flushBrush, 250);
       } else if (panning) {
         const dx = e.clientX - panning.sx, dy = e.clientY - panning.sy;
         if (!panning.moved && Math.hypot(dx, dy) < 4) return;
@@ -313,53 +366,83 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
     if (pendingFocus) { const id = pendingFocus; pendingFocus = null; requestAnimationFrame(() => requestAnimationFrame(() => focusPin(id))); }
   }
 
-  // ------------------------------------------------------------ sharing the map with the table (DM)
+  // ------------------------------------------------------------ the map on the hub (DM)
   let drawShare = null;
   function shareBar(m) {
     const host = el("div", { class: "card pl-share" });
     const token = getDmToken();
     drawShare = async () => {
-      const mm = current(); if (!mm) return;
+      const mm = current(); if (!mm || !document.body.contains(host)) return;
       const shown = mm.pins.filter((p) => p.revealed).length;
-      const status = mm.shared ? chip(`Shared with players · ${shown} of ${mm.pins.length} places revealed`, "good") : chip("Not shared", "");
+      const status = mm.shared ? chip(`On the hub · ${shown} of ${mm.pins.length} places visible`, "good") : chip("Not on the hub", "");
+      const publish = async () => {
+        if (!token) { toast("Unlock DM tools first.", "bad"); return; }
+        try {
+          let shared = null;
+          if (mm.fileId) shared = await publishPartyMap(token, { name: mm.name, fileId: mm.fileId, w: mm.w, h: mm.h, pins: mm.pins, tokens: mm.tokens || [] });
+          else {
+            const image = await getImage(mm.id).catch(() => null);
+            if (!image) { toast("This device doesn't have that map's image.", "bad"); return; }
+            shared = await publishPartyMap(token, { name: mm.name, image: await shrinkImage(image), w: mm.w, h: mm.h, pins: mm.pins, tokens: mm.tokens || [] });
+          }
+          if (!shared || shared.error) { toast(shared?.error || "Couldn't put it on the hub. Check that DM tools are unlocked.", "bad"); return; }
+          mutatePlan((p) => { p.maps.forEach((x) => { x.shared = x.id === mm.id; }); });
+          toast("It's the hub's map now. Players see only the places you make visible.", "good");
+          drawList(); await drawViewer(); startLive();
+        } catch (err) { toast(`Couldn't share it: ${err.message || err}`, "bad"); }
+      };
+      const rows = [
+        el("div", { class: "dnd-row between" }, [
+          el("div", { class: "dnd-row tight" }, [el("strong", {}, "Hub map"), status]),
+          el("div", { class: "dnd-row tight" }, [
+            btn(mm.shared ? "Update the hub's copy" : "Show on the hub", publish, "btn small"),
+            mm.shared ? btn("Take it off the hub", async () => { try { await clearPartyMap(token); } catch { /* ignore */ } mutatePlan((p) => { p.maps.forEach((x) => { x.shared = false; }); }); live = null; drawList(); await drawViewer(); }, "btn secondary small") : null,
+          ].filter(Boolean)),
+        ]),
+        el("p", { class: "dnd-small dnd-muted" }, "Players see this as the minimap on the hub and the full map behind it. Places start hidden: make one visible with its eye button in the label list."),
+      ];
+      if (mm.shared && live) {
+        // ---- fog of war
+        const fog = live.fog || {};
+        const setFog = async (patch, op = null) => {
+          const res = await setMapFog(token, patch, op);
+          if (!res || res.error) { toast(res?.error || "Couldn't change the fog.", "bad"); return; }
+          await loadLive();
+        };
+        const explain = el("p", { class: "dnd-small dnd-muted" }, fog.shared === false ? "Each player sees only the areas they've explored themselves, and only their own token." : "Everyone sees every area anyone has explored, and where every player is.");
+        const onOff = checkbox("Fog of war: the map starts hidden in mist, which clears where players go", !!fog.enabled, (v) => setFog({ enabled: v }));
+        const sharedSel = selectEl([["shared", "Shared: everyone sees it all"], ["private", "Private: each sees their own"]], fog.shared === false ? "private" : "shared", (v) => setFog({ shared: v === "shared" }));
+        const radius = el("input", { type: "range", min: "2", max: "30", value: String(Math.round((fog.radius || 0.08) * 100)), "aria-label": "How far players see" });
+        radius.addEventListener("change", () => setFog({ radius: Number(radius.value) / 100 }));
+        rows.push(el("div", { class: "pl-fog" }, [
+          el("h4", {}, "Fog of war"), onOff,
+          fog.enabled ? field("Who sees what", sharedSel) : null,
+          fog.enabled ? explain : null,
+          fog.enabled ? field("How far players see", radius) : null,
+          fog.enabled ? el("div", { class: "dnd-row tight" }, [
+            el("span", { class: "dnd-small dnd-muted" }, "Use “Brush away mist” on the map to clear an area yourself."),
+            btn("Cover it all again", async () => { if (await confirmDialog("Cover the whole map in mist again? Players keep only the patch where they're standing.", { ok: "Cover it" })) setFog({}, "reset"); }, "btn secondary small"),
+          ]) : null,
+        ].filter(Boolean)));
+      }
+      // ---- players and markers on the map
       const pick = el("select", { "aria-label": "Player to place on the map" });
       let people = [];
-      try { people = (await getAllPlans(token)) || []; } catch { people = []; }
-      const placed = new Set((mm.tokens || []).map((t) => t.id));
+      try { people = (await getRoster()) || []; } catch { people = []; }
+      const placed = new Set(((mm.shared && live ? live.tokens : mm.tokens) || []).map((t) => t.id));
       pick.append(...people.filter((p) => !placed.has(p.id)).map((p) => el("option", { value: p.id }, p.name || "Player")));
       const addToken = (id, name) => {
-        patchMap(mm.id, (x) => { x.tokens = x.tokens || []; x.tokens.push({ id, name: name.slice(0, 40), x: 0.5, y: 0.5, color: ["#5aa8f0", "#6fcf6a", "#c27aef", "#f0b45a", "#ff6a8a", "#43b7ae"][x.tokens.length % 6] }); });
+        patchMap(mm.id, (x) => { x.tokens = (mm.shared && live ? live.tokens : x.tokens || []).map((t) => ({ ...t })); x.tokens.push({ id, name: name.slice(0, 40), x: 0.5, y: 0.5, color: ["#5aa8f0", "#6fcf6a", "#c27aef", "#f0b45a", "#ff6a8a", "#43b7ae"][x.tokens.length % 6] }); });
+        setTimeout(loadLive, 600);
         viewerHost.__redraw?.(); drawShare();
       };
-      host.replaceChildren(
-        el("div", { class: "dnd-row between" }, [
-          el("div", { class: "dnd-row tight" }, [el("strong", {}, "Party map"), status]),
-          el("div", { class: "dnd-row tight" }, [
-            btn(mm.shared ? "Update shared image" : "Share with players", async () => {
-              if (!token) { toast("Unlock DM tools first.", "bad"); return; }
-              try {
-                let shared = null;
-                if (mm.fileId) shared = await publishPartyMap(token, { name: mm.name, fileId: mm.fileId, w: mm.w, h: mm.h, pins: mm.pins, tokens: mm.tokens || [] });
-                else {
-                  const image = await getImage(mm.id).catch(() => null);
-                  if (!image) { toast("This device doesn't have that map's image.", "bad"); return; }
-                  shared = await publishPartyMap(token, { name: mm.name, image: await shrinkImage(image), w: mm.w, h: mm.h, pins: mm.pins, tokens: mm.tokens || [] });
-                }
-                if (!shared) { toast("Couldn't share it. Check that DM tools are unlocked.", "bad"); return; }
-                mutatePlan((p) => { p.maps.forEach((x) => { x.shared = x.id === mm.id; }); });
-                toast("Shared. Players see only the places you reveal.", "good"); drawShare(); drawList();
-              } catch (err) { toast(`Couldn't share it: ${err.message || err}`, "bad"); }
-            }, "btn small"),
-            mm.shared ? btn("Stop sharing", async () => { try { await clearPartyMap(token); } catch { /* ignore */ } mutatePlan((p) => { p.maps.forEach((x) => { x.shared = false; }); }); drawShare(); drawList(); }, "btn secondary small") : null,
-          ]),
-        ]),
-        el("p", { class: "dnd-small dnd-muted" }, "Places start hidden. Reveal one with its eye button in the label list and it appears for players. Drag a player's token to put them on the map."),
-        el("div", { class: "dnd-row tight" }, [
-          pick.options.length ? pick : null,
-          pick.options.length ? btn("Place player", () => { const o = pick.selectedOptions[0]; if (o) addToken(o.value, o.textContent); }, "btn secondary small") : null,
-          btn("Place a custom token", async () => { const n = await promptDialog("Place a token", "Name (a player, a party, a monster...)", ""); if (n?.trim()) addToken(`custom-${uid()}`, n.trim()); }, "btn secondary small"),
-        ].filter(Boolean)),
-      );
+      rows.push(el("div", { class: "dnd-row tight" }, [
+        pick.options.length ? pick : null,
+        pick.options.length ? btn("Place player", () => { const o = pick.selectedOptions[0]; if (o) addToken(o.value, o.textContent); }, "btn secondary small") : null,
+        btn("Place a marker", async () => { const n = await promptDialog("Place a marker", "Name (a party, a monster, a ship...)", ""); if (n?.trim()) addToken(`custom-${uid()}`, n.trim()); }, "btn secondary small"),
+      ].filter(Boolean)));
+      if (mm.shared) rows.push(el("p", { class: "dnd-small dnd-muted" }, "Players can move their own token on the hub's map. Drag any token here to move it; click one to take it off."));
+      host.replaceChildren(...rows);
     };
     drawShare();
     return host;
@@ -427,12 +510,13 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
 
   panel.append(
     usageHost,
-    el("div", { class: "pl-map-layout" }, [
+    el("div", { class: "pl-map-layout three" }, [
       el("div", { class: "pl-map-side" }, [el("div", { class: "card" }, [el("div", { class: "dnd-row between" }, [el("h4", {}, "Your maps"), importBtn]), listHost, drop]), pinsHost]),
       viewerHost,
+      rightHost,
     ]),
   );
   drawList();
-  drawViewer();
+  drawViewer().then(startLive);
   void chip;
 }

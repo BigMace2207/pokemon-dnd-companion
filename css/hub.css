@@ -306,7 +306,9 @@ html.hub-full .topbar { display: none; }
 .hub.cosmic .hub-stars { opacity: 1; }
 .hub.cosmic { background: radial-gradient(ellipse at 30% 20%, #15131f 0%, #09090b 60%); }
 /* the starfield moves and zooms with the board, like the dots: each layer is a repeating tile of stars */
-.hub-starfield { position: absolute; inset: 0; background-repeat: repeat; background-position: var(--gx, 0) var(--gy, 0); }
+/* a little parallax: each layer of stars drifts slower than the board as you pan, the faintest slowest (more depth) */
+.hub-starfield { position: absolute; inset: 0; background-repeat: repeat; background-position: calc(var(--gx, 0px) * var(--par, .7)) calc(var(--gy, 0px) * var(--par, .7)); }
+.hub-starfield.s1 { --par: .72; } .hub-starfield.s2 { --par: .58; } .hub-starfield.s3 { --par: .85; } .hub-starfield.s4 { --par: .44; }
 .hub-starfield.s1 { background-image: radial-gradient(circle at 32.4% 15.1%, rgba(255,255,255,0.63) 0 1.1px, transparent 1.8px), radial-gradient(circle at 53.6% 36.6%, rgba(255,255,255,0.92) 0 1.1px, transparent 1.8px), radial-gradient(circle at 21.5% 8.6%, rgba(255,255,255,0.62) 0 1.4px, transparent 2.1px), radial-gradient(circle at 9.1% 42.5%, rgba(255,255,255,0.93) 0 1.1px, transparent 1.8px), radial-gradient(circle at 63.1% 58.3%, rgba(255,255,255,0.8) 0 1.1px, transparent 1.8px), radial-gradient(circle at 39.7% 97.6%, rgba(255,255,255,0.79) 0 1.1px, transparent 1.8px), radial-gradient(circle at 13.3% 41.9%, rgba(255,255,255,0.8) 0 1.1px, transparent 1.8px), radial-gradient(circle at 56.0% 68.2%, rgba(255,255,255,0.8) 0 1.1px, transparent 1.8px), radial-gradient(circle at 63.9% 37.2%, rgba(255,255,255,0.8) 0 1.1px, transparent 1.8px); background-size: calc(520px * var(--zk, 1)) calc(520px * var(--zk, 1)), calc(520px * var(--zk, 1)) calc(520px * var(--zk, 1)), calc(520px * var(--zk, 1)) calc(520px * var(--zk, 1)), calc(520px * var(--zk, 1)) calc(520px * var(--zk, 1)), calc(520px * var(--zk, 1)) calc(520px * var(--zk, 1)), calc(520px * var(--zk, 1)) calc(520px * var(--zk, 1)), calc(520px * var(--zk, 1)) calc(520px * var(--zk, 1)), calc(520px * var(--zk, 1)) calc(520px * var(--zk, 1)), calc(520px * var(--zk, 1)) calc(520px * var(--zk, 1)); }
 .hub-starfield.s2 { background-image: radial-gradient(circle at 61.9% 49.6%, rgba(255,255,255,0.72) 0 1.2px, transparent 1.9px), radial-gradient(circle at 46.6% 92.3%, rgba(255,255,255,0.55) 0 1.2px, transparent 1.9px), radial-gradient(circle at 79.4% 69.9%, rgba(255,255,255,0.48) 0 0.9px, transparent 1.6px), radial-gradient(circle at 30.0% 49.5%, rgba(255,255,255,0.71) 0 1.2px, transparent 1.9px), radial-gradient(circle at 28.8% 98.0%, rgba(255,255,255,0.63) 0 0.9px, transparent 1.6px), radial-gradient(circle at 16.5% 34.2%, rgba(255,255,255,0.6) 0 1.2px, transparent 1.9px), radial-gradient(circle at 96.2% 7.8%, rgba(255,255,255,0.57) 0 1.2px, transparent 1.9px), radial-gradient(circle at 35.0% 49.7%, rgba(255,255,255,0.47) 0 1.2px, transparent 1.9px); background-size: calc(430px * var(--zk, 1)) calc(430px * var(--zk, 1)), calc(430px * var(--zk, 1)) calc(430px * var(--zk, 1)), calc(430px * var(--zk, 1)) calc(430px * var(--zk, 1)), calc(430px * var(--zk, 1)) calc(430px * var(--zk, 1)), calc(430px * var(--zk, 1)) calc(430px * var(--zk, 1)), calc(430px * var(--zk, 1)) calc(430px * var(--zk, 1)), calc(430px * var(--zk, 1)) calc(430px * var(--zk, 1)), calc(430px * var(--zk, 1)) calc(430px * var(--zk, 1)); }
 .hub-starfield.s3 { background-image: radial-gradient(circle at 9.4% 27.0%, rgba(255,255,255,0.72) 0 1.6px, transparent 2.3px), radial-gradient(circle at 70.1% 64.7%, rgba(255,255,255,0.79) 0 2.0px, transparent 2.7px), radial-gradient(circle at 38.6% 66.9%, rgba(255,255,255,0.98) 0 1.6px, transparent 2.3px), radial-gradient(circle at 35.5% 61.1%, rgba(255,255,255,0.72) 0 2.0px, transparent 2.7px), radial-gradient(circle at 76.8% 12.9%, rgba(255,255,255,0.82) 0 1.6px, transparent 2.3px), radial-gradient(circle at 91.7% 49.7%, rgba(255,255,255,0.83) 0 1.6px, transparent 2.3px); background-size: calc(610px * var(--zk, 1)) calc(610px * var(--zk, 1)), calc(610px * var(--zk, 1)) calc(610px * var(--zk, 1)), calc(610px * var(--zk, 1)) calc(610px * var(--zk, 1)), calc(610px * var(--zk, 1)) calc(610px * var(--zk, 1)), calc(610px * var(--zk, 1)) calc(610px * var(--zk, 1)), calc(610px * var(--zk, 1)) calc(610px * var(--zk, 1)); }
@@ -429,9 +431,333 @@ html.no-sidebar .lava-tower-wrap { left: 0; }
 
 /* --- the board's edge: a soft glow on the side you bumped into --- */
 .hub-edge { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
-.hub-edge span { position: absolute; opacity: 0; transition: opacity .35s var(--h-ease); }
-.hub-edge span.on { opacity: 1; transition-duration: .08s; }
-.hub-edge-left { left: 0; top: 0; bottom: 0; width: 90px; background: linear-gradient(90deg, rgba(160, 180, 255, .22), transparent); }
-.hub-edge-right { right: 0; top: 0; bottom: 0; width: 90px; background: linear-gradient(270deg, rgba(160, 180, 255, .22), transparent); }
-.hub-edge-top { left: 0; right: 0; top: 0; height: 90px; background: linear-gradient(180deg, rgba(160, 180, 255, .22), transparent); }
-.hub-edge-bottom { left: 0; right: 0; bottom: 0; height: 90px; background: linear-gradient(0deg, rgba(160, 180, 255, .22), transparent); }
+
+/* --- the board's edge: a drifting white mist that gathers as you near it (--m, 0..1, from hub.js) --- */
+.hub-edge > span { position: absolute; overflow: hidden; opacity: calc(var(--m, 0) * .32); transition: opacity .6s var(--h-ease); }
+.hub-edge > span.on { opacity: .5; transition-duration: .2s; }
+.hub-edge-left { left: 0; top: 0; bottom: 0; width: 150px; -webkit-mask-image: linear-gradient(90deg, #000, transparent); mask-image: linear-gradient(90deg, #000, transparent); }
+.hub-edge-right { right: 0; top: 0; bottom: 0; width: 150px; -webkit-mask-image: linear-gradient(270deg, #000, transparent); mask-image: linear-gradient(270deg, #000, transparent); }
+.hub-edge-top { left: 0; right: 0; top: 0; height: 130px; -webkit-mask-image: linear-gradient(180deg, #000, transparent); mask-image: linear-gradient(180deg, #000, transparent); }
+.hub-edge-bottom { left: 0; right: 0; bottom: 0; height: 130px; -webkit-mask-image: linear-gradient(0deg, #000, transparent); mask-image: linear-gradient(0deg, #000, transparent); }
+/* three soft banks of fog per side, each drifting on its own */
+.hub-edge > span > i { position: absolute; inset: -40%; background:
+  radial-gradient(closest-side at 30% 40%, rgba(255, 255, 255, .22), transparent),
+  radial-gradient(closest-side at 70% 65%, rgba(225, 232, 255, .16), transparent),
+  radial-gradient(closest-side at 50% 20%, rgba(255, 255, 255, .12), transparent); }
+.hub-edge > span > i:nth-child(2) { transform: translate(18%, 12%) scale(1.2); opacity: .8; }
+.hub-edge > span > i:nth-child(3) { transform: translate(-14%, -10%) scale(.9); opacity: .6; }
+@media (prefers-reduced-motion: no-preference) {
+  .hub-edge > span > i { animation: hub-mist 14s ease-in-out infinite alternate; }
+  .hub-edge > span > i:nth-child(2) { animation-duration: 19s; animation-delay: -6s; }
+  .hub-edge > span > i:nth-child(3) { animation-duration: 23s; animation-delay: -11s; }
+}
+@keyframes hub-mist { from { transform: translate(-8%, -6%) scale(1); } to { transform: translate(10%, 8%) scale(1.15); } }
+
+/* --- beside the title: your trainer's pages and the Dex, in a bar like the tool bar --- */
+.hub-top-left { gap: calc(10px * var(--s)); }
+.hub-quick { display: flex; align-items: center; gap: 2px; padding: 4px; background: var(--h-glass); border: 1px solid var(--h-line); border-radius: 999px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.hub-quick .hub-tool { padding: calc(7px * var(--s)) calc(12px * var(--s)); }
+.hub-quick .hub-tool.on { background: #fff; color: #0b0b0c; }
+.hub-dex { left: calc(16px * var(--s)) !important; top: calc(70px * var(--s)) !important; }
+.hub-dex-switch { display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, .06); }
+.hub-dex-switch button { font: inherit; font-size: 13px; font-weight: 600; color: var(--h-dim); background: transparent; border: 0; border-radius: 999px; padding: 5px 12px; cursor: pointer; transition: color .15s, background-color .15s; }
+.hub-dex-switch button.on { background: #fff; color: #0b0b0c; }
+
+/* --- the trainers online: a dropdown under the "N here" pill --- */
+.hub-people { cursor: pointer; transition: background-color .15s; }
+.hub-people:hover { background: rgba(40, 40, 44, .9); }
+.hub-people-drop { position: absolute; z-index: 26; top: calc(64px * var(--s)); right: calc(110px * var(--s)); width: calc(320px * var(--s)); min-width: 260px; max-height: 60vh; overflow: auto; padding: 8px; background: rgba(18, 18, 20, .96); border: 1px solid var(--h-line-2); border-radius: 18px; box-shadow: 0 24px 60px rgba(0, 0, 0, .55);
+  opacity: 0; pointer-events: none; transform: translateY(-6px) scale(.98); transform-origin: 80% 0; transition: opacity .15s var(--h-ease), transform .2s var(--h-ease); }
+.hub-people-drop.open { opacity: 1; pointer-events: auto; transform: none; }
+.hub-people-row { display: flex; gap: 10px; align-items: center; padding: 8px; border-radius: 12px; }
+.hub-people-row:hover { background: rgba(255, 255, 255, .05); }
+.hub-people-sprite { width: 40px; height: 40px; object-fit: contain; image-rendering: pixelated; flex: none; }
+.hub-avatar.small { margin: 0; width: 32px; height: 32px; }
+.hub-people-info { display: grid; gap: 2px; min-width: 0; }
+.hub-people-info strong { font-size: 14px; }
+.hub-people-team { display: flex; flex-wrap: wrap; gap: 2px; }
+.hub-people-team img { width: 30px; height: 30px; object-fit: contain; image-rendering: pixelated; }
+
+/* --- your team, bottom left --- */
+.hub-team { position: absolute; left: calc(16px * var(--s)); bottom: calc(22px * var(--s)); display: flex; gap: 4px; padding: 6px; background: var(--h-glass); border: 1px solid var(--h-line); border-radius: 20px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); z-index: 6; }
+.hub-team-mon { position: relative; width: 52px; height: 58px; display: grid; justify-items: center; align-content: end; padding-bottom: 6px; border-radius: 14px; cursor: grab; transition: background-color .15s, transform .15s var(--h-ease); }
+.hub-team-mon:hover, .hub-team-mon:focus-visible { background: rgba(255, 255, 255, .07); transform: translateY(-2px); outline: none; }
+.hub-team-mon img { position: absolute; top: 0; left: 50%; width: 48px; height: 48px; margin-left: -24px; object-fit: contain; image-rendering: pixelated; pointer-events: none; }
+.hub-team-mon.fainted img { filter: grayscale(1); opacity: .45; }
+.hub-team-q { position: absolute; top: 12px; color: var(--h-dim); font-weight: 700; }
+.hub-team-hp { position: relative; width: 40px; height: 5px; border-radius: 999px; background: rgba(255, 255, 255, .12); overflow: hidden; }
+.hub-team-hp > span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: linear-gradient(90deg, #22c55e, #4ade80); }
+.hub-team-empty { font: inherit; font-size: 13px; color: var(--h-dim); background: transparent; border: 0; padding: 8px 12px; cursor: pointer; }
+/* the zoom controls move beside the dice and bag buttons, out of the team's way */
+.hub-zoom { left: auto !important; top: auto !important; bottom: calc(max(var(--dock-edge, 20px), env(safe-area-inset-bottom)) + 7px) !important; right: calc(max(var(--dock-edge, 20px), env(safe-area-inset-right)) + 2 * var(--dock-size, 54px) + var(--dock-gap, 10px) + 12px); }
+
+/* --- shapes and props --- */
+.hub-ink .hub-shape { stroke-linecap: round; stroke-linejoin: round; }
+.hub-stage[data-tool="erase"] .hub-ink path, .hub-stage[data-tool="ping"] .hub-ink path { pointer-events: visiblePainted; cursor: pointer; }
+.hub-shape-pick { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; border: 0; background: transparent; color: var(--h-dim); cursor: pointer; }
+.hub-shape-pick svg { width: 18px; height: 18px; }
+.hub-shape-pick.on { background: #fff; color: #0b0b0c; }
+.hub-prop-list { display: flex; gap: 2px; max-width: min(560px, 70vw); overflow-x: auto; scrollbar-width: thin; }
+.hub-prop-pick { flex: none; width: 36px; height: 36px; border-radius: 10px; border: 0; background: transparent; font-size: 22px; line-height: 1; cursor: grab; transition: background-color .12s, transform .12s var(--h-ease); }
+.hub-prop-pick:hover { background: rgba(255, 255, 255, .08); transform: scale(1.1); }
+.hub-prop-pick.on { background: rgba(255, 255, 255, .16); box-shadow: 0 0 0 2px #fff inset; }
+.hub-prop-size { width: 90px; accent-color: #fff; vertical-align: middle; }
+.hub-prop { position: absolute; line-height: 1; cursor: grab; user-select: none; filter: drop-shadow(0 10px 14px rgba(0, 0, 0, .5)); transition: transform .15s var(--h-ease); }
+.hub-prop:hover { transform: scale(1.05); }
+
+/* --- encounter buttons with a trainer portrait --- */
+.hub-btn.has-portrait .hub-btn-icon { background: #e4e4e7 center 20% / 150% no-repeat; box-shadow: 0 0 0 2px #18181b inset; image-rendering: pixelated; }
+.hub-btn.has-portrait .hub-btn-icon::after { display: none; }
+.hub-hover-portrait { width: calc(64px * var(--s)); height: calc(72px * var(--s)); min-width: 50px; object-fit: contain; image-rendering: pixelated; flex: none; }
+
+@media (max-width: 700px) {
+  .hub-quick .hub-tool span { display: none; }
+  .hub-team { left: 8px; right: auto; bottom: calc(var(--dock-size, 54px) + var(--dock-edge, 20px) + 64px); }
+  .hub-team-mon { width: 40px; }
+  .hub-team-mon img { width: 40px; height: 40px; margin-left: -20px; }
+  .hub-people-drop { right: 8px; left: 8px; width: auto; }
+}
+
+/* with ten tools, the bottom bar shows icons only; the tool in use keeps its name */
+.hub-toolbar .hub-tool span { display: none; }
+.hub-toolbar .hub-tool.on span, .hub-toolbar .hub-dm span { display: inline; }
+/* the Whiteboard and Control Centre buttons sit clear of the pull tabs on the right edge */
+.hub-apps { right: calc(16px * var(--s) + 52px); }
+
+/* the Whiteboard and Control Centre buttons now sit in the top row, just left of the "N here" pill */
+.hub-top-right .hub-apps { position: static; display: flex; gap: calc(8px * var(--s)); }
+.hub-top-right .hub-page-label { right: auto; left: 50%; top: calc(100% + 8px); transform: translate(-50%, -4px); }
+.hub-top-right .hub-page-btn:hover .hub-page-label, .hub-top-right .hub-page-btn:focus-visible .hub-page-label { transform: translate(-50%, 0); }
+
+/* the "what level?" popover (js/levelAsk.js) */
+.level-ask { position: fixed; z-index: 1200; width: 220px; display: grid; gap: 8px; padding: 12px; color: #fafafa; font-family: "Space Grotesk", system-ui, sans-serif; background: rgba(18, 18, 20, .97); border: 1px solid rgba(255, 255, 255, .16); border-radius: 16px; box-shadow: 0 24px 60px rgba(0, 0, 0, .55); }
+.level-ask label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #a1a1aa; }
+.level-ask input { flex: 1; min-width: 0; font: inherit; font-size: 15px; color: #fafafa; background: #0e0e10; border: 1px solid rgba(255, 255, 255, .16); border-radius: 10px; padding: 6px 10px; }
+.level-ask input.bad { border-color: #f87171; }
+.level-ask-row { display: flex; gap: 6px; justify-content: flex-end; }
+.level-ask-row button { font: inherit; font-size: 13px; font-weight: 600; border-radius: 999px; padding: 6px 14px; cursor: pointer; border: 1px solid rgba(255, 255, 255, .16); background: transparent; color: #fafafa; }
+.level-ask-row .level-ask-ok { background: #fff; color: #0b0b0c; border-color: #fff; }
+@media (prefers-reduced-motion: no-preference) { .level-ask { animation: hub-in .25s cubic-bezier(.34, 1.4, .64, 1) both; } }
+
+/* ---- full pages (My Team, Trainer, Bag...) get more room round the edges when there's no sidebar ---- */
+html.no-sidebar:not(.hub-full):not(.admin-full) .main:not([data-view="planner"]) {
+  padding-top: calc(44px * var(--s)); padding-bottom: calc(110px * var(--s));
+  padding-left: max(calc(72px * var(--s)), calc((100% - var(--content-max)) / 2));
+  padding-right: max(calc(96px * var(--s)), calc((100% - var(--content-max)) / 2));
+}
+@media (max-width: 700px) {
+  html.no-sidebar:not(.hub-full):not(.admin-full) .main:not([data-view="planner"]) { padding: calc(22px * var(--s)) calc(20px * var(--s)) calc(110px * var(--s)); padding-right: 44px; }
+}
+
+/* ---- other players' cursors glide between updates; strokes they're still drawing ---- */
+.hub-cursor { transition: transform .08s linear; }
+.hub-drafts { pointer-events: none; }
+.hub-drafts path { fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
+
+/* ---- the eraser: what it's over, and what it's removing ---- */
+.erase-target { outline: 2px solid #f87171; outline-offset: 5px; border-radius: 12px; }
+.hub-ink path.erase-target { outline: none; opacity: .45; filter: drop-shadow(0 0 5px #f87171); }
+.erasing { opacity: .15 !important; transition: opacity .12s; }
+.hub-stage[data-tool="erase"] .hub-ink path:hover { opacity: 1; }
+
+/* ---- bottom left: your trainer above your team ---- */
+.hub-left-dock { position: absolute; left: calc(16px * var(--s)); bottom: calc(22px * var(--s)); z-index: 6; display: grid; justify-items: start; gap: 6px; }
+.hub-left-dock .hub-team { position: static; }
+.hub-me { display: flex; align-items: center; gap: 10px; font: inherit; color: var(--h-text); cursor: grab; padding: 5px 16px 5px 5px; background: var(--h-glass); border: 1px solid var(--h-line); border-radius: 999px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); transition: transform .15s var(--h-ease), border-color .15s; }
+.hub-me:hover, .hub-me:focus-visible { transform: translateY(-2px); border-color: var(--h-line-2); outline: none; }
+.hub-me-face { width: 38px; height: 38px; border-radius: 50%; object-fit: contain; object-position: center 20%; image-rendering: pixelated; background: #e4e4e7; flex: none; }
+.hub-me-initial { display: grid; place-items: center; font-weight: 700; color: #0b0b0c; }
+.hub-me-text { display: grid; text-align: left; line-height: 1.2; }
+.hub-me-text strong { font-size: 14px; }
+.hub-me-text span { font-size: 12px; color: #facc15; font-weight: 600; }
+
+/* ---- the Bag drop-down under its button ---- */
+.hub-bag-drop { position: absolute; z-index: 26; top: calc(64px * var(--s)); left: 120px; width: min(420px, calc(100vw - 16px)); max-height: 66vh; overflow: auto; padding: 10px; color: var(--h-text); background: rgba(18, 18, 20, .96); border: 1px solid var(--h-line-2); border-radius: 18px; box-shadow: 0 24px 60px rgba(0, 0, 0, .55);
+  opacity: 0; pointer-events: none; transform: translateY(-6px); transition: opacity .18s var(--h-ease), transform .18s var(--h-ease); }
+.hub-bag-drop.open { opacity: 1; pointer-events: auto; transform: none; }
+.hub-bag-head { display: flex; align-items: center; gap: 10px; padding: 2px 4px 8px; }
+.hub-bag-head .hub-menu-note { flex: 1; margin: 0; font-size: 12px; }
+.hub-bag-sec h4 { margin: 8px 4px 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--h-dim); }
+.hub-bag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; }
+.hub-bag-item { display: grid; grid-template-columns: 30px 1fr; grid-template-rows: auto auto; column-gap: 8px; align-items: center; padding: 6px 8px; border-radius: 12px; background: rgba(255, 255, 255, .04); border: 1px solid transparent; cursor: grab; transition: background-color .15s, border-color .15s; }
+.hub-bag-item:hover, .hub-bag-item:focus-visible { background: rgba(255, 255, 255, .08); border-color: var(--h-line-2); outline: none; }
+.hub-bag-item img { grid-row: 1 / 3; width: 30px; height: 30px; object-fit: contain; image-rendering: pixelated; }
+.hub-bag-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-bag-count { font-size: 12px; color: var(--h-dim); }
+.hub-bag-item.money .hub-bag-count { color: #facc15; font-weight: 600; }
+
+/* ---- Send To: appears bottom right while you drag something of yours ---- */
+.hub-sendto { position: absolute; z-index: 30; right: calc(max(var(--dock-edge, 20px), env(safe-area-inset-right)) + 2px); bottom: calc(var(--dock-size, 54px) + var(--dock-edge, 20px) + 64px); display: flex; align-items: center; gap: 12px; padding: 14px 20px 14px 14px; color: var(--h-text); background: rgba(18, 18, 20, .94); border: 2px dashed rgba(255, 255, 255, .28); border-radius: 20px; box-shadow: 0 20px 50px rgba(0, 0, 0, .5);
+  opacity: 0; pointer-events: none; transform: translateY(10px) scale(.96); transition: opacity .18s var(--h-ease), transform .18s var(--h-ease), border-color .15s, background-color .15s; }
+.hub-sendto.show { opacity: 1; pointer-events: auto; transform: none; }
+.hub-sendto.hot { border-color: #4ade80; background: rgba(20, 50, 32, .95); transform: scale(1.04); }
+.hub-sendto-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: rgba(255, 255, 255, .08); }
+.hub-sendto-icon svg { width: 22px; height: 22px; }
+.hub-sendto-text { display: grid; gap: 2px; }
+.hub-sendto-text strong { font-size: 15px; }
+.hub-sendto-text span { font-size: 12px; color: var(--h-dim); }
+.hub-send-pick { display: flex !important; align-items: center; gap: 10px; }
+.hub-send-pick img { width: 28px; height: 28px; object-fit: contain; image-rendering: pixelated; }
+.hub-send-pick > span:nth-child(2) { flex: 1; text-align: left; }
+.hub-send-dot { width: 8px; height: 8px; border-radius: 50%; background: #52525b; }
+.hub-send-dot.on { background: #4ade80; }
+@media (prefers-reduced-motion: reduce) { .hub-sendto, .hub-bag-drop, .hub-me { transition: none; } }
+
+/* ---- cards: a team Pokémon's health and moves, bag items, trainer cards ---- */
+.hub-card-hp { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--h-dim); }
+.hub-card-hpbar { height: 6px; border-radius: 99px; background: rgba(255, 255, 255, .12); overflow: hidden; }
+.hub-card-hpbar > span { display: block; height: 100%; border-radius: inherit; }
+.hub-card-hpbar .good { background: #4ade80; } .hub-card-hpbar .warn { background: #facc15; } .hub-card-hpbar .bad { background: #f87171; }
+.hub-card-moves { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 8px; }
+.hub-card-moves span { font-size: 12px; padding: 3px 8px; border-radius: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: color-mix(in srgb, var(--mc, #888) 30%, transparent); border: 1px solid color-mix(in srgb, var(--mc, #888) 60%, transparent); }
+.hub-card-held { margin: 6px 0 0; font-size: 12px; color: var(--h-dim); }
+.hub-card-icon { width: 44px; height: 44px; object-fit: contain; image-rendering: pixelated; flex: none; }
+.hub-card-desc { margin: 8px 0 0; font-size: 13px; line-height: 1.4; color: #d4d4d8; }
+.hub-card.kind-item { width: 200px; }
+.hub-card-sprite.trainer { background: rgba(255, 255, 255, .9); border-radius: 14px; }
+.hub-card-initial { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: #e4e4e7; color: #0b0b0c; font-weight: 700; font-size: 22px; flex: none; }
+.hub-card-fields { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 8px 0 0; font-size: 12px; }
+.hub-card-fields dt { color: var(--h-dim); }
+.hub-card-fields dd { margin: 0; overflow-wrap: anywhere; }
+
+@media (max-width: 700px) {
+  .hub-left-dock { left: 8px; bottom: calc(var(--dock-size, 54px) + var(--dock-edge, 20px) + 64px); }
+  .hub-left-dock .hub-team { left: auto; bottom: auto; }
+  .hub-bag-drop { left: 8px !important; right: 8px; width: auto; }
+  .hub-sendto { right: 8px; }
+}
+
+/* ---- the shared map (js/mapView.js): one stage in map pixels, panned and zoomed with a transform ---- */
+.mv-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; user-select: none; }
+.mv-img, .mv-fog { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+.mv-fog[hidden] { display: none; }
+.mv-marks { position: absolute; inset: 0; }
+.mv-pin, .mv-token { position: absolute; transform: translate(-50%, -50%) scale(var(--inv, 1)); display: grid; justify-items: center; gap: 2px; pointer-events: auto; }
+.mv-pin { cursor: pointer; }
+.mv-pin.secret { opacity: .55; }
+.mv-pin-dot, .mv-token-dot { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; font-size: 14px; font-weight: 700; color: #fff; background: var(--c); border: 2px solid #fff; box-shadow: 0 3px 10px rgba(0, 0, 0, .5); }
+.mv-pin-dot.small, .mv-token-dot.small { width: 20px; height: 20px; font-size: 12px; flex: none; }
+.mv-pin-text, .mv-token-text { font-size: 12px; font-weight: 600; color: #fff; white-space: nowrap; padding: 1px 7px; border-radius: 99px; background: rgba(10, 10, 12, .78); }
+.mv-token { z-index: 2; cursor: grab; }
+.mv-token-dot { width: 32px; height: 32px; font-size: 12px; }
+.mv-token.me .mv-token-dot { box-shadow: 0 0 0 3px rgba(255, 255, 255, .35), 0 0 0 6px var(--c), 0 4px 14px rgba(0, 0, 0, .5); }
+.no-labels .mv-pin-text, .no-labels .mv-token-text { display: none; }
+.mv-pin.flash .mv-pin-dot { animation: mv-flash .5s ease-in-out 3; }
+@keyframes mv-flash { 50% { transform: scale(1.5); } }
+@media (prefers-reduced-motion: reduce) { .mv-pin.flash .mv-pin-dot { animation: none; outline: 3px solid #fff; } }
+.mv-frame { position: relative; overflow: hidden; touch-action: none; cursor: grab; background: #050506; }
+
+/* ---- the hub's minimap, under the title ---- */
+.hub-mini { position: absolute; z-index: 7; left: calc(16px * var(--s)); top: calc(70px * var(--s) + 4px); display: flex; align-items: flex-end; gap: 6px; }
+.hub-mini-frame { position: relative; width: 168px; height: 168px; border-radius: 50%; overflow: hidden; cursor: pointer; touch-action: none; background: #050506; border: 2px solid rgba(255, 255, 255, .22); box-shadow: 0 16px 40px rgba(0, 0, 0, .55), inset 0 0 30px rgba(0, 0, 0, .6); transition: border-color .15s, transform .15s var(--h-ease); }
+.hub-mini-frame:hover, .hub-mini-frame:focus-visible { border-color: rgba(255, 255, 255, .5); outline: none; }
+.hub-mini-frame::after { content: ""; position: absolute; inset: 0; border-radius: 50%; box-shadow: inset 0 0 24px rgba(0, 0, 0, .65); pointer-events: none; }
+.hub-mini-frame .mv-pin, .hub-mini-frame .mv-token { pointer-events: none; }
+.hub-mini-empty { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; color: var(--h-dim); text-align: center; }
+.hub-mini.empty .hub-mini-frame { width: 96px; height: 96px; opacity: .7; }
+.hub-mini.empty .hub-mini-centre, .hub-mini-centre.off { opacity: .45; }
+.hub-mini-centre svg { width: 18px; height: 18px; }
+
+/* ---- the full map ---- */
+.hub-map-full { position: absolute; z-index: 60; inset: calc(16px * var(--s)) 56px calc(16px * var(--s)) calc(16px * var(--s)); display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; padding: 12px; background: rgba(12, 12, 14, .97); border: 1px solid var(--h-line-2); border-radius: 24px; box-shadow: 0 30px 80px rgba(0, 0, 0, .65); color: var(--h-text);
+  opacity: 0; transform: scale(.98); transition: opacity .2s var(--h-ease), transform .2s var(--h-ease); }
+.hub-map-full.open { opacity: 1; transform: none; }
+.hub-map-main { position: relative; min-height: 0; }
+.hub-map-frame { position: absolute; inset: 0; overflow: hidden; border-radius: 16px; background: #050506; cursor: grab; touch-action: none; }
+.hub-map-full.placing .hub-map-frame { cursor: crosshair; }
+.hub-map-tools { position: absolute; left: 12px; bottom: 12px; display: flex; gap: 2px; padding: 4px; background: var(--h-glass); border: 1px solid var(--h-line); border-radius: 999px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.hub-map-legend { display: flex; flex-direction: column; gap: 8px; overflow: auto; padding: 4px 4px 4px 0; }
+.hub-map-head { display: grid; gap: 2px; padding-right: 40px; }
+.hub-map-head strong { font-size: 18px; }
+.hub-map-legend h4 { margin: 8px 0 2px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--h-dim); }
+.hub-map-list { display: grid; gap: 2px; }
+.hub-map-row { display: flex; align-items: center; gap: 8px; font: inherit; font-size: 14px; color: var(--h-text); text-align: left; background: transparent; border: 0; border-radius: 10px; padding: 6px 8px; cursor: pointer; }
+.hub-map-row:hover { background: rgba(255, 255, 255, .07); }
+.hub-map-row small { margin-left: auto; color: var(--h-dim); }
+.hub-map-note { margin-top: auto; padding: 10px; border-radius: 14px; background: rgba(255, 255, 255, .04); font-size: 14px; }
+.hub-map-note:empty { display: none; }
+.hub-map-note p { margin: 6px 0 0; line-height: 1.45; }
+.hub-map-close { position: absolute; top: 14px; right: 14px; }
+@media (max-width: 800px) {
+  .hub-mini { transform: scale(.72); transform-origin: 0 0; top: 64px; }
+  .hub-map-full { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 40%; inset: 6px; }
+}
+@media (prefers-reduced-motion: reduce) { .hub-map-full { transition: none; } }
+
+/* ---- the Bag drop-down: adding items, using one, picking an icon ---- */
+.hub-bag-add { display: grid; grid-template-columns: 1fr 64px auto; gap: 6px; padding: 0 2px 6px; }
+.hub-bag-add .hub-input { min-width: 0; }
+.hub-bag-item { position: relative; }
+.hub-bag-tools { position: absolute; top: 3px; right: 3px; display: flex; gap: 3px; opacity: 0; transition: opacity .15s; }
+.hub-bag-item:hover .hub-bag-tools, .hub-bag-item:focus-within .hub-bag-tools { opacity: 1; }
+.hub-bag-mini { font: inherit; font-size: 12px; font-weight: 600; padding: 1px 6px; border-radius: 8px; border: 1px solid var(--h-line-2); background: rgba(18, 18, 20, .95); color: var(--h-text); cursor: pointer; }
+.hub-bag-mini:hover { background: #fff; color: #0b0b0c; }
+
+/* ---- Send To: its list opens in the same spot ---- */
+.hub-menu.at-send { width: 270px; }
+/* a trainer card ready to take what you're dragging */
+.hub-card.send-hot { outline: 3px dashed #4ade80; outline-offset: 4px; }
+.hub-card.kind-trainer { width: 280px; }
+.hub-card-party { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 8px; }
+.hub-card-party span { position: relative; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; background: rgba(255, 255, 255, .06); }
+.hub-card-party img { width: 40px; height: 40px; object-fit: contain; image-rendering: pixelated; }
+.hub-card-party small { position: absolute; right: 1px; bottom: 0; font-size: 12px; font-weight: 700; text-shadow: 0 1px 2px #000; }
+.hub-card-story { margin-top: 8px; }
+.hub-card-story > span { font-size: 12px; color: var(--h-dim); }
+.hub-card-story p { margin: 2px 0 0; font-size: 13px; line-height: 1.45; white-space: pre-wrap; }
+.hub-card-story p.clamped { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ---- the Whiteboard: library cards don't need the Scratch-style tab sticking out ---- */
+.pl-wb .pl-plug { display: none; }
+/* the map editor */
+.pl-map-wrap.brushing { cursor: crosshair; }
+.pl-map-stage .mv-fog { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.pl-fog { display: grid; gap: 8px; margin: 10px 0; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--border); }
+.pl-fog h4 { margin: 0; }
+.pl-fog input[type="range"] { width: 100%; }
+.pl-party-map .mv-frame { height: min(62vh, 640px); border-radius: 14px; }
+
+/* ---- the minimap at 1.5× ---- */
+.hub-mini-frame { width: 252px; height: 252px; }
+.hub-mini.empty .hub-mini-frame { width: 144px; height: 144px; }
+@media (max-width: 800px) { .hub-mini { transform: scale(.5); } }
+
+/* ---- DM-only notes ---- */
+.hub-note.dm-only { outline: 2px dashed #a78bfa; outline-offset: 3px; }
+.hub-note.dm-only .hub-note-by { color: #6d28d9; font-weight: 700; }
+.hub-tool.hub-dmnote.on { background: #fff; color: #0b0b0c; }
+
+/* ---- a bounce and a burst when you click a Pokémon, an item, an encounter or a prop ---- */
+@media (prefers-reduced-motion: no-preference) {
+  .hub-card.tap, .hub-btn.tap, .hub-prop.tap { animation: hub-tap .5s cubic-bezier(.34, 1.56, .64, 1); }
+}
+@keyframes hub-tap { 0% { transform: scale(1); } 30% { transform: scale(1.07); } 60% { transform: scale(.98); } 100% { transform: scale(1); } }
+.hub-burst { position: absolute; width: 0; height: 0; pointer-events: none; z-index: 5; }
+.hub-burst i { position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); animation: hub-spark .6s cubic-bezier(.2, .7, .3, 1) forwards; }
+.hub-burst b { position: absolute; left: -10px; top: -10px; width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--c); animation: hub-ring .55s ease-out forwards; }
+@keyframes hub-spark { from { transform: rotate(var(--a)) translateX(0) scale(1); opacity: 1; } to { transform: rotate(var(--a)) translateX(var(--d)) scale(.3); opacity: 0; } }
+@keyframes hub-ring { from { transform: scale(.4); opacity: .9; } to { transform: scale(3.4); opacity: 0; } }
+
+/* ---- the sky stays alive: the stars drift lazily, and a comet goes by now and then ---- */
+.hub-starfield { inset: -90px; }
+@media (prefers-reduced-motion: no-preference) {
+  .hub-starfield.s1 { animation: hub-twinkle 5.3s ease-in-out -1s infinite, hub-drift-a 74s ease-in-out -10s infinite alternate; }
+  .hub-starfield.s2 { animation: hub-twinkle 3.7s ease-in-out -2.4s infinite, hub-drift-b 96s ease-in-out -30s infinite alternate; }
+  .hub-starfield.s3 { animation: hub-twinkle 7.1s ease-in-out -4s infinite, hub-drift-a 58s ease-in-out -20s infinite alternate-reverse; }
+  .hub-starfield.s4 { animation: hub-twinkle 4.4s ease-in-out -.6s infinite, hub-drift-b 120s ease-in-out -50s infinite alternate-reverse; }
+}
+/* the drift moves each layer on the GPU (transform), so it glides instead of stepping a pixel at a time */
+.hub-starfield { will-change: transform, opacity; backface-visibility: hidden; }
+@keyframes hub-drift-a { from { transform: translate3d(-34px, -12px, 0); } to { transform: translate3d(34px, 16px, 0); } }
+@keyframes hub-drift-b { from { transform: translate3d(22px, -26px, 0); } to { transform: translate3d(-26px, 22px, 0); } }
+.hub-comet { position: absolute; left: 0; width: var(--len); height: 2px; border-radius: 2px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(190, 210, 255, .35) 60%, #fff); filter: drop-shadow(0 0 6px rgba(200, 220, 255, .9));
+  transform-origin: 100% 50%; animation: hub-comet var(--dur) linear forwards; }
+.hub-comet::after { content: ""; position: absolute; right: -3px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: #fff; box-shadow: 0 0 12px 3px rgba(210, 225, 255, .9); }
+.hub-comet.rtl { left: auto; right: 0; background: linear-gradient(270deg, transparent, rgba(190, 210, 255, .35) 60%, #fff); transform-origin: 0 50%; animation-name: hub-comet-rtl; }
+.hub-comet.rtl::after { right: auto; left: -3px; }
+@keyframes hub-comet { 0% { transform: translateX(calc(var(--len) * -1)) rotate(var(--ang)) translateX(0); opacity: 0; } 10% { opacity: 1; } 85% { opacity: 1; } 100% { transform: translateX(calc(var(--len) * -1)) rotate(var(--ang)) translateX(var(--dist)); opacity: 0; } }
+@keyframes hub-comet-rtl { 0% { transform: translateX(var(--len)) rotate(var(--ang)) translateX(0); opacity: 0; } 10% { opacity: 1; } 85% { opacity: 1; } 100% { transform: translateX(var(--len)) rotate(var(--ang)) translateX(calc(var(--dist) * -1)); opacity: 0; } }
+
+/* the hub never scrolls (focusing a note far out on the board, or the drifting stars, could otherwise nudge it) */
+.hub, .hub-stage, .hub-stars { overflow: clip; }

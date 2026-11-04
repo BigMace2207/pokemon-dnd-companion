@@ -6,7 +6,7 @@ import { el } from "./components.js";
 import "./systems/index.js"; // registers every game system
 import { setActiveSystem, activeSystem, viewsOf } from "./systems/registry.js";
 import { clearAllIntervals } from "./intervals.js";
-import { loadSave, pullFromServer } from "./storage.js";
+import { loadSave, writeSave, pullFromServer } from "./storage.js";
 import { pingTrainer, getCampaign, setActiveCampaign } from "./network.js";
 import { renderCampaignSelect } from "./views/campaignSelect.js";
 import { renderLoginGate, renderServerUnreachable } from "./views/loginGate.js";
@@ -17,6 +17,7 @@ import { mountDiceWidget } from "./diceWidget.js";
 import { startTrainerPresenceWatcher } from "./trainerPresence.js";
 import { mountShortcuts } from "./shortcuts.js";
 import { installTooltips } from "./tooltip.js";
+import { mountCosmicParallax } from "./cosmicParallax.js";
 import { NAV_ICONS } from "./navIcons.js";
 import { mountLavaToggle, goToFloor } from "./lavaTheme.js";
 import {
@@ -81,12 +82,11 @@ function playViewEnter() {
 function buildNav(system) {
   sideNav.innerHTML = "";
   // a system can move these out of the sidebar (system.onHub: the Pokémon hub has buttons for them instead); they stay reachable
-  const shared = [{ id: "planner", label: "Campaign Planner", render: renderPlanner }, { id: "library", label: "Library", render: renderLibrary }, { id: "settings", label: "Settings", render: renderSettings }];
+  const shared = [{ id: "planner", label: "Whiteboard", render: renderPlanner }, { id: "library", label: "Library", render: renderLibrary }, { id: "settings", label: "Settings", render: renderSettings }];
   const onHub = new Set(system.onHub || []);
   const appViews = shared.filter((v) => !onHub.has(v.id));
-  if (signedInAccount?.perms?.admin) appViews.push({ id: "admin", label: "Admin", render: renderAdmin });   // the server checks too
   const groups = [...system.nav, ...(appViews.length ? [{ label: "App", views: appViews }] : [])];
-  VIEWS = viewsOf({ nav: [...groups, { label: null, views: [...(system.gatedViews || []), ...(system.hiddenViews || []), ...shared.filter((v) => onHub.has(v.id))] }] });
+  VIEWS = viewsOf({ nav: [...groups, { label: null, views: [...(system.gatedViews || []), ...(system.hiddenViews || []), ...shared.filter((v) => onHub.has(v.id)), ...(signedInAccount?.perms?.admin ? [{ id: "admin", label: "Admin", render: renderAdmin }] : [])] }] });   // Admin lives in Settings; #admin still opens it full-page
   GATED_VIEWS = new Set((system.gatedViews || []).map((v) => v.id));
   DIRECTIVE_SENSITIVE_VIEWS = new Set(system.directiveViews || []);
   let floor = 0;
@@ -187,6 +187,7 @@ onHiddenViewsChanged(updateNavVisibility);
 applyTheme();
 mountLavaToggle({ get: getTheme, set: setTheme });
 installTooltips();
+mountCosmicParallax();
 
 // Every trainer/battle/NPC/etc. endpoint is scoped to one campaign now (see
 // server.py) -- nothing past this point can run until one is selected.
@@ -245,6 +246,34 @@ async function init() {
   await startApp();
 }
 
+// A required "what's your character called?" screen. Resolves once a name is saved.
+function askCharacterName() {
+  return new Promise((resolve) => {
+    appEl.classList.add("gate-mode");
+    const input = el("input", { type: "text", maxlength: "40", placeholder: "e.g. Mia Hart", "aria-label": "Character name", autocomplete: "off" });
+    const go = el("button", { class: "btn", type: "button" }, "Continue");
+    const msg = el("p", { class: "view-sub", role: "status" });
+    const done = () => {
+      const name = input.value.trim();
+      if (!name) { msg.textContent = "Your character needs a name to join."; input.focus(); return; }
+      const save = loadSave();
+      save.trainer.name = name.slice(0, 40);
+      writeSave(save);
+      appEl.classList.remove("gate-mode");
+      resolve();
+    };
+    go.addEventListener("click", done);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") done(); });
+    mainView.replaceChildren(el("div", { class: "card name-gate" }, [
+      el("h1", { class: "view-title" }, "Who are you playing?"),
+      el("p", { class: "view-sub" }, "Give your character a name. It's how the DM and the other players will see you; you can change it later on the Trainer Sheet."),
+      el("label", { class: "field" }, [el("span", {}, "Character name"), input]),
+      go, msg,
+    ]));
+    setTimeout(() => input.focus(), 0);
+  });
+}
+
 async function startApp() {
   // Pull this device's save down from the server's durable copy before
   // anything reads loadSave() -- the very first view rendered below (My
@@ -252,6 +281,9 @@ async function startApp() {
   // later, or it'd flash the stale/empty local copy first.
   await pullFromServer();
   const system = activeSystem();
+  // Pokémon campaigns: everyone needs a character name before they come in (the first time they join or make a
+  // campaign; it's what the hub, the DM and everyone else see)
+  if (system?.id === "pokemon-dnd" && !String(loadSave().trainer?.name || "").trim()) await askCharacterName();
   buildNav(system);
   try {
     state = await system.loadData();

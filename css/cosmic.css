@@ -45,6 +45,14 @@
     radial-gradient(ellipse at 30% 0%, #17142a 0%, #09090b 65%);
   background-size: 300px 300px, 380px 380px, 220px 220px, 460px 460px, 28px 28px, 100% 100%;
   background-attachment: fixed;
+  /* a little parallax (js/cosmicParallax.js): each layer drifts at its own rate with the mouse and as the page scrolls */
+  background-position:
+    calc(var(--cx, 0) * -14px) calc(var(--cy, 0) * -14px - var(--csc, 0) * .12px),
+    calc(var(--cx, 0) * -24px) calc(var(--cy, 0) * -24px - var(--csc, 0) * .2px),
+    calc(var(--cx, 0) * -8px) calc(var(--cy, 0) * -8px - var(--csc, 0) * .07px),
+    calc(var(--cx, 0) * -34px) calc(var(--cy, 0) * -34px - var(--csc, 0) * .3px),
+    calc(var(--cx, 0) * -4px) calc(var(--cy, 0) * -4px - var(--csc, 0) * .04px),
+    0 0;
   font-size: calc(20px * var(--s));
 }
 :root[data-theme="cosmic"] #lavaFx, :root[data-theme="cosmic"] .lava-tower-wrap, :root[data-theme="cosmic"] .lava-debris, :root[data-theme="cosmic"] #themeToggle { display: none !important; }

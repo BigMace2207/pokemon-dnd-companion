@@ -124,7 +124,7 @@ function linksCard(count) {
     ["dndCharacters", `Characters (${count})`, "Create, import and switch characters."], ["dndSheet", "Character Sheet", "HP, spells, inventory, features."],
     ["dndDice", "Dice Roller", "Expressions, macros and history."], ["dndSpells", "Spells", "Every SRD spell."],
     ["dndBestiary", "Bestiary", "Monsters with rollable stat blocks."], ["dndRules", "Rules", "The SRD rules, searchable."],
-    ["dndCombat", "Combat", "Initiative and turn order."], ["planner", "Campaign Planner", "Notes, checklists, maps and scenarios."],
+    ["dndCombat", "Combat", "Initiative and turn order."], ["planner", "Whiteboard", "Notes, checklists, maps and scenarios."],
     ["library", "Library", "Your own books, with an e-reader."],
   ];
   return section("Jump to", el("div", { class: "dnd-grid-auto" }, links.map(([id, t, s]) => {

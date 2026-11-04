@@ -13,12 +13,12 @@ const load = () => (dataPromise ||= fetch("data/pokemon-dnd/rulebook.json").then
 const TOOLS = {
   "types-and-stats": [["statcalc", "Stat Calculator"], ["typechart", "Type Chart"]],
   "types-and-stats-continued": [["statcalc", "Stat Calculator"], ["tierguide", "Move Tier Guide"]],
-  "how-a-turn-works": [["damagecalc", "Damage Calculator"], ["moves", "Move Dex"]],
+  "how-a-turn-works": [["moves", "Move Dex"]],
   "make-your-trainer": [["trainer", "Trainer Sheet"]],
   "make-your-trainer-continued": [["trainer", "Trainer Sheet"], ["team", "My Team"]],
-  "formulas": [["damagecalc", "Damage Calculator"], ["statcalc", "Stat Calculator"]],
+  "formulas": [["statcalc", "Stat Calculator"]],
   "glossary": [["pokedex", "Pokédex"], ["moves", "Move Dex"]],
-  "type-chart": [["typechart", "Type Chart"], ["damagecalc", "Damage Calculator"]],
+  "type-chart": [["typechart", "Type Chart"]],
 };
 
 const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();

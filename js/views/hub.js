@@ -21,39 +21,76 @@
 // the board highlights it and clicking it sends ripples round it for everyone.
 
 import { el } from "../components.js";
-import { loadSave } from "../storage.js";
+import { loadSave, writeSave, addBagItem, useBagItem, bagEntries, newMon } from "../storage.js";
 import {
   hubSync, hubOp, getNpcs, getNpc, getWildList, getWildMon, listTrainers, getTrainerTeam, getFullTurn, dmAction,
-  dmLogin, checkDmToken, getActiveCampaign,
+  dmLogin, checkDmToken, getActiveCampaign, getRoster, sendToTrainer, getInbox, ackInbox,
 } from "../network.js";
+import { categorizeItem, SECTION_LABELS, SECTION_ORDER, tmMoveNames, tmName } from "../bagItems.js";
+import { BALL_TYPES } from "../calc.js";
+import { HEAL_ITEMS, STATUS_HEAL_ITEMS } from "../battleItems.js";
+import { openIconPicker } from "../iconPicker.js";
+import { addLogEntry } from "../log.js";
+import { describeItem } from "../itemDescriptions.js";
+import { itemIconSrc, MONEY } from "../bagIcon.js";
 import { cursorColorOf } from "../cursorColor.js";
 import { listFiles, uploadFile, fileUrl } from "../network.js";
 import { fetchMe, logout } from "../account.js";
 import { getForcedTheme } from "../deviceSettings.js";
 import { dexPanel, makeCard, fillCard, CARD_MIME } from "../hubDex.js";
 import { NAV_ICONS } from "../navIcons.js";
+import { refreshPullTabs } from "../logDrawer.js";
+import { calcAllStats } from "../calc.js";
+import { askLevel, askNumber } from "../levelAsk.js";
+import { mountHubMap } from "../hubMap.js";
+import { trainerSpriteUrl } from "../trainerSpritePicker.js";
 
-// The pages that used to be in the sidebar, as buttons on the hub: [view, label]. Left column (under the Pokédex and
-// Move Dex pull-outs): your trainer and the calculators. Right column (under the account button): the shared tools.
-const LEFT_PAGES = [["team", "My Team"], ["bag", "Bag"], ["trainer", "Trainer Sheet"], ["trainersOnline", "Trainers Online"], ["statcalc", "Stat Calculator"], ["damagecalc", "Damage Calculator"]];
-const RIGHT_PAGES = [["planner", "Campaign Planner"], ["library", "Library"], ["controlcentre", "Control Centre"]];
+// Buttons for the rest of the app. Beside the "Hub" title (a bar like the tool bar at the bottom): your trainer's
+// pages, the Pokédex and Move Dex (one pull-out with both) and the stat calculator. Down the right-hand side: the
+// shared tools. The Library, rulebook and so on are pull tabs on the right edge; Admin is in Settings.
+const QUICK = [
+  ["team", "My Team", "M5 8a3 3 0 1 0 6 0 3 3 0 0 0-6 0zM13 8a3 3 0 1 0 6 0 3 3 0 0 0-6 0zM9 16a3 3 0 1 0 6 0 3 3 0 0 0-6 0z"],
+  ["bag", "Bag", "M6 8h12l1 12H5zM9 8V6a3 3 0 0 1 6 0v2M9 12h6"],
+  ["trainer", "Trainer", "M4 5h16v14H4zM9 10a2 2 0 1 0 0-.01M6.5 15.5a3 3 0 0 1 5 0M14 9h4M14 12h4M14 15h3"],
+  ["dex", "Dex", "M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11M9 8h6"],
+  ["statcalc", "Stats", "M5 20V10M10 20V4M15 20v-7M20 20v-12"],
+];
+const RIGHT_PAGES = [["planner", "Whiteboard"], ["controlcentre", "Control Centre"]];
+// line icons for the round page buttons, in the hub's style (the Whiteboard's comes from navIcons.js)
+const PAGE_ICONS = {
+  controlcentre: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/></svg>',
+};
+
+// The prop library: pictures to drop on the board (stored by name; drawn from this list).
+export const PROPS = [
+  ["tree", "🌲", "Pine"], ["oak", "🌳", "Tree"], ["bush", "🌿", "Grass"], ["flower", "🌸", "Flowers"], ["mushroom", "🍄", "Mushroom"],
+  ["rock", "🪨", "Rock"], ["mountain", "⛰️", "Mountain"], ["water", "🌊", "Water"], ["fire", "🔥", "Fire"], ["cave", "🕳️", "Cave"],
+  ["house", "🏠", "House"], ["center", "🏥", "Pokémon Center"], ["castle", "🏰", "Castle"], ["tent", "⛺", "Camp"], ["bridge", "🌉", "Bridge"],
+  ["boat", "⛵", "Boat"], ["sign", "🪧", "Sign"], ["flag", "🚩", "Flag"], ["chest", "🧰", "Chest"], ["gem", "💎", "Gem"],
+  ["key", "🗝️", "Key"], ["egg", "🥚", "Egg"], ["berry", "🍒", "Berries"], ["swords", "⚔️", "Fight"], ["shield", "🛡️", "Guard"],
+  ["skull", "💀", "Danger"], ["ghost", "👻", "Haunted"], ["star", "⭐", "Star"], ["question", "❓", "Mystery"], ["exclaim", "❗", "Alert"],
+];
+const PROP_BY_ID = new Map(PROPS.map(([id, glyph, label]) => [id, { glyph, label }]));
+const SHAPES = [["rect", "Box", "M4 6h16v12H4z"], ["ellipse", "Circle", "M12 5a8 6.5 0 1 0 .01 0z"], ["line", "Line", "M5 19L19 5"], ["arrow", "Arrow", "M5 19L19 5M10 5h9v9"]];
 import { getPlan } from "../planner/store.js";
 import { spriteUrl } from "../sprites.js";
 import { setViewState } from "../viewState.js";
 import { getDmToken, DM_TOKEN_KEY } from "../systems/dnd5e/dmAccess.js";
 
-const SYNC_MS = 140;          // how often the page reports its cursor while the mouse is moving
-const IDLE_SYNC_MS = 1500;    // and how often it checks in when nothing is moving
+const SYNC_MS = 60;           // how often the page reports its cursor (and any stroke being drawn) while the mouse is moving
+const IDLE_SYNC_MS = 500;     // and how often it checks in when nothing is moving (other people's cursors, board changes)
+const GIFT_MS = 4000;         // how often it checks for things other players sent you
 const NOTE_COLORS = ["#fff6c2", "#ffe0d6", "#dcf8e4", "#dcefff", "#efe3ff", "#ffffff"];   // light, so notes stand out on the dark board
 const PEN_WIDTHS = [3, 6, 12];
 const uid = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
-const SHORTCUTS = { v: "move", n: "note", d: "pen", t: "text", e: "erase", p: "ping" };
+const SHORTCUTS = { v: "move", n: "note", d: "pen", t: "text", e: "erase", s: "shape", r: "prop", p: "ping" };
 // The board's edge: you can pan (and zoom out) only as far as a margin around everything on it, and never less than the
 // base area round the middle. Put something near the edge and the edge moves out with it.
-const BASE_AREA = { x0: -1400, y0: -900, x1: 1400, y1: 900 };
-const EDGE_PAD = 900;   // board units of open space kept round the content
+const BASE_AREA = { x0: -2600, y0: -1700, x1: 2600, y1: 1700 };
+const EDGE_PAD = 1300;   // board units of open space kept round the content
 const typing = (t) => t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+const CARD_TYPES = new Set(["mon", "move", "item", "trainer"]);
 
 // Opens a page the router only allows from here (the Battle screen). js/app.js listens for this.
 export function openFromHub(view) {
@@ -82,6 +119,8 @@ export function renderHub(container, state) {
   const seenPings = new Set(), knownStrokes = new Set(), knownPeople = new Set();
   const undoStack = [];                      // ids of things I added, newest last
   let backdrop = null, shownBackdrop = "";   // the DM's map behind the board: {fileId, blur, dim}
+  let shapeKind = "rect", shapeFill = false, propId = "tree", propSize = 72;
+  let noteDm = false;             // the DM's note tool: the next note is one only the DM sees
   let welcomeGone = false;
 
   // ------------------------------------------------------------------ layout
@@ -92,7 +131,17 @@ export function renderHub(container, state) {
   // position and size follow the pan and zoom, each fading in and out on its own rhythm so the stars twinkle.
   const stars = el("div", { class: "hub-stars", "aria-hidden": "true" }, [1, 2, 3, 4].map((n) => el("div", { class: `hub-starfield s${n}` })));
   const stage = el("div", { class: "hub-stage", tabindex: "0", "aria-label": "Shared hub board" });
-  const edgeGlow = el("div", { class: "hub-edge", "aria-hidden": "true" }, ["left", "right", "top", "bottom"].map((side) => el("span", { class: `hub-edge-${side}` })));
+  // The board's edge is a drifting white mist: it gathers on a side as you get near the edge there, and swirls up
+  // brighter when you bump into it.
+  const edgeGlow = el("div", { class: "hub-edge", "aria-hidden": "true" }, ["left", "right", "top", "bottom"].map((side) => el("span", { class: `hub-edge-${side}` }, [el("i"), el("i"), el("i")])));
+  function updateMist() {
+    const r = stage.getBoundingClientRect();
+    if (!r.width) return;
+    const near = (d) => Math.max(0, Math.min(1, 1 - d / 260)).toFixed(2);
+    const k = view.k;
+    const d = { left: view.x + bounds.x0 * k, right: r.width - (view.x + bounds.x1 * k), top: view.y + bounds.y0 * k, bottom: r.height - (view.y + bounds.y1 * k) };
+    for (const side of ["left", "right", "top", "bottom"]) edgeGlow.querySelector(`.hub-edge-${side}`).style.setProperty("--m", near(-d[side]));
+  }
   const world = el("div", { class: "hub-world" });
   const ink = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   ink.setAttribute("class", "hub-ink");
@@ -100,7 +149,10 @@ export function renderHub(container, state) {
   // Other players' cursors sit on the board itself (world coordinates), like everything else people put there, so they
   // stay exactly over the same spot while you zoom or pan; only their arrow and name are kept at screen size.
   const cursorLayer = el("div", { class: "hub-cursors", "aria-hidden": "true" });
-  world.append(ink, itemLayer, cursorLayer);
+  const draftInk = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  draftInk.setAttribute("class", "hub-ink hub-drafts");
+  draftInk.setAttribute("aria-hidden", "true");
+  world.append(ink, draftInk, itemLayer, cursorLayer);
   const myTag = el("div", { class: "hub-mytag", "aria-hidden": "true" }, me.name);
   stage.append(world, myTag);
   stage.style.cursor = cursorCss(me.color);
@@ -126,16 +178,21 @@ export function renderHub(container, state) {
   // a page button: the page's own icon (the same sprites the sidebar used), its name sliding out on hover
   const pageBtn = (view, label) => {
     const b = el("button", { type: "button", class: "hub-round hub-page-btn", "aria-label": label, title: label });
-    b.innerHTML = `<span class="hub-page-icon">${NAV_ICONS[view] || ""}</span>`;
+    b.innerHTML = `<span class="hub-page-icon">${PAGE_ICONS[view] || NAV_ICONS[view] || ""}</span>`;
     b.append(el("span", { class: "hub-page-label" }, label));
     b.addEventListener("click", () => openFromHub(view));
     return b;
   };
   const appBtns = el("div", { class: "hub-apps" }, RIGHT_PAGES.map(([v, l]) => pageBtn(v, l)));
-  fetchMe().then((acc) => { if (acc?.perms?.admin) appBtns.append(pageBtn("admin", "Admin")); });
+  const quick = el("div", { class: "hub-quick", role: "toolbar", "aria-label": "Your trainer" }, QUICK.map(([view, label, d]) => {
+    const b = el("button", { type: "button", class: "hub-tool", title: label, "data-view": view });
+    b.innerHTML = glyph(d) + `<span>${label}</span>`;
+    b.addEventListener("click", () => (view === "dex" ? toggleDex(dexOpen ? null : "pokemon") : view === "bag" ? toggleBag() : openFromHub(view)));
+    return b;
+  }));
   const topbar = el("div", { class: "hub-top" }, [
-    el("div", { class: "hub-top-left" }, [el("div", { class: "hub-title" }, [el("span", { class: "hub-eyebrow" }, "Pokémon D&D"), el("strong", {}, "Hub")])]),
-    el("div", { class: "hub-top-right" }, [people, ...(getForcedTheme() ? [] : [themeBtn]), settingsBtn, accountBtn]),   // a campaign's own theme has no toggle
+    el("div", { class: "hub-top-left" }, [el("div", { class: "hub-title" }, [el("span", { class: "hub-eyebrow" }, "Pokémon D&D"), el("strong", {}, "Hub")]), quick]),
+    el("div", { class: "hub-top-right" }, [appBtns, people, ...(getForcedTheme() ? [] : [themeBtn]), settingsBtn, accountBtn]),   // a campaign's own theme has no toggle
   ]);
   const toolbar = el("div", { class: "hub-toolbar", role: "toolbar", "aria-label": "Board tools" });
   const subbar = el("div", { class: "hub-subbar" });
@@ -153,43 +210,367 @@ export function renderHub(container, state) {
     zoomBtn("−", "Zoom out", () => zoomAt(1 / 1.25)), zoomLabel, zoomBtn("+", "Zoom in", () => zoomAt(1.25)),
     zoomBtn("⤢", "Fit everything (F)", () => fitAll()),
   ]);
-  // the Pokédex and Move Dex pull-outs (buttons under the menu button)
-  const sideBtns = el("div", { class: "hub-side" });
+  // the Pokédex and Move Dex: one pull-out (the Dex button), switching between the two inside it
   const dexHost = el("div", { class: "hub-dex-host" });
   let dexOpen = null, dexEl = null;
   function toggleDex(kind) {
-    if (dexOpen === kind) { closeDex(); return; }
+    if (!kind) { closeDex(); return; }
+    const already = dexOpen;
     dexOpen = kind;
     const panel = dexPanel(state, kind, {
+      onSwitch: (k) => toggleDex(k),
       onClose: closeDex,
       openFull: () => openFromHub(kind === "pokemon" ? "pokedex" : "moves"),
       onPlace: (card) => { const r = stage.getBoundingClientRect(); placeCard(card, toWorld(r.left + r.width / 2, r.top + r.height / 2)); },
     });
     dexHost.replaceChildren(panel);
     dexEl = panel;
-    void panel.offsetWidth;   // lay it out closed first, so it slides in
-    panel.classList.add("open");
+    if (already) panel.classList.add("open");   // switching tabs: no slide
+    else { void panel.offsetWidth; panel.classList.add("open"); }   // lay it out closed first, so it slides in
     panel.focusSearch();
-    sideBtns.querySelectorAll(".hub-round").forEach((b) => b.classList.toggle("on", b.dataset.kind === kind));
+    quick.querySelector('[data-view="dex"]').classList.add("on");
   }
   function closeDex() {
     dexOpen = null;
     const old = dexEl; dexEl = null;
     old?.classList.remove("open");
     setTimeout(() => { if (old && !old.classList.contains("open")) old.remove(); }, 300);
-    sideBtns.querySelectorAll(".hub-round").forEach((b) => b.classList.remove("on"));
+    quick.querySelector('[data-view="dex"]').classList.remove("on");
   }
-  const dexBtn = (kind, label, d) => { const b = roundBtn(label, d, () => toggleDex(kind)); b.dataset.kind = kind; return b; };
-  sideBtns.append(
-    dexBtn("pokemon", "Pokédex", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h6m6 0h6M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"),
-    dexBtn("moves", "Move Dex", "M13 2L4 14h7l-1 8 9-12h-7z"),
-    el("span", { class: "hub-side-gap", "aria-hidden": "true" }),
-    ...LEFT_PAGES.map(([v, l]) => pageBtn(v, l)),
-  );
-  sideBtns.querySelectorAll(".hub-page-label").forEach((x) => x.classList.add("right"));   // the left column's names slide out to the right
-  root.append(backdropLayer, stars, dots, stage, edgeGlow, empty, topbar, sideBtns, appBtns, dexHost, subbar, toolbar, zoomBar, drawer, hover, menu, toast);
+
+  // ---- your team, bottom left: up to six sprites in party order, each with its health; drag one onto the board.
+  // Above it, your trainer: portrait, name and money. Click it for the Trainer page; drag it onto the board for a card
+  // with your character's details.
+  const teamStrip = el("div", { class: "hub-team", role: "list", "aria-label": "Your team" });
+  const meBadge = el("button", { type: "button", class: "hub-me", draggable: "true", title: "Your trainer: click for the Trainer page, drag onto the board for a card" });
+  const leftDock = el("div", { class: "hub-left-dock" }, [meBadge, teamStrip]);
+  let teamSig = "", meSig = "";
+  const money = (n) => `£${(Number(n) || 0).toLocaleString()}`;
+  function trainerFields(s) {
+    const t = s.trainer || {};
+    const party = (s.party || []).filter((m) => m && m.name);
+    const bonus = t.abilityBonus || {};
+    const score = (k) => { const v = t.abilities?.[k]; return v === null || v === undefined || v === "" ? null : Number(v) + (bonus.plus2 === k ? 2 : 0) + (bonus.plus1 === k ? 1 : 0); };
+    return [
+      ["Money", money(t.cash)], ["Badges", String(t.badges ?? 0)],
+      ["Party", party.length ? party.map((m) => `${m.nickname || m.name} Lv ${m.level ?? "?"}`).join(", ") : "None yet"],
+      ...["Strength", "Charisma", "Intelligence", "Pokémon"].map((k) => [k, score(k)]).filter(([, v]) => v !== null).map(([k, v]) => [k, String(v)]),
+      ["Occupation", t.occupation], ["From", t.originRegion], ["Age", t.age], ["Gender", t.gender], ["Trainer ID", t.trainerId],
+      ["Proficiency", t.proficiencyBonus ? `+${t.proficiencyBonus}` : ""],
+      ["Skills", Object.entries(t.skillProficiencies || {}).filter(([, on]) => on).map(([k]) => k).join(", ")],
+      ["PC box", (s.pc || []).filter((m) => m && m.name).length ? `${(s.pc || []).filter((m) => m && m.name).length} Pokémon` : ""],
+    ].filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== "").map(([k, v]) => [k, String(v).slice(0, 200)]);
+  }
+  const trainerCard = (s) => ({
+    type: "trainer", name: s.trainer?.name?.trim() || "Trainer", sprite: s.trainer?.sprite || "", fields: trainerFields(s),
+    backstory: String(s.trainer?.backstory || "").slice(0, 1500),
+    party: (s.party || []).filter((m) => m && m.name).slice(0, 6).map((m) => ({ name: m.name, dex: m.dex || state?.pokemonByName?.get(m.name)?.dex || 0, level: Number(m.level) || null })),
+  });
+  function drawMe() {
+    const s = loadSave(), t = s.trainer || {};
+    const sig = JSON.stringify([t.name, t.sprite, t.cash]);
+    if (sig === meSig) return;
+    meSig = sig;
+    meBadge.replaceChildren(
+      t.sprite ? el("img", { class: "hub-me-face", src: trainerSpriteUrl(t.sprite), alt: "", draggable: "false" }) : el("span", { class: "hub-me-face hub-me-initial" }, (t.name || "?")[0].toUpperCase()),
+      el("span", { class: "hub-me-text" }, [el("strong", {}, t.name?.trim() || "Your trainer"), el("span", {}, money(t.cash))]),
+    );
+  }
+  meBadge.addEventListener("click", () => openFromHub("trainer"));
+  meBadge.addEventListener("dragstart", (e) => {
+    e.dataTransfer.setData(CARD_MIME, JSON.stringify(trainerCard(loadSave())));
+    e.dataTransfer.effectAllowed = "copy";
+  });
+  function drawTeam() {
+    drawMe();
+    const party = (loadSave().party || []).filter((m) => m && m.name).slice(0, 6);
+    const rows = party.map((m) => {
+      const species = state?.pokemonByName?.get(m.name);
+      const level = Math.min(100, Math.max(1, Number(m.level) || 1));
+      const max = species ? calcAllStats(species, level, 15, 0, 1).hp : null;
+      const cur = m.currentHp === null || m.currentHp === undefined ? max : m.currentHp;
+      return { m, dex: m.dex || species?.dex || null, max, cur, pct: max ? Math.max(0, Math.min(100, (cur / max) * 100)) : 100 };
+    });
+    const sig = JSON.stringify(rows.map((r) => [r.m.id, r.m.name, r.m.nickname, r.dex, r.cur, r.max, r.m.moves, r.m.item, r.m.level]));
+    if (sig === teamSig) return;
+    teamSig = sig;
+    teamStrip.replaceChildren(...(rows.length ? rows.map(({ m, dex, max, cur, pct }) => {
+      const name = m.nickname || m.name;
+      const slot = el("div", { class: `hub-team-mon${cur === 0 ? " fainted" : ""}`, role: "listitem", draggable: "true", tabindex: "0",
+        title: `${name} · Lv ${m.level ?? "?"} · ${max === null ? "HP unknown" : `${cur}/${max} HP`} — drag onto the board` }, [
+        dex ? el("img", { src: spriteUrl(dex), alt: name, draggable: "false" }) : el("span", { class: "hub-team-q" }, "?"),
+        el("span", { class: "hub-team-hp", "aria-label": max === null ? "HP unknown" : `${cur} of ${max} HP` }, el("span", { style: `width:${pct}%` })),
+      ]);
+      slot.addEventListener("dragstart", (e) => {
+        const card = { type: "mon", name: m.name, dex, level: Number(m.level) || null, hp: max === null ? undefined : [cur, max], moves: (m.moves || []).filter(Boolean),
+          nickname: m.nickname || "", held: m.item || "", ability: m.ability || "", status: m.status || "" };
+        e.dataTransfer.setData(CARD_MIME, JSON.stringify(card));
+        e.dataTransfer.effectAllowed = "copyMove";
+        startOwnDrag({ kind: "mon", id: m.id, label: name });
+      });
+      slot.addEventListener("dragend", endOwnDrag);
+      slot.addEventListener("pointerdown", (e) => e.stopPropagation());
+      slot.addEventListener("click", () => openFromHub("team"));
+      slot.addEventListener("keydown", (e) => { if (e.key === "Enter") openFromHub("team"); });
+      return slot;
+    }) : [el("button", { type: "button", class: "hub-team-empty" }, "Add Pokémon in My Team")]));
+    teamStrip.querySelector(".hub-team-empty")?.addEventListener("click", () => openFromHub("team"));
+  }
+  window.addEventListener("pokemon-dnd-save-changed", function onSave() { if (!document.body.contains(root)) { window.removeEventListener("pokemon-dnd-save-changed", onSave); return; } drawTeam(); if (bagDrop.classList.contains("open")) drawBag(); });
+
+  // ---- the Bag: a drop-down under its button. Every item (and your money, as a Key Item) can be dragged onto the board
+  // as a card, or onto Send To to give it to another player.
+  const bagDrop = el("div", { class: "hub-bag-drop", role: "dialog", "aria-label": "Bag" });
+  for (const ev of ["pointerdown", "pointermove", "pointerup", "wheel"]) bagDrop.addEventListener(ev, (e) => e.stopPropagation(), { passive: true });
+  const itemOptions = el("datalist", { id: `hub-bag-items-${Math.random().toString(36).slice(2, 8)}` });
+  let itemOptionsFilled = false;
+  function fillItemOptions() {
+    if (itemOptionsFilled) return;
+    itemOptionsFilled = true;
+    const names = [MONEY, ...BALL_TYPES, ...HEAL_ITEMS.map((h) => h.name), ...STATUS_HEAL_ITEMS.map((h) => h.name), ...(state.items || []).map((it) => it.name), ...tmMoveNames(state).map((m) => tmName(m))];
+    itemOptions.replaceChildren(...[...new Set(names)].map((n) => el("option", { value: n })));
+  }
+  async function drawBag() {
+    fillItemOptions();
+    const s = loadSave();
+    const bySection = { ball: [], medicine: [], tm: [], held: [], key: [] };
+    bagEntries(s).forEach(([name, count]) => bySection[categorizeItem(name, state)]?.push([name, count]));
+    bySection.key.unshift([MONEY, Number(s.trainer?.cash) || 0]);
+    // add an item (anything not in the rules becomes a Key Item; "Money" adds to your money)
+    const nameIn = el("input", { type: "text", class: "hub-input", list: itemOptions.id, placeholder: "Add an item…", "aria-label": "Item to add", autocomplete: "off" });
+    const qtyIn = el("input", { type: "number", class: "hub-input hub-bag-qty", min: "1", value: "1", "aria-label": "How many" });
+    const addBtn = el("button", { type: "button", class: "hub-pill solid" }, "Add");
+    const add = () => {
+      const name = nameIn.value.trim(), qty = Math.max(1, Math.round(Number(qtyIn.value) || 1));
+      if (!name) { nameIn.focus(); return; }
+      const sv = loadSave();
+      if (name.toLowerCase() === MONEY.toLowerCase()) { sv.trainer.cash = (Number(sv.trainer.cash) || 0) + qty; addLogEntry(`Added £${qty} to your money.`); }
+      else { addBagItem(sv, name, qty); addLogEntry(`Added ${qty}× ${name} to the Bag.`); }
+      writeSave(sv); drawBag(); drawTeam();
+      window.dispatchEvent(new CustomEvent("pokemon-dnd-save-changed"));
+    };
+    addBtn.addEventListener("click", add);
+    nameIn.addEventListener("keydown", (e) => { if (e.key === "Enter") add(); e.stopPropagation(); });
+    qtyIn.addEventListener("keydown", (e) => { if (e.key === "Enter") add(); e.stopPropagation(); });
+    const sections = SECTION_ORDER.filter((sec) => bySection[sec].length).map((sec) => el("section", { class: "hub-bag-sec" }, [
+      el("h4", {}, `${SECTION_LABELS[sec]} (${bySection[sec].length})`),
+      el("div", { class: "hub-bag-grid" }, bySection[sec].sort((a2, b2) => (a2[0] === MONEY ? -1 : b2[0] === MONEY ? 1 : a2[0].localeCompare(b2[0]))).map(([name, count]) => {
+        const img = el("img", { alt: "", draggable: "false" });
+        const isMoney = name === MONEY;
+        const tools = el("span", { class: "hub-bag-tools" });
+        itemIconSrc(name, state, s.itemIcons || {}).then((src) => {
+          img.src = src;
+          if (!isMoney && src.includes("unknown-item")) {   // no picture found: offer to pick one
+            const pick = el("button", { type: "button", class: "hub-bag-mini", title: "Pick an icon" }, "Icon");
+            pick.addEventListener("click", (e) => { e.stopPropagation(); openIconPicker((picked) => { const sv = loadSave(); sv.itemIcons = sv.itemIcons || {}; sv.itemIcons[name] = picked; writeSave(sv); drawBag(); }); });
+            tools.prepend(pick);
+          }
+        });
+        if (!isMoney) {
+          const use = el("button", { type: "button", class: "hub-bag-mini", title: "Use one / remove one" }, "−1");
+          use.addEventListener("click", (e) => { e.stopPropagation(); const sv = loadSave(); useBagItem(sv, name, 1); writeSave(sv); drawBag(); window.dispatchEvent(new CustomEvent("pokemon-dnd-save-changed")); });
+          tools.append(use);
+        }
+        const cell = el("div", { class: `hub-bag-item${isMoney ? " money" : ""}`, draggable: "true", tabindex: "0", role: "listitem",
+          title: `${name}${isMoney ? "" : ` ×${count}`}: ${isMoney ? "your money" : describeItem(name, state)}\nDrag onto the board, onto a trainer's card, or onto Send To` }, [
+          img, el("span", { class: "hub-bag-name" }, name), el("span", { class: "hub-bag-count" }, isMoney ? money(count) : `×${count}`), tools,
+        ]);
+        cell.addEventListener("dragstart", (e) => {
+          e.stopPropagation();
+          e.dataTransfer.setData(CARD_MIME, JSON.stringify({ type: "item", name }));
+          e.dataTransfer.effectAllowed = "copyMove";
+          startOwnDrag({ kind: isMoney ? "money" : "item", name, count, label: name });
+        });
+        cell.addEventListener("dragend", endOwnDrag);
+        // a press on an item never reaches the board (no panning or drawing under the bag)
+        cell.addEventListener("pointerdown", (e) => e.stopPropagation());
+        return cell;
+      })),
+    ]));
+    bagDrop.replaceChildren(
+      el("div", { class: "hub-bag-head" }, [el("strong", {}, "Bag"), el("span", { class: "hub-menu-note" }, "Drag items onto the board, a trainer's card or Send To")]),
+      el("div", { class: "hub-bag-add" }, [nameIn, qtyIn, addBtn]), itemOptions,
+      ...sections,
+    );
+  }
+  function toggleBag() {
+    const btn = quick.querySelector('[data-view="bag"]');
+    if (bagDrop.classList.contains("open")) { bagDrop.classList.remove("open"); btn.classList.remove("on"); return; }
+    drawBag();
+    const br = btn.getBoundingClientRect(), rr = root.getBoundingClientRect();
+    bagDrop.style.left = `${Math.max(8, br.left - rr.left - 8)}px`;
+    bagDrop.classList.add("open"); btn.classList.add("on");
+  }
+  document.addEventListener("pointerdown", function outsideBag(e) {
+    if (!document.body.contains(root)) { document.removeEventListener("pointerdown", outsideBag); return; }
+    if (!bagDrop.contains(e.target) && !e.target.closest('.hub-quick [data-view="bag"]')) { bagDrop.classList.remove("open"); quick.querySelector('[data-view="bag"]')?.classList.remove("on"); }
+  });
+
+  // ---- Send To: while you drag one of your own Pokémon or items, a target appears bottom right. Drop it there and pick
+  // who gets it (any player in the campaign); for more than one of something, say how many. It leaves your save and
+  // lands in theirs the next time their hub checks in.
+  const sendZone = el("div", { class: "hub-sendto", "aria-hidden": "true" }, [
+    el("span", { class: "hub-sendto-icon" }), el("span", { class: "hub-sendto-text" }, [el("strong", {}, "Send To"), el("span", {}, "Drop here to give it to a player")]),
+  ]);
+  sendZone.querySelector(".hub-sendto-icon").innerHTML = glyph("M4 12l16-8-6 16-2.5-6.5zM11.5 13.5L20 4");
+  let ownDrag = null;
+  function startOwnDrag(own) { ownDrag = own; sendZone.classList.add("show"); }
+  function endOwnDrag() { setTimeout(() => { sendZone.classList.remove("show", "hot"); itemLayer.querySelectorAll(".hub-card.send-hot").forEach((x) => x.classList.remove("send-hot")); ownDrag = null; }, 0); }
+  sendZone.addEventListener("dragover", (e) => { if (!ownDrag) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; sendZone.classList.add("hot"); });
+  sendZone.addEventListener("dragleave", () => sendZone.classList.remove("hot"));
+  sendZone.addEventListener("drop", (e) => {
+    if (!ownDrag) return;
+    e.preventDefault();
+    const own = ownDrag;
+    sendZone.classList.remove("show", "hot");
+    openSendMenu(own);
+  });
+  async function openSendMenu(own) {
+    menu.classList.remove("wide");
+    menu.replaceChildren(el("p", { class: "hub-menu-title" }, `Send ${own.label} to…`), el("p", { class: "hub-menu-note" }, "Finding players…"));
+    const zr = sendZone.getBoundingClientRect(), rr = root.getBoundingClientRect();
+    // in the Send To box's own place: same right edge and bottom, growing upwards
+    const atZone = () => { menu.style.left = `${zr.right - rr.left - menu.offsetWidth}px`; menu.style.top = `${Math.max(8, zr.bottom - rr.top - menu.offsetHeight)}px`; };
+    menu.classList.add("show", "at-send"); atZone();
+    const roster = (await getRoster()) || [];
+    const others = roster.filter((t) => t.id !== me.id);
+    menu.replaceChildren(el("p", { class: "hub-menu-title" }, `Send ${own.label} to…`), ...(others.length ? others.map((t) => {
+      const b = el("button", { type: "button", class: "hub-menu-item hub-send-pick" }, [
+        t.sprite ? el("img", { src: trainerSpriteUrl(t.sprite), alt: "" }) : el("span", { class: "hub-avatar small" }, (t.name || "?")[0].toUpperCase()),
+        el("span", {}, t.name || "Trainer"), el("span", { class: `hub-send-dot${t.online ? " on" : ""}`, title: t.online ? "Online" : "Offline: they'll get it next time" }),
+      ]);
+      b.addEventListener("click", () => { closeMenu(); sendOwn(own, t, zr); });
+      return b;
+    }) : [el("p", { class: "hub-menu-note" }, "Nobody else is in this campaign yet.")]));
+    atZone();
+  }
+  // Dropping something of yours on another player's trainer card: the same as Send To, after a check.
+  function confirmSendTo(own, to, node) {
+    const have = own.kind === "mon" ? 1 : own.kind === "money" ? Number(loadSave().trainer?.cash) || 0 : Number(loadSave().bag?.[own.name]) || 0;
+    const qty = have > 1 ? el("input", { type: "number", class: "hub-input", min: "1", max: String(have), value: own.kind === "money" ? "" : "1", placeholder: own.kind === "money" ? "Amount (£)" : "How many", "aria-label": "How many" }) : null;
+    const go = el("button", { type: "button", class: "hub-pill solid" }, "Send");
+    const no = el("button", { type: "button", class: "hub-pill" }, "Cancel");
+    menu.classList.remove("wide", "at-send");
+    menu.replaceChildren(el("p", { class: "hub-menu-title" }, `Send ${own.label} to ${to.name}?`),
+      el("p", { class: "hub-menu-note" }, own.kind === "mon" ? "It leaves your team and joins theirs." : `You have ${own.kind === "money" ? money(have) : have}.`),
+      ...(qty ? [qty] : []), el("div", { class: "hub-menu-row" }, [no, go]));
+    no.addEventListener("click", closeMenu);
+    go.addEventListener("click", () => {
+      const n = qty ? Math.round(Number(qty.value)) : 1;
+      if (qty && !(n >= 1 && n <= have)) { qty.classList.add("bad"); qty.focus(); return; }
+      closeMenu(); sendOwn(own, to, node.getBoundingClientRect(), n);
+    });
+    const r = node.getBoundingClientRect(), rr = root.getBoundingClientRect();
+    openMenuAt(r.left - rr.left, r.bottom - rr.top + 8);
+    setTimeout(() => (qty || go).focus(), 0);
+  }
+  async function sendOwn(own, to, at, preset = null) {
+    const s = loadSave();
+    let type, payload, done;
+    if (own.kind === "mon") {
+      const inParty = s.party.findIndex((m) => m.id === own.id), inPc = s.pc.findIndex((m) => m.id === own.id);
+      const mon = inParty >= 0 ? s.party[inParty] : s.pc[inPc];
+      if (!mon) { say("That Pokémon isn't in your team any more."); return; }
+      type = "pokemon"; payload = JSON.parse(JSON.stringify(mon));
+      done = () => { if (inParty >= 0) s.party.splice(inParty, 1); else s.pc.splice(inPc, 1); };
+    } else {
+      const have = own.kind === "money" ? Number(s.trainer?.cash) || 0 : Number(s.bag?.[own.name]) || 0;
+      if (have < 1) { say(`You don't have any ${own.name} to send.`); return; }
+      let n = preset || 1;
+      if (preset && preset > have) { say(`You only have ${have}.`); return; }
+      if (have > 1 && !preset) {
+        n = await askNumber({ x: at.left - 120, y: at.top - 150, title: `Send ${own.name} to ${to.name}`, label: own.kind === "money" ? "How much? £" : "How many?", min: 1, max: have, initial: own.kind === "money" ? "" : 1, okLabel: "Send" });
+        if (!n) return;
+      }
+      if (own.kind === "money") { type = "cash"; payload = { amount: n }; done = () => { s.trainer.cash = (Number(s.trainer.cash) || 0) - n; }; }
+      else { type = "item"; payload = { name: own.name, count: n }; done = () => useBagItem(s, own.name, n); }
+    }
+    const res = await sendToTrainer({ fromId: me.id, fromName: me.name, toId: to.id, type, payload });
+    if (!res || res.error) { say(res?.error ? `Couldn't send that: ${res.error}` : "Couldn't send that. Check your connection."); return; }
+    done();
+    writeSave(s);
+    drawTeam(); if (bagDrop.classList.contains("open")) drawBag();
+    window.dispatchEvent(new CustomEvent("pokemon-dnd-save-changed"));
+    say(`Sent ${type === "cash" ? money(payload.amount) : type === "item" ? `${payload.count > 1 ? `${payload.count}× ` : ""}${payload.name}` : own.label} to ${to.name}.`);
+  }
+
+  // ---- gifts: what other players (or the DM) sent you lands in your save while the hub is open
+  const APPLIED_KEY = "pkdnd-applied-gifts";
+  async function checkGifts() {
+    const msgs = await getInbox(me.id);
+    if (!msgs?.length) return;
+    let applied = [];
+    try { applied = JSON.parse(localStorage.getItem(APPLIED_KEY) || "[]"); } catch { applied = []; }
+    const s = loadSave();
+    const said = [], ids = [];
+    for (const m of msgs) {
+      ids.push(m.id);
+      if (applied.includes(m.id)) continue;   // already in the save (the acknowledgement didn't get through last time)
+      applied.push(m.id);
+      const from = m.fromName || "A trainer";
+      if (m.type === "pokemon" && m.payload) {
+        const mon = { ...newMon(), ...m.payload, id: newMon().id };
+        if (s.party.length < 6) s.party.push(mon); else s.pc.push(mon);
+        said.push(`${from} sent you ${mon.nickname || mon.name}${s.party.includes(mon) ? "" : " (in your PC)"}`);
+      } else if (m.type === "cash") {
+        s.trainer.cash = (Number(s.trainer.cash) || 0) + (Number(m.payload?.amount) || 0);
+        said.push(`${from} sent you ${money(m.payload?.amount)}`);
+      } else if (m.type === "item" && m.payload?.name) {
+        addBagItem(s, m.payload.name, Math.max(1, Number(m.payload.count) || 1));
+        said.push(`${from} sent you ${m.payload.count > 1 ? `${m.payload.count}× ` : ""}${m.payload.name}`);
+      } else if (m.type === "note") {
+        said.push(`${from}: ${m.payload?.text || ""}`);
+      }
+    }
+    try { localStorage.setItem(APPLIED_KEY, JSON.stringify(applied.slice(-200))); } catch { /* storage full or blocked */ }
+    if (said.length) {
+      writeSave(s);
+      drawTeam(); if (bagDrop.classList.contains("open")) drawBag();
+      window.dispatchEvent(new CustomEvent("pokemon-dnd-save-changed"));
+      say(said.join(" · "));
+    }
+    await ackInbox(me.id, ids);
+  }
+
+  // ---- who's here: the "N here" pill opens a small list of the trainers online and their teams
+  const peopleDrop = el("div", { class: "hub-people-drop", role: "dialog", "aria-label": "Trainers online" });
+  async function togglePeople() {
+    if (peopleDrop.classList.contains("open")) { peopleDrop.classList.remove("open"); return; }
+    peopleDrop.replaceChildren(el("p", { class: "hub-menu-note" }, "Finding trainers…"));
+    if (innerWidth > 640) {   // hang it under the "N here" pill, wherever the top row puts it
+      const pr = people.getBoundingClientRect(), rr = root.getBoundingClientRect();
+      peopleDrop.style.right = `${Math.max(8, rr.right - pr.right)}px`;
+    }
+    peopleDrop.classList.add("open");
+    const trainers = await listTrainers("");
+    const rows = await Promise.all(trainers.map(async (t) => ({ t, team: (await getTrainerTeam(t.id))?.team || {} })));
+    peopleDrop.replaceChildren(el("p", { class: "hub-menu-title" }, `Trainers online (${rows.length})`), ...(rows.length ? rows.map(({ t, team }) => {
+      const party = (team.party || []).filter((m) => m && m.name).slice(0, 6);
+      return el("div", { class: "hub-people-row" }, [
+        t.sprite ? el("img", { class: "hub-people-sprite", src: trainerSpriteUrl(t.sprite), alt: "" }) : el("span", { class: "hub-avatar small" }, (t.name || "?")[0].toUpperCase()),
+        el("div", { class: "hub-people-info" }, [
+          el("strong", {}, `${t.name || "Trainer"}${t.id === me.id ? " (you)" : ""}`),
+          el("div", { class: "hub-people-team" }, party.length ? party.map((m) => {
+            const dex = m.dex || state?.pokemonByName?.get(m.name)?.dex;
+            return dex ? el("img", { src: spriteUrl(dex), alt: m.name, title: `${m.nickname || m.name} · Lv ${m.level ?? "?"}` }) : el("span", { title: m.name }, "?");
+          }) : [el("span", { class: "hub-menu-note" }, "No team yet")]),
+        ]),
+      ]);
+    }) : [el("p", { class: "hub-menu-note" }, "Nobody else is online right now.")]));
+  }
+  people.addEventListener("click", (e) => { if (!e.target.closest(".hub-avatar:not(.self)")) togglePeople(); });
+  people.setAttribute("role", "button"); people.tabIndex = 0;
+  people.addEventListener("keydown", (e) => { if (e.key === "Enter") togglePeople(); });
+  document.addEventListener("pointerdown", function outsidePeople(e) {
+    if (!document.body.contains(root)) { document.removeEventListener("pointerdown", outsidePeople); return; }
+    if (!peopleDrop.contains(e.target) && !people.contains(e.target)) peopleDrop.classList.remove("open");
+  });
+
+  root.append(backdropLayer, stars, dots, stage, edgeGlow, empty, topbar, peopleDrop, bagDrop, dexHost, leftDock, sendZone, subbar, toolbar, zoomBar, drawer, hover, menu, toast);
   root.classList.add("cosmic");
   syncTheme();
+  // the minimap under the title (the DM's shared map, with the fog of war); click it for the full map
+  let hubMap = null;
   // the welcome goes away the first time anyone clicks anywhere on the hub
   root.addEventListener("pointerdown", () => { if (!welcomeGone) { welcomeGone = true; empty.classList.add("gone"); } }, { capture: true });
   container.append(root);
@@ -228,7 +609,7 @@ export function renderHub(container, state) {
   let glowTimer = null;
   function bump(sides) {
     if (!sides.length) return;
-    for (const side of sides) edgeGlow.querySelector(`.hub-edge-${side}`)?.classList.add("on");
+    for (const side of sides) edgeGlow.querySelector(`.hub-edge-${side}`)?.classList.add("on");   // the mist swirls up
     clearTimeout(glowTimer);
     glowTimer = setTimeout(() => edgeGlow.querySelectorAll("span").forEach((x) => x.classList.remove("on")), 450);
   }
@@ -236,7 +617,8 @@ export function renderHub(container, state) {
   function updateBounds() {
     const b = { ...BASE_AREA };
     for (const it of items) {
-      if (it.type === "stroke") for (const [x, y] of it.pts) { b.x0 = Math.min(b.x0, x - EDGE_PAD); b.x1 = Math.max(b.x1, x + EDGE_PAD); b.y0 = Math.min(b.y0, y - EDGE_PAD); b.y1 = Math.max(b.y1, y + EDGE_PAD); }
+      const pts = it.type === "stroke" ? it.pts : it.type === "shape" ? [[it.x, it.y], [it.x2, it.y2]] : null;
+      if (pts) for (const [x, y] of pts) { b.x0 = Math.min(b.x0, x - EDGE_PAD); b.x1 = Math.max(b.x1, x + EDGE_PAD); b.y0 = Math.min(b.y0, y - EDGE_PAD); b.y1 = Math.max(b.y1, y + EDGE_PAD); }
       else {
         const w = it.w || 260, h = it.h || 120;
         b.x0 = Math.min(b.x0, it.x - EDGE_PAD); b.x1 = Math.max(b.x1, it.x + w + EDGE_PAD);
@@ -249,6 +631,7 @@ export function renderHub(container, state) {
   function applyView(gesture = false) {
     const hit = clampView();
     if (gesture) bump(hit);
+    updateMist();
     world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`;
     world.style.setProperty("--ik", String(1 / view.k));   // undoes the zoom for things that keep their size (cursors)
     stage.style.setProperty("--k", String(view.k));
@@ -312,6 +695,8 @@ export function renderHub(container, state) {
     ["pen", "Draw", "M4 20l4-1L19 8l-3-3L5 16zM14 7l3 3"],
     ["text", "Text", "M5 6V4h14v2M12 4v16M9 20h6"],
     ["erase", "Erase", "M7 20h12M5 15l8-8 6 6-5 5H9z"],
+    ["shape", "Shapes", "M4 4h7v7H4zM17.5 4a3.5 3.5 0 1 0 .01 0zM4 20l4-7 4 7z"],
+    ["prop", "Props", "M12 3l2.5 5 5.5.8-4 3.9.9 5.5-4.9-2.6-4.9 2.6.9-5.5-4-3.9 5.5-.8z"],
     ["ping", "Ping", "M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M12 12m-6 0a6 6 0 1 0 12 0a6 6 0 1 0-12 0M12 12m-10 0a10 10 0 1 0 20 0"],
   ];
   const icon = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
@@ -323,8 +708,10 @@ export function renderHub(container, state) {
     thumb.style.width = `${on.offsetWidth}px`;
     thumb.style.transform = `translateX(${on.offsetLeft}px)`;
   }
-  function setTool(id) {
+  function setTool(id, dmNote = false) {
     tool = id;
+    noteDm = id === "note" && dmNote;
+    toolbar.querySelector(".hub-dmnote")?.classList.toggle("on", noteDm);
     toolbar.querySelectorAll(".hub-tool[data-tool]").forEach((b) => { b.classList.toggle("on", b.dataset.tool === id); b.setAttribute("aria-pressed", String(b.dataset.tool === id)); });
     stage.dataset.tool = id;
     moveThumb();
@@ -333,7 +720,7 @@ export function renderHub(container, state) {
   function drawToolbar() {
     toolbar.replaceChildren(thumb, ...TOOLS.map(([id, label, d]) => {
       const key = Object.keys(SHORTCUTS).find((k) => SHORTCUTS[k] === id);
-      const b = el("button", { type: "button", class: `hub-tool${tool === id ? " on" : ""}`, "data-tool": id, title: `${label} (${key.toUpperCase()})`, "aria-pressed": String(tool === id) });
+      const b = el("button", { type: "button", class: `hub-tool${tool === id && !(id === "note" && noteDm) ? " on" : ""}`, "data-tool": id, title: `${label} (${key.toUpperCase()})`, "aria-pressed": String(tool === id) });
       b.innerHTML = icon(d) + `<span>${label}</span>`;
       b.addEventListener("click", () => setTool(id));
       return b;
@@ -346,10 +733,14 @@ export function renderHub(container, state) {
       const b = el("button", { type: "button", class: `hub-tool hub-dm${drawer.classList.contains("open") ? " on" : ""}`, title: "Encounters" });
       b.innerHTML = icon("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h6m6 0h6M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z") + "<span>Encounters</span>";
       b.addEventListener("click", () => { drawer.classList.toggle("open"); if (drawer.classList.contains("open")) drawDrawer(); drawToolbar(); });
+      // a note only the DM can see (the server never sends it to players)
+      const dn = el("button", { type: "button", class: `hub-tool hub-dmnote${noteDm ? " on" : ""}`, title: "DM note: a note only you can see" });
+      dn.innerHTML = icon("M5 4h14v11l-5 5H5zM14 20v-5h5M9 9a3 3 0 1 1 6 0v2H9zM8 11h8") + "<span>DM note</span>";
+      dn.addEventListener("click", () => setTool("note", true));
       const bd = el("button", { type: "button", class: "hub-tool", title: "Backdrop: a map behind the board" });
       bd.innerHTML = icon("M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14") + "<span>Backdrop</span>";
       bd.addEventListener("click", () => openBackdropMenu(bd));
-      return el("span", { class: "hub-dm-tools" }, [b, bd]);
+      return el("span", { class: "hub-dm-tools" }, [b, dn, bd]);
     }
     const b = el("button", { type: "button", class: "hub-tool", title: "I'm the DM" });
     b.innerHTML = icon("M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6zM9.5 12l2 2 3.5-4") + "<span>DM</span>";
@@ -358,7 +749,32 @@ export function renderHub(container, state) {
   }
   function drawSubbar() {
     subbar.replaceChildren();
-    subbar.classList.toggle("show", tool === "pen" || tool === "note" || tool === "erase" || tool === "ping");
+    subbar.classList.toggle("show", ["pen", "note", "erase", "ping", "shape", "prop"].includes(tool));
+    if (tool === "shape") {
+      subbar.append(...SHAPES.map(([id, label, d]) => {
+        const b = el("button", { type: "button", class: `hub-shape-pick${shapeKind === id ? " on" : ""}`, title: label, "aria-label": label });
+        b.innerHTML = icon(d);
+        b.addEventListener("click", () => { shapeKind = id; drawSubbar(); });
+        return b;
+      }), el("span", { class: "hub-sep" }), ...[me.color, "#f4f4f5", "#ff5a4e", "#ffd23f", "#6fdc6a", "#4ea8ff", "#e36bff"].map((c) => {
+        const sw = el("button", { type: "button", class: `hub-swatch${penColor === c ? " on" : ""}`, style: `--c:${c}`, "aria-label": `Colour ${c}` });
+        sw.addEventListener("click", () => { penColor = c; drawSubbar(); });
+        return sw;
+      }), el("span", { class: "hub-sep" }), (() => {
+        const f = el("button", { type: "button", class: `hub-pill${shapeFill ? " solid" : ""}` }, shapeFill ? "Filled" : "Outline");
+        f.addEventListener("click", () => { shapeFill = !shapeFill; drawSubbar(); });
+        return f;
+      })(), el("span", { class: "hub-hint" }, "Drag on the board to draw"));
+    } else if (tool === "prop") {
+      const size = el("input", { type: "range", min: "32", max: "200", value: String(propSize), "aria-label": "Prop size", class: "hub-prop-size" });
+      size.addEventListener("input", () => { propSize = Number(size.value); });
+      subbar.append(el("div", { class: "hub-prop-list" }, PROPS.map(([id, glyphChar, label]) => {
+        const b = el("button", { type: "button", class: `hub-prop-pick${propId === id ? " on" : ""}`, title: label, "aria-label": label, draggable: "true" }, glyphChar);
+        b.addEventListener("click", () => { propId = id; subbar.querySelectorAll(".hub-prop-pick").forEach((x) => x.classList.toggle("on", x === b)); });
+        b.addEventListener("dragstart", (e) => { e.dataTransfer.setData(CARD_MIME, JSON.stringify({ type: "prop", prop: id, size: propSize })); });
+        return b;
+      })), el("span", { class: "hub-sep" }), el("label", { class: "hub-hint" }, ["Size ", size]));
+    }
     if (tool === "ping") subbar.append(el("span", { class: "hub-hint" }, "Hover a note, card or button and click to ripple round it, or click anywhere to mark the spot (Alt+click works with any tool)"));
     if (tool === "pen") {
       subbar.append(...[me.color, "#f4f4f5", "#ff5a4e", "#ffd23f", "#6fdc6a", "#4ea8ff", "#e36bff"].map((c) => {
@@ -371,7 +787,7 @@ export function renderHub(container, state) {
         return s;
       }));
     } else if (tool === "note") {
-      subbar.append(el("span", { class: "hub-hint" }, "Click the board to stick a note"), ...NOTE_COLORS.map((c) => {
+      subbar.append(el("span", { class: "hub-hint" }, noteDm ? "Click the board to stick a note only you (the DM) can see" : "Click the board to stick a note"), ...NOTE_COLORS.map((c) => {
         const s = el("button", { type: "button", class: `hub-swatch${noteColor === c ? " on" : ""}`, style: `--c:${c}`, "aria-label": `Note colour ${c}` });
         s.addEventListener("click", () => { noteColor = c; drawSubbar(); });
         return s;
@@ -380,7 +796,7 @@ export function renderHub(container, state) {
     if (tool === "erase" || tool === "pen") {
       const clear = el("button", { type: "button", class: "hub-pill" }, dmToken ? "Clear all drawings" : "Clear my drawings");
       clear.addEventListener("click", async () => { await op({ op: "clearDrawings" }); say(dmToken ? "Drawings cleared." : "Your drawings are cleared."); });
-      if (tool === "erase") subbar.append(el("span", { class: "hub-hint" }, dmToken ? "Click anything to remove it" : "Click your own notes or drawings to remove them"));
+      if (tool === "erase") subbar.append(el("span", { class: "hub-hint" }, dmToken ? "Click or drag across anything to remove it" : "Click or drag across your own notes and drawings to remove them"));
       subbar.append(clear);
     }
   }
@@ -397,6 +813,8 @@ export function renderHub(container, state) {
       if (res?.ok) {
         try { localStorage.setItem(DM_TOKEN_KEY, res.token); } catch { /* ignore */ }
         dmToken = res.token; closeMenu(); drawToolbar(); drawSubbar(); rev = -1; say("DM tools unlocked. Open Encounters to place buttons.");
+        refreshPullTabs();   // the DM's SOUND and PARTY tabs appear
+        hubMap?.refresh();   // the DM sees the whole map
       } else { pw.value = ""; pw.placeholder = "That didn't work"; }
     };
     go.addEventListener("click", attempt);
@@ -425,10 +843,11 @@ export function renderHub(container, state) {
     const now = Date.now();
     if (!force && !dirtyCursor && now - lastSent < IDLE_SYNC_MS) return;
     inFlight = true; dirtyCursor = false; lastSent = now;
-    const cursor = pointerWorld ? { x: pointerWorld.x, y: pointerWorld.y, name: me.name, color: me.color, down: clicked } : null;
+    const draft = gesture?.kind === "pen" && gesture.pts.length > 1 ? { pts: gesture.pts.slice(-400), color: penColor, width: penWidth } : null;
+    const cursor = pointerWorld ? { x: pointerWorld.x, y: pointerWorld.y, name: me.name, color: me.color, down: clicked, ...(draft ? { draft } : {}) } : null;
     const ping = pendingPing;
     clicked = false; pendingPing = null;
-    const res = await hubSync(me.id, rev, cursor, ping);
+    const res = await hubSync(me.id, rev, cursor, ping, dmToken);
     inFlight = false;
     if (again) { again = false; rev = -1; setTimeout(() => sync(true), 0); }
     if (!res || !alive) return;
@@ -450,6 +869,7 @@ export function renderHub(container, state) {
 
   // ------------------------------------------------------------------ cursors
   const cursorEls = new Map();   // player id -> element
+  const draftPaths = new Map();  // player id -> the stroke they're drawing right now
   let cursorData = [];
   function drawCursors(list) {
     cursorData = list;
@@ -468,6 +888,18 @@ export function renderHub(container, state) {
     }
     for (const [id, node] of cursorEls) if (!seen.has(id)) { node.remove(); cursorEls.delete(id); }
     placeCursors();
+    // strokes others are still drawing
+    const drafting = new Set();
+    for (const c of list) {
+      if (!c.draft?.pts?.length) continue;
+      drafting.add(c.id);
+      let path = draftPaths.get(c.id);
+      if (!path) { path = document.createElementNS("http://www.w3.org/2000/svg", "path"); draftInk.append(path); draftPaths.set(c.id, path); }
+      path.setAttribute("d", c.draft.pts.map((p, i) => `${i ? "L" : "M"}${p[0]} ${p[1]}`).join(" "));
+      path.setAttribute("stroke", c.draft.color);
+      path.setAttribute("stroke-width", String(c.draft.width));
+    }
+    for (const [id, path] of draftPaths) if (!drafting.has(id)) { path.remove(); draftPaths.delete(id); }
   }
   function placeCursors() {
     for (const c of cursorData) {
@@ -499,9 +931,14 @@ export function renderHub(container, state) {
     updateBounds();
     applyView();
     empty.classList.toggle("gone", welcomeGone || items.length > 0);
-    // drawings go in the SVG
+    // drawings and shapes go in the SVG
     const strokes = items.filter((it) => it.type === "stroke");
-    ink.replaceChildren(...strokes.map((s) => {
+    const shapes = items.filter((it) => it.type === "shape");
+    ink.replaceChildren(...shapes.map((sh) => {
+      const path = shapePath(sh);
+      if (!knownStrokes.has(sh.id)) { knownStrokes.add(sh.id); if (rev > 0) path.classList.add("fresh"); }
+      return path;
+    }), ...strokes.map((s) => {
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
       if (!knownStrokes.has(s.id)) { knownStrokes.add(s.id); if (rev > 0) path.classList.add("fresh"); }
       path.setAttribute("d", s.pts.map((p, i) => `${i ? "L" : "M"}${p[0]} ${p[1]}`).join(" "));
@@ -512,12 +949,12 @@ export function renderHub(container, state) {
     }));
     const seen = new Set();
     for (const it of items) {
-      if (it.type === "stroke") continue;
+      if (it.type === "stroke" || it.type === "shape") continue;
       seen.add(it.id);
       let node = itemEls.get(it.id);
       const fresh = !node;
       if (fresh) {
-        node = it.type === "note" ? makeNote(it) : it.type === "text" ? makeText(it) : it.type === "mon" || it.type === "move" ? makeCard() : makeButton(it);
+        node = it.type === "note" ? makeNote(it) : it.type === "text" ? makeText(it) : CARD_TYPES.has(it.type) ? makeCard() : it.type === "prop" ? el("div", { class: "hub-prop" }) : makeButton(it);
         node.dataset.id = it.id;
         node.classList.add("hub-enter");
         itemLayer.append(node);
@@ -533,12 +970,18 @@ export function renderHub(container, state) {
         if (document.activeElement !== ta) ta.value = it.text;
         ta.readOnly = !canEdit(it);
         node.classList.toggle("editable", canEdit(it));
-        node.querySelector(".hub-note-by").textContent = it.byName || "";
+        node.classList.toggle("dm-only", !!it.dmOnly);
+        node.querySelector(".hub-note-by").textContent = it.dmOnly ? "DM only" : it.byName || "";
       } else if (it.type === "text") {
         node.style.color = it.color; node.style.fontSize = `${it.size}px`;
         if (!node.isContentEditable) node.textContent = it.text;
-      } else if (it.type === "mon" || it.type === "move") {
+      } else if (CARD_TYPES.has(it.type)) {
         fillCard(node, it, state);
+      } else if (it.type === "prop") {
+        const prop = PROP_BY_ID.get(it.prop);
+        node.textContent = prop?.glyph || "❔";
+        node.title = prop?.label || it.prop;
+        node.style.fontSize = `${it.size}px`;
       } else {
         fillButton(node, it);
       }
@@ -549,6 +992,31 @@ export function renderHub(container, state) {
       node.classList.add("hub-leave");
       setTimeout(() => node.remove(), 220);
     }
+  }
+
+  // A shape as one SVG path, in board units: a box, an ellipse, a line, or a line with an arrowhead.
+  function shapePath(sh, el2 = null) {
+    const path = el2 || document.createElementNS("http://www.w3.org/2000/svg", "path");
+    const { x, y, x2, y2 } = sh;
+    const l = Math.min(x, x2), t = Math.min(y, y2), w = Math.abs(x2 - x), h = Math.abs(y2 - y);
+    let d;
+    if (sh.shape === "rect") d = `M${l} ${t}h${w}v${h}h${-w}z`;
+    else if (sh.shape === "ellipse") { const rx = w / 2, ry = h / 2; d = `M${l} ${t + ry}a${rx} ${ry} 0 1 0 ${w} 0a${rx} ${ry} 0 1 0 ${-w} 0z`; }
+    else {
+      d = `M${x} ${y}L${x2} ${y2}`;
+      if (sh.shape === "arrow") {
+        const a = Math.atan2(y2 - y, x2 - x), len = Math.max(12, sh.width * 3.5);
+        const p = (da) => `${x2 - len * Math.cos(a + da)} ${y2 - len * Math.sin(a + da)}`;
+        d += `M${p(0.45)}L${x2} ${y2}L${p(-0.45)}`;
+      }
+    }
+    path.setAttribute("d", d);
+    path.setAttribute("stroke", sh.color);
+    path.setAttribute("stroke-width", String(sh.width));
+    path.classList.add("hub-shape");
+    path.style.fill = sh.fill && (sh.shape === "rect" || sh.shape === "ellipse") ? `${sh.color}40` : "none";
+    if (sh.id) path.dataset.id = sh.id;
+    return path;
   }
 
   function makeNote(it) {
@@ -579,7 +1047,10 @@ export function renderHub(container, state) {
     return el("button", { type: "button", class: "hub-btn" }, [el("span", { class: "hub-btn-icon", "aria-hidden": "true" }), el("span", { class: "hub-btn-label" }), el("span", { class: "hub-btn-live" }, "Battle live")]);
   }
   function fillButton(node, it) {
-    node.className = `hub-btn kind-${it.source.kind}${activeButton === it.id ? " live" : ""}`;
+    const portrait = it.preview?.portrait;
+    node.className = `hub-btn kind-${it.source.kind}${activeButton === it.id ? " live" : ""}${portrait ? " has-portrait" : ""}`;
+    const ic = node.querySelector(".hub-btn-icon");
+    if (portrait) ic.style.backgroundImage = `url("${trainerSpriteUrl(portrait)}")`; else ic.style.backgroundImage = "";
     node.querySelector(".hub-btn-label").textContent = it.label;
     node.setAttribute("aria-label", `${it.label}: ${activeButton === it.id ? "battle in progress, open it" : dmToken ? "start this battle" : "open the battle"}`);
   }
@@ -700,6 +1171,18 @@ export function renderHub(container, state) {
     });
   }
 
+  // ------------------------------------------------------------------ click effects
+  function tapFx(node, at) {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    node.classList.remove("tap"); void node.offsetWidth; node.classList.add("tap");
+    setTimeout(() => node.classList.remove("tap"), 520);
+    const c = getComputedStyle(node).getPropertyValue("--tc").trim() || (node.classList.contains("hub-btn") ? "#ff5a4e" : "#ffffff");
+    const burst = el("div", { class: "hub-burst", style: `left:${at.x}px;top:${at.y}px;--c:${c}` }, Array.from({ length: 10 }, (_, i) => el("i", { style: `--a:${i * 36 + Math.random() * 14}deg;--d:${34 + Math.random() * 30}px` })));
+    burst.append(el("b"));
+    itemLayer.append(burst);
+    setTimeout(() => burst.remove(), 700);
+  }
+
   // ------------------------------------------------------------------ pings
   function showPing(pg) {
     const box = pg.item ? boxOf(pg.item) : null;
@@ -728,22 +1211,58 @@ export function renderHub(container, state) {
   }
   // what a ping would point at under the pointer: a note, text, card, encounter button or drawing
   function pingTargetOf(t) {
-    const node = t?.closest?.(".hub-note, .hub-text, .hub-btn, .hub-card");
+    const node = t?.closest?.(".hub-note, .hub-text, .hub-btn, .hub-card, .hub-prop");
     if (node && itemLayer.contains(node)) return node.dataset.id;
     return t?.closest?.(".hub-ink path")?.dataset?.id || null;
   }
-  let lit = null;
-  function highlight(id) {
+  let lit = null, litClass = "ping-target";
+  function highlight(id, cls = "ping-target") {
     const node = id ? itemEls.get(id) || ink.querySelector(`path[data-id="${CSS.escape(id)}"]`) : null;
-    if (node === lit) return;
-    lit?.classList.remove("ping-target");
-    lit = node;
-    lit?.classList.add("ping-target");
+    if (node === lit && cls === litClass) return;
+    lit?.classList.remove(litClass);
+    lit = node; litClass = cls;
+    lit?.classList.add(cls);
+  }
+  // The eraser's target under the pointer: a note, text, card, prop or button, else the nearest drawing or shape within
+  // a few pixels (thin lines are hard to hit exactly). Works while the pointer is captured, too.
+  function eraseTargetAt(e) {
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    const node = under?.closest?.(".hub-note, .hub-text, .hub-btn, .hub-card, .hub-prop");
+    if (node && itemLayer.contains(node)) return node.dataset.id;
+    const p = toWorld(e.clientX, e.clientY), slack = 7 / view.k;
+    const segDist = (px, py, ax, ay, bx, by) => {
+      const dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
+      const t = len ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len)) : 0;
+      return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+    };
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      if (it.type === "stroke") {
+        for (let j = 1; j < it.pts.length; j++) if (segDist(p.x, p.y, ...it.pts[j - 1], ...it.pts[j]) <= it.width / 2 + slack) return it.id;
+      } else if (it.type === "shape") {
+        const l = Math.min(it.x, it.x2), r = Math.max(it.x, it.x2), t = Math.min(it.y, it.y2), b = Math.max(it.y, it.y2), pad = it.width / 2 + slack;
+        if (it.shape === "line" || it.shape === "arrow") { if (segDist(p.x, p.y, it.x, it.y, it.x2, it.y2) <= pad) return it.id; }
+        else if (p.x >= l - pad && p.x <= r + pad && p.y >= t - pad && p.y <= b + pad && (it.fill || p.x <= l + pad || p.x >= r - pad || p.y <= t + pad || p.y >= b - pad)) return it.id;
+      }
+    }
+    return null;
+  }
+  const erasable = (id) => { const it = id && items.find((x) => x.id === id); return it && (dmToken || (mine(it) && it.type !== "button")) ? id : null; };
+  function eraseOne(id) {
+    if (gesture?.erased?.has(id)) return;
+    gesture?.erased?.add(id);
+    (itemEls.get(id) || ink.querySelector(`path[data-id="${CSS.escape(id)}"]`))?.classList.add("erasing");
+    op({ op: "delete", itemId: id });
   }
   // the world-space box round an item, for ripples that hug it
   function boxOf(id) {
     const node = itemEls.get(id);
     if (node) return { x: node.offsetLeft, y: node.offsetTop, w: node.offsetWidth, h: node.offsetHeight, node };
+    const sh = items.find((x) => x.id === id && x.type === "shape");
+    if (sh) {
+      const pad = sh.width / 2 + 4;
+      return { x: Math.min(sh.x, sh.x2) - pad, y: Math.min(sh.y, sh.y2) - pad, w: Math.abs(sh.x2 - sh.x) + pad * 2, h: Math.abs(sh.y2 - sh.y) + pad * 2, node: ink.querySelector(`path[data-id="${CSS.escape(id)}"]`) };
+    }
     const it = items.find((x) => x.id === id && x.type === "stroke");
     if (!it) return null;
     const xs = it.pts.map((p) => p[0]), ys = it.pts.map((p) => p[1]);
@@ -756,9 +1275,10 @@ export function renderHub(container, state) {
     const it = node.__item, pv = it.preview || {};
     const species = pv.name ? state?.pokemonByName?.get(pv.name) : null;
     const art = species?.dex ? el("img", { class: "hub-hover-sprite", src: spriteUrl(species.dex), alt: pv.name }) : el("span", { class: "hub-hover-q", "aria-hidden": "true" }, "?");
+    const face = pv.portrait ? el("img", { class: "hub-hover-portrait", src: trainerSpriteUrl(pv.portrait), alt: "" }) : null;
     const kind = it.source.kind === "npc" ? "Trainer" : it.source.kind === "wild" ? "Wild Pokémon" : "Encounter";
     hover.replaceChildren(
-      el("div", { class: "hub-hover-art" }, art),
+      ...[face, el("div", { class: "hub-hover-art" }, art)].filter(Boolean),
       el("div", { class: "hub-hover-body" }, [
         el("span", { class: "hub-hover-kind" }, kind),
         el("strong", { class: "hub-hover-level" }, pv.level ? `Lv. ${pv.level}` : "Lv. ?"),
@@ -782,7 +1302,7 @@ export function renderHub(container, state) {
     menu.style.top = `${clamp(y, 8, rr.height - 60)}px`;
     menu.classList.add("show");
   }
-  function closeMenu() { menu.classList.remove("show"); }
+  function closeMenu() { menu.classList.remove("show", "at-send"); }
   document.addEventListener("pointerdown", function outside(e) {
     if (!document.body.contains(root)) { document.removeEventListener("pointerdown", outside); return; }
     if (!menu.contains(e.target) && !e.target.closest(".hub-btn") && !e.target.closest(".hub-tool") && !e.target.closest(".hub-account")) closeMenu();
@@ -898,7 +1418,7 @@ export function renderHub(container, state) {
       group("NPC trainers", npcs.map((n) => entry(n.name || "NPC", `${n.partyCount} Pokémon`, "npc", { kind: "npc", id: n.id })), "Add trainers in Control Centre → NPC Library."),
       group("Wild Pokémon", wild.map((w) => entry(w.name || "Wild Pokémon", w.level ? `Lv. ${w.level}` : "", "wild", { kind: "wild", id: w.id })), "Add Pokémon in Control Centre → Wild Library."),
       group("From your planner", plan.map(({ b, n }) => entry((n.identity?.name || n.title.replace(/^Wild encounter — /, "")).slice(0, 48), `${n.genLabel || "Encounter"} · ${n.mons.length} Pokémon`, n.gen === "wild" ? "wild" : "npc",
-        { kind: "plan", id: `${b.id}:${n.id}`, title: n.title, mons: n.mons.map((m) => ({ name: m.name, level: m.level })) })), "Roll a wild encounter, trainer or gym leader on a Campaign Planner whiteboard and it shows up here."),
+        { kind: "plan", id: `${b.id}:${n.id}`, title: n.title, sprite: n.identity?.sprite || "", mons: n.mons.map((m) => ({ name: m.name, level: m.level })) })), "Roll a wild encounter, trainer or gym leader on the Whiteboard and it shows up here."),
     );
   }
   async function addButton(payload, at) {
@@ -908,18 +1428,42 @@ export function renderHub(container, state) {
     await op({ op: "put", item: { type: "button", id: uid(), x, y, label: payload.label.slice(0, 60), reveal: "hidden", source: payload.source } });
     say("Encounter placed. Players can hover it to see the level.");
   }
-  async function placeCard(card, at) {
+  async function placeCard(card, at, screen = null) {
+    if (card.type === "mon" && card.level === undefined) {
+      const r = stage.getBoundingClientRect();
+      const lvl = await askLevel({ x: screen?.x ?? r.left + r.width / 2, y: screen?.y ?? r.top + r.height / 2, name: card.name });
+      if (lvl === undefined) return;   // cancelled
+      card = { ...card, level: lvl };
+    }
+    if (card.type === "prop") { await op({ op: "put", item: { type: "prop", id: uid(), prop: card.prop, size: card.size || propSize, x: Math.round(at.x - (card.size || propSize) / 2), y: Math.round(at.y - (card.size || propSize) / 2) } }); return; }
     let x = Math.round(at.x - 110), y = Math.round(at.y - 40);
-    while (items.some((it) => (it.type === "mon" || it.type === "move") && Math.abs(it.x - x) < 30 && Math.abs(it.y - y) < 30)) { x += 28; y += 28; }
-    await op({ op: "put", item: { ...card, id: uid(), x, y, open: false } });
+    while (items.some((it) => CARD_TYPES.has(it.type) && Math.abs(it.x - x) < 30 && Math.abs(it.y - y) < 30)) { x += 28; y += 28; }
+    const { own, ...clean } = card; void own;
+    await op({ op: "put", item: { ...clean, id: uid(), x, y, open: false } });
   }
+  const trainerCardAt = (t) => { const c = t?.closest?.(".hub-card.kind-trainer"); return c && itemLayer.contains(c) && c.__item && c.__item.owner !== me.id ? c : null; };
+  itemLayer.addEventListener("dragover", (e) => {
+    const c = ownDrag && trainerCardAt(e.target);
+    itemLayer.querySelectorAll(".hub-card.send-hot").forEach((x) => { if (x !== c) x.classList.remove("send-hot"); });
+    if (!c) return;
+    e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move";
+    c.classList.add("send-hot");
+  });
+  itemLayer.addEventListener("drop", (e) => {
+    const c = ownDrag && trainerCardAt(e.target);
+    if (!c) return;
+    e.preventDefault(); e.stopPropagation();
+    c.classList.remove("send-hot");
+    const own = ownDrag;
+    confirmSendTo(own, { id: c.__item.owner, name: c.__item.name || "that trainer" }, c);
+  });
   stage.addEventListener("dragover", (e) => {
     const t = e.dataTransfer.types;
     if (t.includes(CARD_MIME) || (dmToken && t.includes("application/x-hub-button"))) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }
   });
   stage.addEventListener("drop", (e) => {
     const card = e.dataTransfer.getData(CARD_MIME);
-    if (card) { e.preventDefault(); try { placeCard(JSON.parse(card), toWorld(e.clientX, e.clientY)); } catch { /* not ours */ } return; }
+    if (card) { e.preventDefault(); try { placeCard(JSON.parse(card), toWorld(e.clientX, e.clientY), { x: e.clientX, y: e.clientY }); } catch { /* not ours */ } return; }
     const raw = e.dataTransfer.getData("application/x-hub-button");
     if (!raw || !dmToken) return;
     e.preventDefault();
@@ -936,8 +1480,10 @@ export function renderHub(container, state) {
     dirtyCursor = true;
     myTag.style.transform = `translate(${e.clientX - r.left}px, ${e.clientY - r.top}px)`;
     myTag.classList.add("show");
-    highlight(tool === "ping" || e.altKey ? pingTargetOf(e.target) : null);
+    if (tool === "erase") highlight(erasable(eraseTargetAt(e)), "erase-target");
+    else highlight(tool === "ping" || e.altKey ? pingTargetOf(e.target) : null);
     if (!gesture) return;
+    if (gesture.kind === "erase") { const id = erasable(eraseTargetAt(e)); if (id) eraseOne(id); return; }
     const dx = e.clientX - gesture.sx, dy = e.clientY - gesture.sy;
     if (Math.hypot(dx, dy) > 4) gesture.moved = true;
     if (gesture.kind === "pan") { view.x = gesture.ox + dx; view.y = gesture.oy + dy; applyView(true); }
@@ -947,6 +1493,10 @@ export function renderHub(container, state) {
     } else if (gesture.kind === "drag" && gesture.moved) {
       gesture.node.style.left = `${gesture.ix + dx / view.k}px`; gesture.node.style.top = `${gesture.iy + dy / view.k}px`;
       gesture.node.classList.add("dragging");
+    } else if (gesture.kind === "shape") {
+      const p = toWorld(e.clientX, e.clientY);
+      gesture.end = [Math.round(p.x), Math.round(p.y)];
+      shapePath({ shape: shapeKind, x: gesture.start[0], y: gesture.start[1], x2: gesture.end[0], y2: gesture.end[1], color: penColor, width: penWidth, fill: shapeFill }, liveStroke);
     } else if (gesture.kind === "pen") {
       gesture.pts.push([Math.round(pointerWorld.x), Math.round(pointerWorld.y)]);
       liveStroke.setAttribute("d", gesture.pts.map((p, i) => `${i ? "L" : "M"}${p[0]} ${p[1]}`).join(" "));
@@ -960,7 +1510,16 @@ export function renderHub(container, state) {
     clicked = true; dirtyCursor = true;
     if (e.button === 0 && (tool === "ping" || e.altKey)) { ping(toWorld(e.clientX, e.clientY), pingTargetOf(e.target)); return; }
     if (e.target.closest(".hub-note-tools") || e.target.isContentEditable) return;
-    const itemNode = e.target.closest(".hub-note, .hub-text, .hub-btn, .hub-card");
+    const itemNode = e.target.closest(".hub-note, .hub-text, .hub-btn, .hub-card, .hub-prop");
+    if (tool === "shape" && e.button === 0) {
+      const p = toWorld(e.clientX, e.clientY);
+      gesture = { sx: e.clientX, sy: e.clientY, moved: false, kind: "shape", start: [Math.round(p.x), Math.round(p.y)], end: null };
+      liveStroke = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      ink.append(liveStroke);
+      capture(e.pointerId);
+      return;
+    }
+    if (tool === "prop" && e.button === 0 && !itemNode) { placeCard({ type: "prop", prop: propId, size: propSize }, toWorld(e.clientX, e.clientY)); return; }
     if (e.target.classList.contains("hub-note-resize") && itemNode && canEdit(itemNode.__item)) {
       gesture = { sx: e.clientX, sy: e.clientY, moved: false, kind: "resize", node: itemNode, iw: itemNode.__item.w, ih: itemNode.__item.h };
       capture(e.pointerId);
@@ -970,10 +1529,13 @@ export function renderHub(container, state) {
     const start = { sx: e.clientX, sy: e.clientY, moved: false, id: e.pointerId };
     if (e.button === 1) { gesture = { ...start, kind: "pan", ox: view.x, oy: view.y }; capture(e.pointerId); return; }
     if (tool === "erase") {
-      const id = itemNode?.dataset.id || strokeId;
-      const it = items.find((x) => x.id === id);
-      if (it && (dmToken || (mine(it) && it.type !== "button"))) op({ op: "delete", itemId: id });
-      else if (it) say("You can only remove your own notes and drawings.");
+      gesture = { ...start, kind: "erase", erased: new Set() };
+      capture(e.pointerId);
+      const hit = eraseTargetAt(e);
+      const id = erasable(hit);
+      if (id) eraseOne(id);
+      else if (hit) say("You can only remove your own notes and drawings.");
+      void itemNode; void strokeId;
       return;
     }
     if (tool === "pen") {
@@ -1002,6 +1564,14 @@ export function renderHub(container, state) {
     const g = gesture; gesture = null;
     if (!g) return;
     try { stage.releasePointerCapture(e.pointerId); } catch { /* not captured */ }
+    if (g.kind === "erase") return;
+    if (g.kind === "shape") {
+      liveStroke?.remove(); liveStroke = null;
+      if (g.end && Math.hypot(g.end[0] - g.start[0], g.end[1] - g.start[1]) > 6) {
+        await op({ op: "put", item: { type: "shape", id: uid(), shape: shapeKind, x: g.start[0], y: g.start[1], x2: g.end[0], y2: g.end[1], color: penColor, width: penWidth, fill: shapeFill } });
+      }
+      return;
+    }
     if (g.kind === "pen") {
       const pts = simplify(g.pts);
       if (pts.length >= 2) await op({ op: "put", item: { type: "stroke", id: uid(), pts, color: penColor, width: penWidth } });
@@ -1014,6 +1584,7 @@ export function renderHub(container, state) {
       return;
     }
     if ((g.kind === "drag" || g.kind === "click") && !g.moved) {
+      if (g.node.matches(".hub-card, .hub-btn, .hub-prop")) tapFx(g.node, toWorld(e.clientX, e.clientY));
       if (g.node.classList.contains("hub-btn")) buttonClicked(g.node);
       else if (g.node.classList.contains("hub-note")) g.node.querySelector("textarea").focus();
       else if (g.node.classList.contains("hub-text") && canEdit(g.node.__item)) editExistingText(g.node);
@@ -1029,7 +1600,7 @@ export function renderHub(container, state) {
     if (g.kind === "note" && !g.moved) {
       const p = toWorld(e.clientX, e.clientY);
       const id = uid();
-      const res = await op({ op: "put", item: { type: "note", id, x: Math.round(p.x - 110), y: Math.round(p.y - 30), w: 220, h: 160, text: "", color: noteColor } });
+      const res = await op({ op: "put", item: { type: "note", id, x: Math.round(p.x - 110), y: Math.round(p.y - 30), w: 220, h: 160, text: "", color: noteColor, ...(noteDm && dmToken ? { dmOnly: true } : {}) } });
       if (res) { setTool("move"); setTimeout(() => itemEls.get(id)?.querySelector("textarea")?.focus(), 400); }
       return;
     }
@@ -1077,10 +1648,32 @@ export function renderHub(container, state) {
 
   // ------------------------------------------------------------------ start
   drawToolbar(); drawSubbar();
+  drawTeam();
+  const teamTimer = setInterval(() => { if (!document.body.contains(root)) { clearInterval(teamTimer); return; } if (!document.hidden) drawTeam(); }, 4000);
+  checkGifts();
+  (function comets() {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const next = () => setTimeout(() => {
+      if (!document.body.contains(root)) return;
+      if (!document.hidden && root.classList.contains("cosmic")) {
+        const r = root.getBoundingClientRect();
+        const fromLeft = Math.random() < 0.6;
+        const y = Math.random() * r.height * 0.55, len = 220 + Math.random() * 260, ang = 12 + Math.random() * 22;
+        const comet = el("div", { class: `hub-comet${fromLeft ? "" : " rtl"}`, style: `top:${Math.round(y)}px;--len:${Math.round(len)}px;--ang:${fromLeft ? ang : -ang}deg;--dist:${Math.round(r.width + len * 2)}px;--dur:${(1.4 + Math.random() * 1.2).toFixed(2)}s` });
+        stars.append(comet);
+        setTimeout(() => comet.remove(), 3200);
+      }
+      next();
+    }, 9000 + Math.random() * 22000);
+    next();
+  })();
+  hubMap = mountHubMap(root, { me, getDmToken: () => dmToken, say });
+  try { if (sessionStorage.getItem("hub-open") === "bag") { sessionStorage.removeItem("hub-open"); setTimeout(toggleBag, 350); } } catch { /* storage blocked */ }
+  const giftTimer = setInterval(() => { if (!document.body.contains(root)) { clearInterval(giftTimer); return; } if (!document.hidden) checkGifts(); }, GIFT_MS);
   requestAnimationFrame(() => { centre(); sync(true); });
   (async () => {
     const t = getDmToken();
-    if (t && await checkDmToken(t)) { dmToken = t; drawToolbar(); drawSubbar(); if (items.length) drawItems(); }
+    if (t && await checkDmToken(t)) { dmToken = t; drawToolbar(); drawSubbar(); if (items.length) drawItems(); hubMap?.refresh(); }
   })();
   void getActiveCampaign;
 }

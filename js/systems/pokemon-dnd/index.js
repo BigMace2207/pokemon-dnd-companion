@@ -6,14 +6,15 @@ import { loadData } from "../../data.js";
 import { renderPokedex } from "../../views/pokedex.js";
 import { renderMoves } from "../../views/moves.js";
 import { renderStatCalc } from "../../views/statcalc.js";
-import { renderDamageCalc } from "../../views/damagecalc.js";
 import { renderTypeChart } from "../../views/typechart.js";
 import { renderTierGuide } from "../../views/tierguide.js";
 import { renderRulebook } from "../../views/rulebook.js";
 import { renderBattleView } from "../../views/battleview.js";
 import { renderHub } from "../../views/hub.js";
+import { renderLibrary } from "../../views/library.js";
+import { renderDmParty } from "../../views/dmParty.js";
+import { renderSoundDrawer } from "../../views/controlcentre.js";
 import { renderTeam } from "../../views/team.js";
-import { renderBag } from "../../views/bag.js";
 import { renderTrainer } from "../../views/trainer.js";
 import { renderTrainersOnline } from "../../views/trainers.js";
 import { renderControlCentre } from "../../views/controlcentre.js";
@@ -37,11 +38,11 @@ export default {
     ] },
     { label: "Calculators", views: [
       { id: "statcalc", label: "Stat Calculator", render: renderStatCalc },
-      { id: "damagecalc", label: "Damage Calculator", render: renderDamageCalc },
     ] },
     { label: "Trainer", views: [
       { id: "team", label: "My Team", render: renderTeam },
-      { id: "bag", label: "Bag", render: renderBag },
+      // the Bag is the hub's drop-down now: this page just opens it there
+      { id: "bag", label: "Bag", render: () => { try { sessionStorage.setItem("hub-open", "bag"); } catch { /* storage blocked */ } location.hash = "hub"; } },
       { id: "trainer", label: "Trainer Sheet", render: renderTrainer },
       { id: "trainersOnline", label: "Trainers Online", render: renderTrainersOnline },
     ] },
@@ -68,6 +69,10 @@ export default {
     { id: "rules", label: "RULES", title: "Rulebook", render: (host) => renderRulebook(host), wide: true },
     { id: "types", label: "TYPES", title: "Type Chart", render: (host, state) => renderTypeChart(host, state), wide: true },
     { id: "tiers", label: "TIERS", title: "Move Tier Guide", render: (host, state) => renderTierGuide(host, state), wide: true },
+    { id: "library", label: "LIBRARY", title: "Library", render: (host) => renderLibrary(host), wide: true },
+    // the DM's own, lower down and only once the DM password is in: music and sound effects, and the party at a glance
+    { id: "sound", label: "SOUND", title: "Music and sound", render: (host, state, token) => renderSoundDrawer(host, token), dm: true },
+    { id: "party", label: "PARTY", title: "The party", render: (host, state) => renderDmParty(host, state), dm: true, wide: true },
   ],
   // pages that aren't in the sidebar but can still be opened (the hub's Pokédex and Move Dex pull-outs link to them)
   hiddenViews: [{ id: "pokedex", label: "Pokédex", render: renderPokedex }, { id: "moves", label: "Move Dex", render: renderMoves }],
@@ -75,5 +80,5 @@ export default {
   loadData,
   mount(state) { mountQuickConsole(state); },
   applyDirectives: pollAndApplyDirectives,
-  presence: (save) => ({ party: save.party, pc: save.pc }),
+  presence: (save) => ({ party: save.party, pc: save.pc, bag: save.bag, cash: Number(save.trainer?.cash) || 0 }),   // the bag and money too, for the DM's party screen
 };

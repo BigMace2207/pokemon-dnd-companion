@@ -165,6 +165,44 @@ moves a whole map. Generators: `pokeGenerators.js` is built on the Pokémon data
 Node-tested (`tests/js`), as is the board geometry (`board.test.mjs`). The server tests cover who may write and read plans
 (`PlannerPlans`). The desktop sidebar folds away (`html.nav-collapsed`, remembered per device).
 
+## Control Centre
+
+`controlcentre.js` (after the DM password) shows big options in a row: Overview, Battle Control, Players, NPC Library,
+Wild Library and DM Tools. The Overview (`dmOverview.js`) reads the same endpoints players and Battle Control use
+(`/api/roster` with the DM token: every member, online or not, with party, bag and money from their live presence or
+last saved copy; `/api/fullturn`, the DM inbox, `/api/battlelog`) every 4 seconds and redraws only
+when something changed. `dmParty.js` is the Players page and the PARTY pull tab, and exports `hpOf` for both.
+
+## Hub gifts (Send To)
+
+Dragging a team Pokémon or a bag item onto the hub's Send To target sends it with `/api/send` (types `pokemon`, `item`,
+`cash`) and takes it out of the sender's save once the server accepts it. The receiver's hub polls its inbox every few
+seconds and applies gifts straight into the save (ids remembered in localStorage so a lost acknowledgement never adds a
+gift twice). `/api/roster` without the DM token gives only names, portraits and who's online.
+
+## The hub map and fog of war
+
+`state.partyMap` is the one map on the hub (published from the Whiteboard's Map editor, `js/planner/mapsTab.js`). It
+holds the places (pins, each `revealed` or not), tokens (players by trainer id, plus the DM's markers), `fog`
+({enabled, shared, radius}) and `reveals` (cleared spots per player id, and "dm" for the DM's brushing).
+`GET /api/partymap?id=<your trainer id>` returns the map as that person may see it (`map_view_for`): hidden places are
+never sent; with private fog a player gets only their own cleared spots and token. Players move their own token with
+`/api/partymap/move` (the DM's token moves any), which clears the mist there; the DM sets fog and brushes with
+`/api/partymap/fog`. The DM's live updates keep the positions players moved to (`merge_map_tokens`). `js/mapView.js`
+draws a map (image, fog canvas, places, tokens) for the hub's minimap and full map (`js/hubMap.js`), the Map editor and
+the players' Hub map drawer.
+
+## Battle turns
+
+The DM's Battle Control decides whose turn it is (it sorts by speed) and sends that combatant's id as `fullTurn.turnId`
+with every save; the server checks player actions against it, and player screens show it. Battle Control embeds the same battle view in DM mode (`renderBattleView(..., { dm })`): it shows the battle as whoever's
+turn it is, and on an NPC's or wild Pokémon's turn the DM's move comes back through `dm.submit` (HP via `setHp`, one log
+line). A player on turn makes one
+choice: a move (`/api/fullturn/playermove`, which applies the damage it rolled) or an item, running, switching or
+something else (`/api/fullturn/playeraction`, switching swaps in a Pokémon from their own saved party). Either records
+`fullTurn.acted` and refuses a second choice; only the DM's Next Turn moves on (a save with a new turn clears `acted`).
+Battle Control polls the battle every few seconds, so its copy never saves over a player's damage.
+
 ## Planner slots (Pokémon)
 
 Trainer, gym leader and wild encounter nodes (`gen` nodes of kind `trainer`, `gym`, `wildmon`) carry `mons` (up to six,

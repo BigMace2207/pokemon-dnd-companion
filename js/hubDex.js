@@ -6,6 +6,11 @@
 import { el, typePill, statBars } from "./components.js";
 import { spriteUrl } from "./sprites.js";
 import { TYPE_COLORS } from "./data.js";
+import { calcAllStats } from "./calc.js";
+import { categorizeItem, SECTION_LABELS } from "./bagItems.js";
+import { describeItem } from "./itemDescriptions.js";
+import { itemIconSrc, MONEY } from "./bagIcon.js";
+import { trainerSpriteUrl } from "./trainerSpritePicker.js";
 
 export const CARD_MIME = "application/x-hub-card";
 const LIMIT = 120;
@@ -20,7 +25,8 @@ const abilities = (p) => [p.ability1, p.ability2, p.hiddenAbility && `${p.hidden
 
 // ------------------------------------------------------------------ the pull-out
 // kind: "pokemon" | "moves". onPlace(card) drops a card in the middle of the board; openFull() goes to the full page.
-export function dexPanel(state, kind, { onPlace, onClose, openFull }) {
+// onSwitch(kind), when given, puts a Pokédex / Move Dex switch in the header (the hub's single Dex pull-out).
+export function dexPanel(state, kind, { onPlace, onClose, openFull, onSwitch }) {
   const isMon = kind === "pokemon";
   const search = el("input", { type: "search", class: "hub-input", placeholder: isMon ? "Search Pokémon…" : "Search moves…", "aria-label": "Search", autocomplete: "off" });
   const types = Object.keys(state?.typeChart?.rows || {}).sort();
@@ -62,13 +68,21 @@ export function dexPanel(state, kind, { onPlace, onClose, openFull }) {
   typeSel.addEventListener("change", () => { opened = null; draw(); });
   draw();
   const panel = el("aside", { class: "hub-dex", "aria-label": isMon ? "Pokédex" : "Move Dex" }, [
-    el("div", { class: "hub-dex-top" }, [el("strong", {}, isMon ? "Pokédex" : "Move Dex"), count, el("span", { class: "hub-grow" }), full, close]),
+    el("div", { class: "hub-dex-top" }, [onSwitch ? switcher(kind, onSwitch) : el("strong", {}, isMon ? "Pokédex" : "Move Dex"), count, el("span", { class: "hub-grow" }), full, close]),
     el("div", { class: "hub-dex-filters" }, [search, typeSel]),
     el("p", { class: "hub-dex-hint" }, "Drag onto the board, or press +"),
     list,
   ]);
   panel.focusSearch = () => search.focus();
   return panel;
+}
+
+function switcher(kind, onSwitch) {
+  return el("div", { class: "hub-dex-switch", role: "tablist" }, [["pokemon", "Pokédex"], ["moves", "Move Dex"]].map(([k, label]) => {
+    const b = el("button", { type: "button", role: "tab", class: k === kind ? "on" : "", "aria-selected": String(k === kind) }, label);
+    if (k !== kind) b.addEventListener("click", () => onSwitch(k));
+    return b;
+  }));
 }
 
 function monDetail(p) {
@@ -82,34 +96,97 @@ function moveDetail(m) {
 }
 
 // ------------------------------------------------------------------ cards on the board
+// mon: a Pokédex card; with a level, its stats at that level. From a player's team it also carries that Pokémon's own
+// health, moves and held item. move: a Move Dex card. item: something from a bag. trainer: a player's character card.
 export function makeCard() {
   return el("div", { class: "hub-card" });
 }
+const cardSig = (it) => JSON.stringify([it.type, it.name, it.open, it.level, it.hp, it.moves, it.nickname, it.held, it.status, it.sprite, it.fields, it.backstory, it.party]);
 export function fillCard(node, it, state) {
-  const isMon = it.type === "mon";
   node.className = `hub-card kind-${it.type}${it.open ? " open" : ""}`;
-  if (node.dataset.sig === `${it.name}|${it.open}`) return;   // nothing changed: leave it alone (no flicker)
-  node.dataset.sig = `${it.name}|${it.open}`;
-  if (isMon) {
-    const p = monByName(state, it.name);
-    node.style.setProperty("--tc", typeColor(p?.type1));
-    node.replaceChildren(...[
-      el("div", { class: "hub-card-head" }, [
-        el("img", { class: "hub-card-sprite", src: spriteUrl(p?.dex || it.dex), alt: "", draggable: "false" }),
-        el("div", { class: "hub-card-title" }, [el("strong", {}, it.name), el("span", {}, `#${p?.dex || it.dex || "?"}`), el("span", { class: "hub-dex-types" }, [typePill(p?.type1), typePill(p?.type2)].filter(Boolean))]),
-      ]),
-      it.open && p ? monDetail(p) : null,
-    ].filter(Boolean));
-  } else {
-    const m = moveByName(state, it.name);
-    node.style.setProperty("--tc", typeColor(m?.type));
-    node.replaceChildren(...[
-      el("div", { class: "hub-card-head" }, [
-        el("div", { class: "hub-card-title" }, [el("strong", {}, it.name), el("span", {}, m ? [m.category, m.power ? `${m.power} power` : "", dice(m)].filter(Boolean).join(" · ") : "")]),
-        typePill(m?.type),
-      ].filter(Boolean)),
-      it.open && m ? moveDetail(m) : null,
-    ].filter(Boolean));
-  }
+  const sig = cardSig(it);
+  if (node.dataset.sig === sig) return;   // nothing changed: leave it alone (no flicker)
+  node.dataset.sig = sig;
+  if (it.type === "mon") fillMon(node, it, state);
+  else if (it.type === "item") fillItem(node, it, state);
+  else if (it.type === "trainer") fillTrainer(node, it);
+  else fillMove(node, it, state);
 }
+
+function fillMon(node, it, state) {
+  const p = monByName(state, it.name);
+  node.style.setProperty("--tc", typeColor(p?.type1));
+  const fromTeam = Array.isArray(it.hp) || Array.isArray(it.moves);
+  const sub = [`#${p?.dex || it.dex || "?"}`, it.level ? `Lv ${it.level}` : "", fromTeam && it.nickname ? it.name : ""].filter(Boolean).join(" · ");
+  const hp = Array.isArray(it.hp) && it.hp[1] ? it.hp : null;
+  const pct = hp ? Math.max(0, Math.min(100, (hp[0] / hp[1]) * 100)) : 0;
+  node.replaceChildren(...[
+    el("div", { class: "hub-card-head" }, [
+      el("img", { class: "hub-card-sprite", src: spriteUrl(p?.dex || it.dex), alt: "", draggable: "false" }),
+      el("div", { class: "hub-card-title" }, [el("strong", {}, (fromTeam && it.nickname) || it.name), el("span", {}, sub), el("span", { class: "hub-dex-types" }, [typePill(p?.type1), typePill(p?.type2)].filter(Boolean))]),
+    ]),
+    hp ? el("div", { class: "hub-card-hp" }, [
+      el("span", { class: "hub-card-hpbar" }, el("span", { class: pct > 50 ? "good" : pct > 20 ? "warn" : "bad", style: `width:${pct}%` })),
+      el("span", {}, `${hp[0]}/${hp[1]} HP${it.status && it.status !== "None" ? ` · ${it.status}` : ""}`),
+    ]) : null,
+    it.moves?.length ? el("div", { class: "hub-card-moves" }, it.moves.map((m) => {
+      const mv = moveByName(state, m);
+      return el("span", { style: `--mc:${typeColor(mv?.type)}`, title: mv ? [mv.type, mv.category, mv.power ? `${mv.power} power` : "", dice(mv)].filter(Boolean).join(" · ") : "" }, m);
+    })) : null,
+    it.held ? el("p", { class: "hub-card-held" }, `Holding ${it.held}`) : null,
+    it.open && p ? (it.level ? levelDetail(p, it.level) : monDetail(p)) : null,
+  ].filter(Boolean));
+}
+
+// a Pokémon's stats at a level (average IVs, no EVs, neutral nature: what the stat calculator starts from)
+function levelDetail(p, level) {
+  const at = calcAllStats(p, level, 15, 0, 1);
+  const top = calcAllStats({ hp: 255, atk: 255, def: 255, spa: 255, spd: 255, spe: 255 }, level, 15, 0, 1);
+  const rows = [["HP", "hp"], ["Attack", "atk"], ["Defense", "def"], ["Sp. Atk", "spa"], ["Sp. Def", "spd"], ["Speed", "spe"]];
+  return el("div", { class: "hub-dex-detail" }, [
+    el("div", { class: "stat-bars" }, rows.map(([label, k]) => el("div", { class: "row" }, [
+      el("div", {}, label),
+      el("div", { class: "bar-bg" }, [el("div", { class: "bar-fill", style: `width:${Math.min(100, (at[k] / top[k]) * 100)}%` })]),
+      el("div", {}, String(at[k])),
+    ]))),
+    el("p", {}, abilities(p)),
+    el("p", { class: "hub-dex-meta" }, `Stats at level ${level} · average IVs, no EVs · catch rate ${p.catchRate}`),
+  ]);
+}
+
+function fillMove(node, it, state) {
+  const m = moveByName(state, it.name);
+  node.style.setProperty("--tc", typeColor(m?.type));
+  node.replaceChildren(...[
+    el("div", { class: "hub-card-head" }, [
+      el("div", { class: "hub-card-title" }, [el("strong", {}, it.name), el("span", {}, m ? [m.category, m.power ? `${m.power} power` : "", dice(m)].filter(Boolean).join(" · ") : "")]),
+      typePill(m?.type),
+    ].filter(Boolean)),
+    it.open && m ? moveDetail(m) : null,
+  ].filter(Boolean));
+}
+
+function fillItem(node, it, state) {
+  node.style.setProperty("--tc", it.name === MONEY ? "#facc15" : "#8b9bb4");
+  const img = el("img", { class: "hub-card-icon", alt: "", draggable: "false" });
+  itemIconSrc(it.name, state).then((src) => { img.src = src; });
+  const section = it.name === MONEY ? "key" : categorizeItem(it.name, state);
+  node.replaceChildren(...[
+    el("div", { class: "hub-card-head" }, [img, el("div", { class: "hub-card-title" }, [el("strong", {}, it.name), el("span", {}, SECTION_LABELS[section] || "Item")])]),
+    it.open ? el("p", { class: "hub-card-desc" }, it.name === MONEY ? "A trainer's money." : describeItem(it.name, state)) : null,
+  ].filter(Boolean));
+}
+
+function fillTrainer(node, it) {
+  node.style.setProperty("--tc", "#a78bfa");
+  const face = it.sprite ? el("img", { class: "hub-card-sprite trainer", src: trainerSpriteUrl(it.sprite), alt: "", draggable: "false" }) : el("span", { class: "hub-card-initial" }, (it.name || "?")[0].toUpperCase());
+  const rows = (it.fields || []).filter(([k]) => k !== "Party");
+  node.replaceChildren(...[
+    el("div", { class: "hub-card-head" }, [face, el("div", { class: "hub-card-title" }, [el("strong", {}, it.name), el("span", {}, "Trainer · drop a Pokémon or item here to send it")])]),
+    it.party?.length ? el("div", { class: "hub-card-party" }, it.party.map((m) => el("span", { title: `${m.name}${m.level ? ` · Lv ${m.level}` : ""}` }, [m.dex ? el("img", { src: spriteUrl(m.dex), alt: m.name, draggable: "false" }) : el("b", {}, "?"), m.level ? el("small", {}, String(m.level)) : null].filter(Boolean)))) : null,
+    el("dl", { class: "hub-card-fields" }, rows.flatMap(([k, v]) => [el("dt", {}, k), el("dd", {}, v)])),
+    it.backstory ? el("div", { class: "hub-card-story" }, [el("span", {}, "Backstory"), el("p", { class: it.open ? "" : "clamped" }, it.backstory)]) : null,
+  ].filter(Boolean));
+}
+
 const typeColor = (t) => TYPE_COLORS[t] || "#a1a1aa";

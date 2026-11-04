@@ -1,68 +1,46 @@
-// The Party map: the map the DM shares with the table. Players see the places the DM has revealed and where the DM has put
-// everyone; unrevealed places are never sent to a player's device at all (the server filters them). Refreshes while open.
+// The hub map, in the Whiteboard: the map the DM shows on the hub, as you see it there (the places they've made
+// visible, the tokens and the fog of war you're allowed to see; the server decides all of that). Refreshes while open.
+// The hub's minimap and full map (js/hubMap.js) are the main way to use it; this is the same view beside your notes.
 
 import { el, chip } from "../systems/dnd5e/ui.js";
-import { getPartyMap, fileUrl, cachedFileUrl } from "../network.js";
+import { getPartyMap } from "../network.js";
+import { loadSave } from "../storage.js";
+import { getDmToken } from "../systems/dnd5e/dmAccess.js";
+import { mapStage, panZoom } from "../mapView.js";
 
 export function renderPartyMapTab(panel) {
   const host = el("div", { class: "pl-party-map" });
   panel.append(host);
-  let timer = null, last = "";
-  const view = { x: 0, y: 0, k: 1, fit: 1 };
-  let opened = null;
+  const meId = loadSave().networkId;
+  let last = "", st = null, pz = null, opened = null;
+  const note = el("div", { class: "card pl-party-note" });
+  const head = el("div", { class: "dnd-row between" });
 
   async function load() {
     let map = null;
-    try { map = await getPartyMap(null); } catch { map = null; }
-    const sig = JSON.stringify([map?.updated, map?.name, map?.fileId]);
-    if (sig === last && host.childElementCount) return;   // nothing new: keep the view where the player left it
+    try { map = await getPartyMap(getDmToken() || null, meId); } catch { map = null; }
+    const sig = JSON.stringify(map);
+    if (sig === last && host.childElementCount) return;
     last = sig;
-    draw(map);
-  }
-
-  function draw(map) {
-    if (!map) { host.replaceChildren(el("p", { class: "view-sub" }, "Your DM hasn't shared a map yet. When they do, it appears here, and places show up as they reveal them.")); return; }
-    const wrap = el("div", { class: "pl-map-wrap" });
-    const stage = el("div", { class: "pl-map-stage", style: `width:${map.w}px;height:${map.h}px` });
-    // A shared map file is fetched once and then only checked for changes (the server answers "not modified").
-    const img = el("img", { src: map.image || (map.fileId && cachedFileUrl(map.fileId)) || "", alt: map.name, draggable: "false" });
-    if (map.fileId && !img.getAttribute("src")) fileUrl(map.fileId).then((url) => { if (url) img.src = url; });
-    img.style.cssText = "width:100%;height:100%;display:block;user-select:none;pointer-events:none";
-    stage.append(img);
-    for (const p of map.pins) {
-      const n = el("div", { class: "pl-pin", style: `left:${p.x * map.w}px;top:${p.y * map.h}px;--c:${p.color}`, tabindex: "0", role: "button", "aria-label": p.label || "Place" }, [el("span", { class: "pl-pin-dot" }, p.icon || "●"), el("span", { class: "pl-pin-text" }, p.label)]);
-      n.addEventListener("pointerdown", (e) => e.stopPropagation());
-      n.addEventListener("click", () => { opened = p.id; showNote(p); });
-      stage.append(n);
-    }
-    for (const t of map.tokens) stage.append(el("div", { class: "pl-token", style: `left:${t.x * map.w}px;top:${t.y * map.h}px;--c:${t.color}`, "data-tip": t.name, "data-tip-title": "Player" }, [el("span", { class: "pl-token-dot" }, (t.name || "?").trim().slice(0, 2).toUpperCase()), el("span", { class: "pl-pin-text" }, t.name)]));
-    wrap.append(stage);
-    const note = el("div", { class: "card pl-party-note" });
-    const showNote = (p) => note.replaceChildren(el("h4", {}, p.label || "Place"), p.note ? el("p", {}, p.note) : el("p", { class: "dnd-small dnd-muted" }, "The DM hasn't written anything about this place yet."));
-    const shown = map.pins.find((p) => p.id === opened);
-    if (shown) showNote(shown); else note.append(el("p", { class: "dnd-small dnd-muted" }, map.pins.length ? "Tap a place on the map to read about it." : "No places revealed yet."));
-    host.replaceChildren(
-      el("div", { class: "dnd-row between" }, [el("strong", {}, map.name), chip(`${map.pins.length} place${map.pins.length === 1 ? "" : "s"} revealed`)]),
-      wrap, note,
-    );
-
-    const apply = () => { stage.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`; wrap.style.setProperty("--inv", String(1 / view.k)); };
-    const fit = () => { const r = wrap.getBoundingClientRect(); view.fit = Math.min(r.width / map.w, r.height / map.h); view.k = view.fit; view.x = (r.width - map.w * view.k) / 2; view.y = (r.height - map.h * view.k) / 2; };
-    requestAnimationFrame(() => { fit(); apply(); });
-    const zoomAt = (px, py, f) => { const k2 = Math.max(view.fit * 0.5, Math.min(10, view.k * f)); const g = k2 / view.k; view.x = px - (px - view.x) * g; view.y = py - (py - view.y) * g; view.k = k2; apply(); };
-    const pts = new Map(); let pan = null, pinch = null;
-    wrap.addEventListener("pointerdown", (e) => { try { wrap.setPointerCapture(e.pointerId); } catch { /* gone */ } pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k: view.k }; pan = null; } else pan = { sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y }; });
-    wrap.addEventListener("pointermove", (e) => {
-      if (!pts.has(e.pointerId)) return;
-      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pinch && pts.size >= 2) { const [a, b] = [...pts.values()]; const r = wrap.getBoundingClientRect(); zoomAt((a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top, (pinch.k * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d) / view.k); }
-      else if (pan) { view.x = pan.vx + e.clientX - pan.sx; view.y = pan.vy + e.clientY - pan.sy; apply(); }
+    if (!map) { st = null; host.replaceChildren(el("p", { class: "view-sub" }, "Your DM hasn't put a map on the hub yet. When they do, it appears here, and places show up as they make them visible.")); return; }
+    head.replaceChildren(el("strong", {}, map.name), chip(`${map.pins.length} place${map.pins.length === 1 ? "" : "s"}${map.fog?.enabled ? " · fog of war" : ""}`));
+    if (st) { st.update(map); return; }
+    st = mapStage(map, { labels: true, meId, see: !!getDmToken() });
+    const frame = el("div", { class: "pl-map-wrap mv-frame" }, st.stage);
+    host.replaceChildren(head, frame, note);
+    pz = panZoom(frame, st.stage, {
+      getSize: () => ({ w: st.map.w, h: st.map.h }), minK: 0.02,
+      onTap: (pt, e) => {
+        const pin = e.target.closest?.(".mv-pin");
+        const p = pin && st.map.pins.find((x) => x.id === pin.dataset.id);
+        if (p) { opened = p.id; note.replaceChildren(el("h4", {}, `${p.icon || "●"} ${p.label || "Place"}`), p.note ? el("p", {}, p.note) : el("p", { class: "dnd-small dnd-muted" }, "No notes about this place yet.")); }
+      },
     });
-    const end = (e) => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; if (!pts.size) pan = null; };
-    wrap.addEventListener("pointerup", end); wrap.addEventListener("pointercancel", end);
-    wrap.addEventListener("wheel", (e) => { e.preventDefault(); const r = wrap.getBoundingClientRect(); zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * 0.0016)); }, { passive: false });
+    note.replaceChildren(el("p", { class: "dnd-small dnd-muted" }, map.pins.length ? "Tap a place on the map to read about it. Move your own token on the hub's map." : "No places visible yet."));
+    requestAnimationFrame(() => pz.fit());
+    void opened;
   }
 
   load();
-  timer = setInterval(() => { if (!document.body.contains(host)) { clearInterval(timer); return; } if (!document.hidden) load(); }, 12000);
+  const timer = setInterval(() => { if (!document.body.contains(host)) { clearInterval(timer); return; } if (!document.hidden) load(); }, 5000);
 }

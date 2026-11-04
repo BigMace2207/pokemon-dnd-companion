@@ -349,6 +349,78 @@ def clean_map_tokens(raw):
     return out
 
 
+# ---- Fog of war on the shared map ----
+# The map starts covered in mist; it clears in a circle round each player's token as they move (and wherever the DM
+# brushes it away). "shared": everyone sees every cleared patch and every player; otherwise each player sees only what
+# they've uncovered themselves (plus the DM's) and only their own token. Decided here, never by the client.
+FOG_DEFAULT = {"enabled": False, "shared": True, "radius": 0.08}
+MAX_REVEALS = 1500   # cleared spots kept per player
+
+
+def map_fog(pm):
+    fog = pm.get("fog") if isinstance(pm.get("fog"), dict) else {}
+    return {**FOG_DEFAULT, **fog}
+
+
+def clean_fog(raw, old):
+    out = dict(old)
+    if isinstance(raw, dict):
+        if isinstance(raw.get("enabled"), bool):
+            out["enabled"] = raw["enabled"]
+        if isinstance(raw.get("shared"), bool):
+            out["shared"] = raw["shared"]
+        if raw.get("radius") is not None:
+            out["radius"] = round(min(0.4, max(0.02, _unit(raw.get("radius")))), 3)
+    return out
+
+
+def map_reveal(pm, who, x, y, spacing=0.35):
+    """Clears the mist round (x, y) for `who` (a player id, or "dm"); skips spots already cleared."""
+    fog = map_fog(pm)
+    r, aspect = fog["radius"], (pm.get("h") or 1) / (pm.get("w") or 1)
+    pts = pm.setdefault("reveals", {}).setdefault(who, [])
+    if any(((px - x) ** 2 + ((py - y) * aspect) ** 2) ** 0.5 < r * spacing for px, py in pts):
+        return False
+    pts.append([round(x, 4), round(y, 4)])
+    del pts[:-MAX_REVEALS]
+    return True
+
+
+def map_view_for(pm, viewer, is_dm, members=()):
+    """The shared map as one person may see it."""
+    out = {k: v for k, v in pm.items() if k != "reveals"}
+    fog = map_fog(pm)
+    out["fog"] = fog
+    reveals = pm.get("reveals") or {}
+    if is_dm:
+        out["reveals"] = [pt for pts in reveals.values() for pt in pts]
+        return out
+    out["pins"] = [p for p in pm.get("pins", []) if p.get("revealed")]
+    if not fog["enabled"]:
+        out["reveals"] = []
+        return out
+    if fog["shared"]:
+        out["reveals"] = [pt for pts in reveals.values() for pt in pts]
+        return out
+    mine = list(reveals.get(viewer, [])) + list(reveals.get("dm", []))
+    out["reveals"] = mine
+    aspect, r = (pm.get("h") or 1) / (pm.get("w") or 1), fog["radius"]
+    seen = lambda t: any(((px - t["x"]) ** 2 + ((py - t["y"]) * aspect) ** 2) ** 0.5 < r for px, py in mine)
+    # only your own token, and the DM's other markers where you've already been
+    out["tokens"] = [t for t in pm.get("tokens", []) if t["id"] == viewer or (t["id"] not in members and seen(t))]
+    return out
+
+
+def merge_map_tokens(old, new, members):
+    """The DM's token list (who's on the map) with the positions players have moved theirs to kept."""
+    pos = {t["id"]: t for t in old}
+    out = []
+    for t in new:
+        prev = pos.get(t["id"])
+        out.append({**t, "x": prev["x"], "y": prev["y"]} if prev and t["id"] in members else t)
+    return out
+
+
 def mark_dirty():
     global CAMPAIGNS_DIRTY
     CAMPAIGNS_DIRTY = True
@@ -899,7 +971,8 @@ HUB_CURSOR_TTL = 6
 HUB_CURSORS = {}   # campaignId -> {networkId: {name, color, x, y, t, down}}
 HUB_PING_TTL = 4
 HUB_PINGS = {}     # campaignId -> [{id, x, y, color, name, t}] -- "look here" ripples, gone after a few seconds
-HUB_TYPES = ("note", "stroke", "text", "button", "mon", "move")   # mon / move: a Pokédex or Move Dex card dragged onto the board
+HUB_TYPES = ("note", "stroke", "text", "button", "mon", "move", "shape", "prop", "item", "trainer")   # mon / move: a Pokédex or Move Dex card; shape: a drawn rectangle, ellipse, line or arrow; prop: a picture from the prop library; item: a card for something from a bag; trainer: a player's character card
+HUB_SHAPES = ("rect", "ellipse", "line", "arrow")
 HUB_SOURCES = ("npc", "wild", "plan")
 
 
@@ -922,15 +995,57 @@ def clean_hub_item(raw, owner, is_dm):
             "x": _num(raw.get("x")), "y": _num(raw.get("y")), "color": _colour(raw.get("color"), "#f0b45a"), "updated": time.time()}
     if kind == "note":
         item.update({"text": _text(raw.get("text"), 2000), "w": _num(raw.get("w"), 120, 900) or 220, "h": _num(raw.get("h"), 80, 900) or 160})
+        if raw.get("dmOnly") is True:   # a note only the DM sees (never sent to players)
+            if not is_dm:
+                return None
+            item["dmOnly"] = True
     elif kind == "text":
         item.update({"text": _text(raw.get("text"), 400), "size": _num(raw.get("size"), 12, 120) or 28})
+    elif kind == "shape":
+        if raw.get("shape") not in HUB_SHAPES:
+            return None
+        # x, y is where the drag started and x2, y2 where it ended (lines and arrows keep their direction)
+        item.update({"shape": raw["shape"], "x2": _num(raw.get("x2")), "y2": _num(raw.get("y2")),
+                     "width": _num(raw.get("width"), 1, 40) or 4, "fill": raw.get("fill") is True})
+    elif kind == "prop":
+        item.update({"prop": _text(raw.get("prop"), 24), "size": _num(raw.get("size"), 24, 400) or 64})
+        if not item["prop"]:
+            return None
     elif kind in ("mon", "move"):
         item["name"] = _text(raw.get("name"), 40)
         if not item["name"]:
             return None
         if kind == "mon":
             item["dex"] = int(_num(raw.get("dex"), 0, 5000))
+            if raw.get("level") not in (None, ""):
+                item["level"] = int(_num(raw.get("level"), 1, 100) or 1)   # optional: the level asked for when it was dropped
+            # dragged in from a player's team: that Pokémon's own health, moves and held item
+            hp = raw.get("hp")
+            if isinstance(hp, list) and len(hp) == 2:
+                item["hp"] = [int(_num(hp[0], 0, 5000)), int(_num(hp[1], 0, 5000))]
+            moves = raw.get("moves")
+            if isinstance(moves, list):
+                item["moves"] = [_text(m, 40) for m in moves[:4] if _text(m, 40)]
+            for key, size in (("nickname", 40), ("held", 40), ("ability", 40), ("status", 20)):
+                if _text(raw.get(key), size):
+                    item[key] = _text(raw.get(key), size)
         item["open"] = raw.get("open") is True   # the card shows its details
+    elif kind == "item":
+        item["name"] = _text(raw.get("name"), 60)
+        if not item["name"]:
+            return None
+        item["open"] = raw.get("open") is True
+    elif kind == "trainer":
+        # a player's character card: a snapshot of their sheet, as label / value rows
+        item["name"] = _text(raw.get("name"), MAX_NAME) or "Trainer"
+        item["sprite"] = _text(raw.get("sprite"), 100)
+        rows = raw.get("fields") if isinstance(raw.get("fields"), list) else []
+        item["fields"] = [[_text(r[0], 30), _text(r[1], 200)] for r in rows[:20] if isinstance(r, list) and len(r) == 2 and _text(r[0], 30)]
+        item["backstory"] = _text(raw.get("backstory"), 1500)
+        party = raw.get("party") if isinstance(raw.get("party"), list) else []
+        item["party"] = [{"name": _text(m.get("name"), 40), "dex": int(_num(m.get("dex"), 0, 5000)), "level": int(_num(m.get("level"), 0, 100)) or None}
+                         for m in party[:6] if isinstance(m, dict) and _text(m.get("name"), 40)]
+        item["open"] = raw.get("open") is True
     elif kind == "stroke":
         pts = raw.get("pts") if isinstance(raw.get("pts"), list) else []
         item.update({"pts": [[_num(p[0]), _num(p[1])] for p in pts[:600] if isinstance(p, list) and len(p) == 2],
@@ -946,11 +1061,47 @@ def clean_hub_item(raw, owner, is_dm):
             "label": _text(raw.get("label"), 60) or "Encounter",
             "reveal": "sprite" if raw.get("reveal") == "sprite" else "hidden",
             "source": {"kind": src["kind"], "id": _text(src.get("id"), 80), "title": _text(src.get("title"), 120),
-                       "trainer": _text(src.get("trainer"), 60),
+                       "trainer": _text(src.get("trainer"), 60), "sprite": _text(src.get("sprite"), 100),   # a trainer portrait file
                        "mons": [{"name": _text(m.get("name"), 40), "level": int(_num(m.get("level"), 1, 100) or 1)}
                                 for m in mons[:6] if isinstance(m, dict) and _text(m.get("name"), 40)]},
         })
     return item
+
+
+def clean_draft(raw):
+    """A stroke someone is still drawing (sent with their cursor), or None."""
+    if not isinstance(raw, dict) or not isinstance(raw.get("pts"), list):
+        return None
+    pts = [[_num(p[0]), _num(p[1])] for p in raw["pts"][-400:] if isinstance(p, list) and len(p) == 2]
+    if len(pts) < 2:
+        return None
+    return {"pts": pts, "color": _colour(raw.get("color"), "#5aa8f0"), "width": _num(raw.get("width"), 1, 40) or 4}
+
+
+def hub_roster(state, meta, with_details):
+    """Everyone in the campaign, online or not: name, portrait and whether they're here. With details (the DM),
+    also each one's party, bag and money, from their live presence or, when they're away, their last saved copy."""
+    now = time.time()
+    ids = list(dict.fromkeys(list(meta.get("memberIds") or []) + list(state["trainers"].keys())))
+    out = []
+    for tid in ids:
+        live = state["trainers"].get(tid)
+        saved = (state["playerSaves"].get(tid) or {}).get("current") or {}
+        trainer = saved.get("trainer") if isinstance(saved.get("trainer"), dict) else {}
+        name = (live or {}).get("name") or trainer.get("name") or ""
+        if not name and not saved and not live:
+            continue
+        row = {"id": tid, "name": name or "Trainer", "sprite": (live or {}).get("sprite") or trainer.get("sprite") or "",
+               "online": bool(live and now - live.get("lastSeen", 0) < TRAINER_TIMEOUT),
+               "lastSeen": (live or {}).get("lastSeen") or 0}
+        if with_details:
+            team = (live or {}).get("team") or {}
+            row["party"] = team.get("party") if live and isinstance(team.get("party"), list) else saved.get("party") or []
+            row["bag"] = team.get("bag") if live and isinstance(team.get("bag"), dict) else saved.get("bag") or {}
+            cash = team.get("cash") if live and "cash" in team else trainer.get("cash")
+            row["cash"] = cash if isinstance(cash, (int, float)) else 0
+        out.append(row)
+    return out
 
 
 def hub_button_preview(state, item):
@@ -967,9 +1118,10 @@ def hub_button_preview(state, item):
     else:
         mons = src.get("mons") or []
         first, count = (mons[0] if mons else None), len(mons)
+    sprite = ((state["npcTrainers"].get(src.get("id")) or {}).get("sprite") if src.get("kind") == "npc" else None) or src.get("sprite") or ""
     if not first:
-        return {"level": None, "name": None, "count": count, "missing": src.get("kind") != "plan"}
-    return {"level": first.get("level"), "name": first.get("name") if item.get("reveal") == "sprite" else None, "count": count}
+        return {"level": None, "name": None, "count": count, "missing": src.get("kind") != "plan", "portrait": sprite}
+    return {"level": first.get("level"), "name": first.get("name") if item.get("reveal") == "sprite" else None, "count": count, "portrait": sprite}
 
 
 # Largest request body accepted (a full player save with a big PC box is well
@@ -1234,8 +1386,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             with CAMPAIGNS_LOCK:
                 if find_password_account(email):
                     return self._send_json({"error": "An account with that email already exists. Try signing in."}, 409)
+                # A device already used by another account (someone else's, or your own second one) still gets the
+                # new account: it just has its own fresh trainer id instead of taking the device's, which stays with
+                # the account it belongs to. The browser switches to the new id (keeping a named copy of its old save).
                 if account_owning_network_id(network_id):
-                    return self._send_json({"error": "This device's trainer is already linked to another account. Sign in to that one instead."}, 409)
+                    network_id = "trainer-" + secrets.token_hex(16)
                 acc = {
                     "id": secrets.token_hex(8), "email": email, "password": record, "providers": {},
                     "networkId": network_id, "linkedIds": [network_id], "createdAt": time.time(),
@@ -1810,6 +1965,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     out.append({"id": tid, "name": t["name"], "partyCount": len(t["team"].get("party", [])), "sprite": sprite, "lastSeen": t["lastSeen"]})
                 return self._send_json({"trainers": out})
 
+            if parts[1:] == ["roster"]:
+                # everyone in the campaign (for Send To and the DM's overview); parties, bags and money only for the DM
+                return self._send_json({"trainers": hub_roster(state, entry["meta"], self._dm_ok(qs.get("token", [None])[0], cid))})
+
             if len(parts) == 3 and parts[1] == "trainer":
                 t = state["trainers"].get(parts[2])
                 if not t:
@@ -1890,10 +2049,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 pm = state.get("partyMap")
                 if not pm:
                     return self._send_json({"map": None})
-                out = dict(pm)
-                if not self._dm_ok(qs.get("token", [None])[0], cid):
-                    out["pins"] = [p for p in pm.get("pins", []) if p.get("revealed")]
-                return self._send_json({"map": out})
+                viewer = qs.get("id", [None])[0]
+                viewer = viewer if viewer in (acc.get("linkedIds") or []) else None
+                return self._send_json({"map": map_view_for(pm, viewer, self._dm_ok(qs.get("token", [None])[0], cid), set(entry["meta"].get("memberIds") or []) | set(state["trainers"].keys()))})
 
             # ---- Shared static asset folders (not campaign-scoped) ----
             if parts[1:] == ["backgrounds"]:
@@ -2114,6 +2272,54 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 mark_dirty()
                 return self._send_json({"ok": True})
 
+            if parts[1:] == ["partymap", "move"]:
+                # a player moves their own token on the shared map (the DM's token moves anyone's); the mist clears there
+                pm = state.get("partyMap")
+                if not pm:
+                    return self._send_json({"error": "no shared map"}, 404)
+                is_dm = self._dm_ok(data.get("token"), cid)
+                nid, tid = data.get("id"), data.get("tokenId") or data.get("id")
+                if not is_dm and (nid not in mine or tid != nid):
+                    return self._send_json({"error": "you can only move yourself"}, 403)
+                x, y = _unit(data.get("x")), _unit(data.get("y"))
+                tokens = pm.setdefault("tokens", [])
+                tok = next((t for t in tokens if t["id"] == tid), None)
+                if not tok:
+                    if not is_dm and len(tokens) >= 40:
+                        return self._send_json({"error": "the map is full"}, 409)
+                    saved = ((state["playerSaves"].get(tid) or {}).get("current") or {}).get("trainer") or {}
+                    name = (state["trainers"].get(tid) or {}).get("name") or saved.get("name") or "Player"
+                    tok = {"id": tid, "name": _text(name, 40) or "Player", "x": x, "y": y, "color": _colour(data.get("color"), "#5aa8f0")}
+                    tokens.append(tok)
+                tok["x"], tok["y"] = x, y
+                if map_fog(pm)["enabled"] and tid in (entry["meta"].get("memberIds") or []) + list(state["trainers"].keys()):
+                    map_reveal(pm, tid, x, y)
+                pm["updated"] = time.time()
+                mark_dirty()
+                return self._send_json({"ok": True})
+
+            if parts[1:] == ["partymap", "fog"]:
+                # DM only: fog settings, brushing the mist away, or covering the map again
+                if not self._require_dm(data, cid):
+                    return self._send_json({"error": "DM only"}, 403)
+                pm = state.get("partyMap")
+                if not pm:
+                    return self._send_json({"error": "no shared map"}, 404)
+                pm["fog"] = clean_fog(data.get("fog"), map_fog(pm))
+                op = data.get("op")
+                if op == "reveal":
+                    for pt in (data.get("pts") if isinstance(data.get("pts"), list) else [])[:400]:
+                        if isinstance(pt, list) and len(pt) == 2:
+                            map_reveal(pm, "dm", _unit(pt[0]), _unit(pt[1]), spacing=0.25)
+                elif op == "reset":
+                    pm["reveals"] = {}
+                    for t in pm.get("tokens", []):   # players can still see where they're standing
+                        if t["id"] in (entry["meta"].get("memberIds") or []):
+                            map_reveal(pm, t["id"], t["x"], t["y"])
+                pm["updated"] = time.time()
+                mark_dirty()
+                return self._send_json({"ok": True, "fog": pm["fog"]})
+
             if parts[1:] in (["partymap"], ["partymap", "live"], ["partymap", "clear"]):
                 # DM only (the DM password token for this campaign). "live" updates just the pins and tokens, which is
                 # what a drag or a reveal sends; the image only travels when the map is published.
@@ -2128,7 +2334,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     if not pm:
                         return self._send_json({"error": "no shared map"}, 404)
                     pm["pins"] = clean_map_pins(data.get("pins"))
-                    pm["tokens"] = clean_map_tokens(data.get("tokens"))
+                    members = set(entry["meta"].get("memberIds") or [])
+                    before = {t["id"] for t in pm.get("tokens", [])}
+                    pm["tokens"] = merge_map_tokens(pm.get("tokens", []), clean_map_tokens(data.get("tokens")), members)
+                    if map_fog(pm)["enabled"]:   # someone newly placed sees where they are
+                        for t in pm["tokens"]:
+                            if t["id"] not in before and t["id"] in members:
+                                map_reveal(pm, t["id"], t["x"], t["y"])
                     pm["updated"] = time.time()
                     mark_dirty()
                     return self._send_json({"ok": True})
@@ -2153,10 +2365,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     except (TypeError, ValueError):
                         return 1
                 name = raw.get("name")
+                old = state.get("partyMap") or {}
+                same = file_id is not None and old.get("fileId") == file_id   # republishing the same map keeps the fog and where people are
+                members = set(entry["meta"].get("memberIds") or [])
                 state["partyMap"] = {
                     "name": name.strip()[:80] if isinstance(name, str) and name.strip() else "Map",
                     **({"fileId": file_id} if file_id is not None else {"image": image}), "w": dim(raw.get("w")), "h": dim(raw.get("h")),
-                    "pins": clean_map_pins(raw.get("pins")), "tokens": clean_map_tokens(raw.get("tokens")), "updated": time.time(),
+                    "pins": clean_map_pins(raw.get("pins")),
+                    "tokens": merge_map_tokens(old.get("tokens", []) if same else [], clean_map_tokens(raw.get("tokens")), members),
+                    "fog": clean_fog(raw.get("fog"), map_fog(old)), "reveals": old.get("reveals", {}) if same else {},
+                    "updated": time.time(),
                 }
                 mark_dirty()
                 return self._send_json({"ok": True})
@@ -2172,7 +2390,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 cur = data.get("cursor")
                 if isinstance(cur, dict):
                     cursors[nid] = {"name": _text(cur.get("name"), MAX_NAME) or "Player", "color": _colour(cur.get("color"), "#5aa8f0"),
-                                    "x": _num(cur.get("x")), "y": _num(cur.get("y")), "t": now, "down": cur.get("down") is True}
+                                    "x": _num(cur.get("x")), "y": _num(cur.get("y")), "t": now, "down": cur.get("down") is True,
+                                    "draft": clean_draft(cur.get("draft"))}
                 else:
                     cursors.pop(nid, None)
                 for k in [k for k, c in cursors.items() if now - c["t"] > HUB_CURSOR_TTL]:
@@ -2186,11 +2405,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                   "color": who.get("color", "#5aa8f0"), "name": who.get("name", "Player"), "t": now})
                 HUB_PINGS[cid] = pings
                 hub = state["hub"]
+                sees_dm_notes = self._dm_ok(data.get("token"), cid)
                 out = {"rev": hub["rev"], "activeButton": hub.get("activeButton"), "backdrop": hub.get("backdrop"),
-                       "cursors": [{"id": k, **{f: c[f] for f in ("name", "color", "x", "y", "down")}} for k, c in cursors.items() if k != nid],
+                       "cursors": [{"id": k, **{f: c.get(f) for f in ("name", "color", "x", "y", "down", "draft")}} for k, c in cursors.items() if k != nid],
                        "pings": [{f: pg.get(f) for f in ("id", "by", "x", "y", "item", "color", "name")} for pg in pings]}
                 if data.get("since") != hub["rev"]:
-                    out["items"] = [{**it, "preview": hub_button_preview(state, it)} if it["type"] == "button" else it for it in hub["items"]]
+                    out["items"] = [{**it, "preview": hub_button_preview(state, it)} if it["type"] == "button" else it
+                                    for it in hub["items"] if sees_dm_notes or not it.get("dmOnly")]
                 return self._send_json(out)
 
             if parts[1:] == ["hub", "op"]:
@@ -2286,10 +2507,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     return self._send_json({"error": "not your identity"}, 403)
                 if to_id not in (entry["meta"].get("memberIds") or []):
                     return self._send_json({"error": "recipient isn't in this campaign"}, 404)
-                if kind not in ("note", "pokemon", "cash") or not isinstance(payload, dict) or len(json.dumps(payload)) > 100_000:
+                if kind not in ("note", "pokemon", "cash", "item") or not isinstance(payload, dict) or len(json.dumps(payload)) > 100_000:
                     return self._send_json({"error": "bad message"}, 400)
                 if kind == "note":
                     payload = {"text": str(payload.get("text") or "")[:MAX_TEXT]}
+                elif kind == "item":
+                    payload = {"name": _text(payload.get("name"), 60), "count": int(_num(payload.get("count"), 1, 9999) or 1)}
+                    if not payload["name"]:
+                        return self._send_json({"error": "bad message"}, 400)
+                elif kind == "cash":
+                    payload = {"amount": int(_num(payload.get("amount"), 0, 10_000_000))}
                 from_name = data.get("fromName")
                 msg = {
                     "id": secrets.token_hex(8),
@@ -2309,6 +2536,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 table[tid] = [m for m in table.get(tid, []) if m["id"] not in ack_ids]
                 mark_dirty()
                 return self._send_json({"ok": True})
+
+            if parts[1:] == ["fullturn", "playeraction"]:
+                if data.get("networkId") not in mine and not self._dm_ok(data.get("token"), cid):
+                    return self._send_json({"error": "not your identity"}, 403)
+                result = self._handle_player_action(state, data)
+                mark_dirty()
+                return self._send_json(result)
 
             if parts[1:] == ["fullturn", "playermove"]:
                 # A player may only move as themselves; the DM's token also
@@ -2469,10 +2703,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # ---- Full Turn console roster (whole-blob save, like Music Board) ----
         if action == "fullTurnSave":
             existing = state.get("fullTurn") or {}
+            current_index, round_no = data.get("currentIndex") or 0, data.get("round") or 1
+            turn_id = data.get("turnId") if isinstance(data.get("turnId"), str) else None
+            same_turn = (current_index, round_no, turn_id) == (existing.get("currentIndex"), existing.get("round"), existing.get("turnId"))
             state["fullTurn"] = {
                 "combatants": data.get("combatants") or [],
-                "currentIndex": data.get("currentIndex") or 0,
-                "round": data.get("round") or 1,
+                "currentIndex": current_index,
+                "round": round_no,
+                "turnId": turn_id,   # the combatant whose turn it is (the DM's console decides the order)
+                "acted": existing.get("acted") if same_turn else None,   # a new turn clears the last choice
                 "background": data.get("background", existing.get("background", "")),
                 "spreadHitsAllies": data.get("spreadHitsAllies", existing.get("spreadHitsAllies", False)),
                 "phase": data.get("phase", existing.get("phase", "draft")),
@@ -2487,9 +2726,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         caller must already be a player/team combatant in the current
         roster, and the combatant list they submit back must have the
         exact same members (same ids) as what's already there. That lets
-        this change HP/status on existing combatants and advance the turn
-        counter, but never add, remove, or otherwise restructure the
-        roster the way a DM action can -- the damage number itself is
+        this change HP/status on existing combatants (the move's damage),
+        but never add, remove, or otherwise restructure the roster the way a
+        DM action can, and never move the turn on: the move is recorded as
+        this turn's choice and the DM starts the next turn -- the damage number itself is
         still computed on the trainer's own client (js/battleMath.js),
         same trust model the DM's own forceMove action already uses.
         """
@@ -2502,12 +2742,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if not mover:
             return {"error": "not a combatant"}
 
-        # Only on their own turn.
-        idx = ft.get("currentIndex", 0)
-        on_turn = existing[idx] if isinstance(idx, int) and 0 <= idx < len(existing) else None
-        if not on_turn or on_turn.get("sourceKind") not in ("player", "team") or on_turn.get("sourceId") != network_id:
-            return {"error": "not your turn"}
-        mover = on_turn
+        mover = self._player_on_turn(ft, network_id)
+        if isinstance(mover, dict) and mover.get("error"):
+            return mover
 
         submitted = data.get("combatants")
         if not isinstance(submitted, list) or {c.get("id") for c in submitted} != {c.get("id") for c in existing}:
@@ -2538,16 +2775,61 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if mon.get("status") != prev_mon.get("status"):
                 apply_status(state, kind, tid, mon_id, mon.get("status"))
 
+        lines = [_text(x, MAX_TEXT) for x in (data.get("logTexts") or []) if isinstance(x, str)][:6]
         state["fullTurn"] = {
+            **ft,
             "combatants": submitted,
-            "currentIndex": data.get("currentIndex", ft.get("currentIndex", 0)),
-            "round": data.get("round", ft.get("round", 1)),
-            "background": ft.get("background", ""),
-            "spreadHitsAllies": ft.get("spreadHitsAllies", False),
             "phase": "live",
+            "acted": {"combatantId": mover.get("id"), "kind": "move", "text": lines[0] if lines else "Used a move", "at": time.time()},
         }
-        for line in data.get("logTexts") or []:
+        for line in lines:
             log_battle(state, mover.get("sourceLabel") or "A trainer", line)
+        return {"ok": True}
+
+    def _player_on_turn(self, ft, network_id):
+        """Caller holds CAMPAIGNS_LOCK. The player's own combatant if it's their turn and they haven't chosen yet,
+        else {"error": ...}."""
+        if ft.get("phase") != "live":
+            return {"error": "not live"}
+        existing = ft.get("combatants") or []
+        if ft.get("turnId"):
+            on_turn = next((c for c in existing if c.get("id") == ft["turnId"]), None)
+        else:
+            idx = ft.get("currentIndex", 0)
+            on_turn = existing[idx] if isinstance(idx, int) and 0 <= idx < len(existing) else None
+        if not on_turn or on_turn.get("sourceKind") not in ("player", "team") or on_turn.get("sourceId") != network_id:
+            return {"error": "not your turn"}
+        if ft.get("acted"):
+            return {"error": "you've already chosen this turn; the DM starts the next one"}
+        return on_turn
+
+    def _handle_player_action(self, state, data):
+        """Runs under CAMPAIGNS_LOCK. Any choice other than a move (an item, running, switching Pokémon, or something
+        else): recorded as this turn's choice, told to the DM and the battle log, and locks the player until the DM
+        starts the next turn. Switching swaps in a Pokémon from the player's own saved party."""
+        ft = state.get("fullTurn") or {}
+        network_id = data.get("networkId")
+        mover = self._player_on_turn(ft, network_id)
+        if isinstance(mover, dict) and mover.get("error"):
+            return mover
+        kind = data.get("kind")
+        if kind not in ("item", "run", "switch", "other"):
+            return {"error": "bad action"}
+        text = _text(data.get("text"), MAX_TEXT) or {"item": "Used an item", "run": "Tried to run away", "switch": "Switched Pokémon", "other": "Did something else"}[kind]
+        combatants = ft.get("combatants") or []
+        if kind == "switch":
+            party = ((state["playerSaves"].get(network_id) or {}).get("current") or {}).get("party") or []
+            pick = next((m for m in party if isinstance(m, dict) and m.get("id") == data.get("monId") and m.get("name")), None)
+            if not pick:
+                return {"error": "that Pokémon isn't in your party"}
+            if pick.get("currentHp") == 0:
+                return {"error": "that Pokémon has fainted"}
+            combatants = [{**c, "mon": copy.deepcopy(pick)} if c.get("id") == mover.get("id") else c for c in combatants]
+        name = mover.get("sourceLabel") or "A trainer"
+        state["fullTurn"] = {**ft, "combatants": combatants,
+                             "acted": {"combatantId": mover.get("id"), "kind": kind, "text": text, "at": time.time()}}
+        log_battle(state, name, text)
+        state["dmInbox"].append({"id": secrets.token_hex(8), "fromName": name, "text": f"Battle: {text}", "ts": time.time()})
         return {"ok": True}
 
 

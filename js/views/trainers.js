@@ -1,6 +1,6 @@
 import { monWithLevel } from "../battleLabels.js";
 import { el, field, typePill } from "../components.js";
-import { loadSave, writeSave, newMon } from "../storage.js";
+import { loadSave, writeSave, newMon, addBagItem } from "../storage.js";
 import { pingTrainer, listTrainers, getTrainerTeam, sendToTrainer, getInbox, ackInbox, sendNoteToDm } from "../network.js";
 import { registerInterval } from "../intervals.js";
 import { getHiddenTrainerIds, hideTrainerId, unhideTrainerId } from "../hiddenTrainers.js";
@@ -91,6 +91,7 @@ export function renderTrainersOnline(container, state) {
     messages.forEach((m) => {
       const desc = m.type === "pokemon" ? `a Pokémon: ${m.payload?.nickname || m.payload?.name || "?"}`
         : m.type === "cash" ? `£${m.payload?.amount ?? 0} cash`
+        : m.type === "item" ? `${m.payload?.count > 1 ? `${m.payload.count}× ` : ""}${m.payload?.name || "an item"}`
         : `a note: "${m.payload?.text || ""}"`;
       const acceptBtn = el("button", { class: "btn" }, m.type === "note" ? "OK" : "Accept");
       acceptBtn.addEventListener("click", async () => {
@@ -99,6 +100,8 @@ export function renderTrainersOnline(container, state) {
           if (save.party.length < 6) save.party.push(mon); else save.pc.push(mon);
         } else if (m.type === "cash") {
           save.trainer.cash = (Number(save.trainer.cash) || 0) + (Number(m.payload?.amount) || 0);
+        } else if (m.type === "item" && m.payload?.name) {
+          addBagItem(save, m.payload.name, Math.max(1, Number(m.payload.count) || 1));
         }
         writeSave(save);
         await ackInbox(myId, [m.id]);

@@ -60,7 +60,7 @@ export function attackerDamageModifiers(abilityName, move, { isSameType, attacke
 }
 
 // Needs the already-computed type effectiveness, so it's applied by the
-// caller once `eff` is known (see damagecalc.js).
+// caller once `eff` is known (see battleMath.js).
 export function tintedLensModifier(abilityName, eff) {
   if (abilityName === "Tinted Lens" && eff > 0 && eff < 1) {
     return { label: "Tinted Lens (not very effective ×2)", mult: 2 };

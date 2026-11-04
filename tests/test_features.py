@@ -280,7 +280,7 @@ class Hub(Base):
         self.assertEqual(self.op(self.member, "id-member", op="put", item=button)[0], 400)
         self.assertEqual(self.op(self.owner, "id-owner", op="put", item=button, token=self.dm)[0], 200)
         items = self.sync(self.member, "id-member", since=-1)[1]["items"]
-        self.assertEqual(items[0]["preview"], {"level": 14, "name": None, "count": 2}, "hidden: the level shows, the Pokémon doesn't")
+        self.assertEqual(items[0]["preview"], {"level": 14, "name": None, "count": 2, "portrait": ""}, "hidden: the level shows, the Pokémon doesn't")
         bid = items[0]["id"]
         self.op(self.owner, "id-owner", op="put", item={**button, "id": bid, "reveal": "sprite"}, token=self.dm)
         out = self.sync(self.member, "id-member", since=-1)[1]
@@ -314,6 +314,15 @@ class Hub(Base):
         self.sync(self.member, "id-member", cursor={"x": 0, "y": 0, "name": "Mia", "color": "#ff0000"}, ping={"x": 3, "y": 4, "item": "c1"})
         self.assertEqual(self.sync(self.owner, "id-owner")[1]["pings"][0]["item"], "c1")
 
+    def test_shapes_and_props(self):
+        ok = self.op(self.member, "id-member", op="put", item={"type": "shape", "id": "s1", "shape": "arrow", "x": 0, "y": 0, "x2": 120, "y2": -40, "color": "#ff0000", "width": 6})
+        self.assertEqual(ok[0], 200)
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={"type": "shape", "id": "s2", "shape": "star"})[0], 400)
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={"type": "prop", "id": "p1", "prop": "tree", "x": 5, "y": 5, "size": 90})[0], 200)
+        items = {i["id"]: i for i in self.sync(self.owner, "id-owner", since=-1)[1]["items"]}
+        self.assertEqual((items["s1"]["shape"], items["s1"]["x2"], items["s1"]["y2"]), ("arrow", 120, -40))
+        self.assertEqual((items["p1"]["prop"], items["p1"]["size"]), ("tree", 90))
+
     def test_pings_reach_everyone_and_fade(self):
         self.sync(self.member, "id-member", cursor={"x": 1, "y": 1, "name": "Mia", "color": "#ff0000"}, ping={"x": 40, "y": -20})
         out = self.sync(self.owner, "id-owner")[1]
@@ -331,3 +340,185 @@ class Hub(Base):
         out = self.sync(self.member, "id-member", since=rev)[1]
         self.assertEqual(out["items"], [])
         self.assertNotIn("items", self.sync(self.member, "id-member", since=out["rev"])[1], "an unchanged board isn't resent")
+
+
+    def test_dm_only_notes_never_reach_players(self):
+        note = {"type": "note", "id": "secret", "x": 0, "y": 0, "text": "The gym leader is a fraud", "dmOnly": True}
+        self.assertEqual(self.op(self.member, "id-member", op="put", item=note)[0], 400, "players can't make DM notes")
+        self.assertEqual(self.op(self.owner, "id-owner", op="put", item=note, token=self.dm)[0], 200)
+        self.assertNotIn("fraud", json.dumps(self.sync(self.member, "id-member", since=-1)[1]))
+        self.assertNotIn("fraud", json.dumps(self.sync(self.owner, "id-owner", since=-1)[1]), "not even the DM's own id without the DM token")
+        items = call(self.base, "POST", "/api/hub/sync", {"campaignId": self.cid, "id": "id-owner", "since": -1, "token": self.dm}, token=self.owner)[1]["items"]
+        self.assertTrue(next(i for i in items if i["id"] == "secret")["dmOnly"])
+        self.assertEqual(self.op(self.member, "id-member", op="delete", itemId="secret")[0], 403)
+
+    def test_team_item_and_trainer_cards(self):
+        mon = {"type": "mon", "id": "t1", "name": "Pikachu", "dex": 25, "level": 12, "hp": [20, 31], "moves": ["Thunder Shock", "Growl", "", "x" * 80], "nickname": "Sparky", "held": "Oran Berry"}
+        self.assertEqual(self.op(self.member, "id-member", op="put", item=mon)[0], 200)
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={"type": "item", "id": "i1", "name": "Potion"})[0], 200)
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={"type": "item", "id": "i2", "name": ""})[0], 400)
+        card = {"type": "trainer", "id": "tr1", "name": "Mia", "sprite": "lass.png", "fields": [["Money", "£500"], ["Badges", "2"], ["bad"]]}
+        self.assertEqual(self.op(self.member, "id-member", op="put", item=card)[0], 200)
+        items = {i["id"]: i for i in self.sync(self.owner, "id-owner", since=-1)[1]["items"]}
+        self.assertEqual((items["t1"]["hp"], items["t1"]["nickname"], items["t1"]["held"]), ([20, 31], "Sparky", "Oran Berry"))
+        self.assertEqual(items["t1"]["moves"], ["Thunder Shock", "Growl", "x" * 40], "blank moves dropped, long ones cut")
+        self.assertEqual(items["i1"]["name"], "Potion")
+        self.assertEqual(items["tr1"]["fields"], [["Money", "£500"], ["Badges", "2"]])
+
+    def test_a_stroke_being_drawn_travels_with_the_cursor(self):
+        self.sync(self.member, "id-member", cursor={"x": 1, "y": 1, "name": "Mia", "color": "#ff0000", "draft": {"pts": [[0, 0], [5, 5], [9, 2]], "color": "#00ff00", "width": 6}})
+        cur = self.sync(self.owner, "id-owner")[1]["cursors"][0]
+        self.assertEqual(cur["draft"], {"pts": [[0, 0], [5, 5], [9, 2]], "color": "#00ff00", "width": 6})
+        self.sync(self.member, "id-member", cursor={"x": 1, "y": 1, "name": "Mia", "color": "#ff0000"})
+        self.assertIsNone(self.sync(self.owner, "id-owner")[1]["cursors"][0]["draft"])
+
+
+class Roster(Base):
+    def setUp(self):
+        super().setUp()
+        self.owner, self.member = self.register("o@example.com", "id-owner"), self.register("m@example.com", "id-member")
+        self.cid, self.entry = self.make_campaign("id-owner", "Table")
+        self.entry["meta"]["memberIds"].append("id-member")
+        self.dm = call(self.base, "POST", "/api/dm/login", {"campaignId": self.cid, "password": self.entry["meta"]["dmPassword"]}, token=self.owner)[1]["token"]
+        # Mia has a saved game but isn't online
+        self.entry["state"]["playerSaves"]["id-member"] = {"current": {"trainer": {"name": "Mia", "cash": 750, "sprite": "lass.png"}, "party": [{"name": "Eevee", "level": 9}], "bag": {"Potion": 3}}, "named": {}}
+
+    def test_offline_players_are_listed_and_only_the_dm_sees_their_things(self):
+        rows = call(self.base, "GET", f"/api/roster?campaignId={self.cid}", token=self.owner)[1]["trainers"]
+        mia = next(r for r in rows if r["id"] == "id-member")
+        self.assertEqual((mia["name"], mia["online"], mia["sprite"]), ("Mia", False, "lass.png"))
+        self.assertNotIn("bag", mia, "players only see names")
+        rows = call(self.base, "GET", f"/api/roster?campaignId={self.cid}&token={self.dm}", token=self.owner)[1]["trainers"]
+        mia = next(r for r in rows if r["id"] == "id-member")
+        self.assertEqual((mia["cash"], mia["bag"], mia["party"][0]["name"]), (750, {"Potion": 3}, "Eevee"))
+
+    def test_items_and_money_can_be_sent(self):
+        send = {"campaignId": self.cid, "fromId": "id-member", "toId": "id-owner", "fromName": "Mia"}
+        self.assertEqual(call(self.base, "POST", "/api/send", {**send, "type": "item", "payload": {"name": "Potion", "count": 2}}, token=self.member)[0], 200)
+        self.assertEqual(call(self.base, "POST", "/api/send", {**send, "type": "item", "payload": {"name": ""}}, token=self.member)[0], 400)
+        self.assertEqual(call(self.base, "POST", "/api/send", {**send, "type": "cash", "payload": {"amount": "120"}}, token=self.member)[0], 200)
+        inbox = call(self.base, "GET", f"/api/inbox/id-owner?campaignId={self.cid}", token=self.owner)[1]
+        msgs = inbox.get("messages") or inbox.get("entries") or []
+        self.assertEqual([(m["type"], m["payload"]) for m in msgs], [("item", {"name": "Potion", "count": 2}), ("cash", {"amount": 120})])
+
+
+class MapFog(Base):
+    def setUp(self):
+        super().setUp()
+        self.owner, self.mia, self.leo = self.register("o@example.com", "id-owner"), self.register("m@example.com", "id-mia"), self.register("l@example.com", "id-leo")
+        self.cid, self.entry = self.make_campaign("id-owner", "Table")
+        self.entry["meta"]["memberIds"] += ["id-mia", "id-leo"]
+        self.dm = call(self.base, "POST", "/api/dm/login", {"campaignId": self.cid, "password": self.entry["meta"]["dmPassword"]}, token=self.owner)[1]["token"]
+        fid = upload(self.base, self.owner, PNG, kind="map", campaignId=self.cid, name="world.png")[1]["file"]["id"]
+        self.map = {"name": "World", "fileId": fid, "w": 1000, "h": 500, "pins": [{"id": "p1", "x": .5, "y": .5, "label": "Town", "revealed": True}],
+                    "tokens": [{"id": "id-mia", "name": "Mia", "x": .1, "y": .1}, {"id": "id-leo", "name": "Leo", "x": .9, "y": .9}, {"id": "wolf", "name": "Wolf", "x": .12, "y": .1}]}
+        self.post("/api/partymap", {"token": self.dm, "map": self.map}, self.owner)
+
+    def post(self, path, body, tok):
+        return call(self.base, "POST", path, {"campaignId": self.cid, **body}, token=tok)
+
+    def view(self, tok, nid):
+        return call(self.base, "GET", f"/api/partymap?campaignId={self.cid}&id={nid}", token=tok)[1]["map"]
+
+    def test_players_move_only_themselves_and_the_mist_clears_where_they_go(self):
+        self.assertEqual(self.post("/api/partymap/fog", {"fog": {"enabled": True, "shared": False}}, self.mia)[0], 403)
+        self.assertEqual(self.post("/api/partymap/fog", {"token": self.dm, "fog": {"enabled": True, "shared": False, "radius": .1}}, self.owner)[0], 200)
+        self.assertEqual(self.post("/api/partymap/move", {"id": "id-mia", "tokenId": "id-leo", "x": .5, "y": .5}, self.mia)[0], 403, "not someone else's token")
+        self.assertEqual(self.post("/api/partymap/move", {"id": "id-mia", "x": .3, "y": .3}, self.mia)[0], 200)
+        self.post("/api/partymap/move", {"id": "id-leo", "x": .8, "y": .8}, self.leo)
+        mia = self.view(self.mia, "id-mia")
+        self.assertEqual(mia["reveals"], [[.3, .3]], "private fog: only what Mia uncovered")
+        self.assertEqual([t["id"] for t in mia["tokens"]], ["id-mia"], "and only her own token (the wolf isn't where she's been)")
+        self.assertEqual(self.view(self.leo, "id-mia")["reveals"], [], "you can't read someone else's fog by claiming their id")
+        self.post("/api/partymap/fog", {"token": self.dm, "fog": {"shared": True}}, self.owner)
+        shared = self.view(self.mia, "id-mia")
+        self.assertEqual(sorted(shared["reveals"]), [[.3, .3], [.8, .8]])
+        self.assertEqual({t["id"] for t in shared["tokens"]}, {"id-mia", "id-leo", "wolf"})
+
+    def test_the_dm_brushes_and_resets_the_fog_and_republishing_keeps_positions(self):
+        self.post("/api/partymap/fog", {"token": self.dm, "fog": {"enabled": True}, "op": "reveal", "pts": [[.5, .5], [.51, .5]]}, self.owner)
+        self.assertEqual(self.view(self.mia, "id-mia")["reveals"], [[.5, .5]], "a spot already clear isn't stored twice")
+        self.post("/api/partymap/move", {"id": "id-mia", "x": .2, "y": .2}, self.mia)
+        self.post("/api/partymap", {"token": self.dm, "map": self.map}, self.owner)   # the DM's copy still has Mia at .1
+        out = self.view(self.mia, "id-mia")
+        self.assertEqual(next(t for t in out["tokens"] if t["id"] == "id-mia")["x"], .2, "the player's own move isn't undone")
+        self.assertTrue(out["fog"]["enabled"])
+        self.post("/api/partymap/fog", {"token": self.dm, "op": "reset"}, self.owner)
+        self.assertNotIn([.5, .5], self.view(self.mia, "id-mia")["reveals"], "reset covers the DM's brushing again")
+
+
+class BattleTurns(Base):
+    """A player's choice (a move, an item, running, switching or something else) locks their turn; only the DM moves
+    the turn on. The DM's console names whose turn it is, so the speed-sorted order can't disagree with the server."""
+
+    def setUp(self):
+        super().setUp()
+        self.owner, self.member = self.register("o@example.com", "id-owner"), self.register("m@example.com", "id-member")
+        self.cid, self.entry = self.make_campaign("id-owner", "Table")
+        self.entry["meta"]["memberIds"].append("id-member")
+        self.dm = call(self.base, "POST", "/api/dm/login", {"campaignId": self.cid, "password": self.entry["meta"]["dmPassword"]}, token=self.owner)[1]["token"]
+        self.entry["state"]["playerSaves"]["id-member"] = {"current": {"networkId": "id-member", "party": [
+            {"id": "p1", "name": "Pikachu", "level": 10, "currentHp": 30}, {"id": "p2", "name": "Squirtle", "level": 9, "currentHp": 25}]}, "named": {}}
+        self.combatants = [
+            {"id": "c-wild", "sourceKind": "wild", "sourceId": "w1", "side": "B", "mon": {"id": "w1", "name": "Rattata", "currentHp": 20}},
+            {"id": "c-mia", "sourceKind": "player", "sourceId": "id-member", "sourceLabel": "Mia", "side": "A", "mon": {"id": "p1", "name": "Pikachu", "currentHp": 30}},
+        ]
+        self.entry["state"]["wildPokemon"]["w1"] = {"id": "w1", "name": "Rattata", "currentHp": 20}
+        self.save_turn(turn_id="c-mia", index=0)
+
+    def save_turn(self, turn_id, index, rnd=1, combatants=None):
+        return call(self.base, "POST", "/api/dm/action", {"campaignId": self.cid, "token": self.dm, "action": "fullTurnSave",
+                    "combatants": combatants or self.combatants, "currentIndex": index, "round": rnd, "turnId": turn_id, "phase": "live"}, token=self.owner)
+
+    def ft(self):
+        return call(self.base, "GET", f"/api/fullturn?campaignId={self.cid}", token=self.member)[1]
+
+    def move(self, hp):
+        hit = [{**c, "mon": {**c["mon"], "currentHp": hp}} if c["id"] == "c-wild" else c for c in self.ft()["combatants"]]
+        return call(self.base, "POST", "/api/fullturn/playermove", {"campaignId": self.cid, "networkId": "id-member", "combatants": hit, "logTexts": ["Pikachu used Thunder Shock for 8 damage!"]}, token=self.member)[1]
+
+    def act(self, kind, **extra):
+        return call(self.base, "POST", "/api/fullturn/playeraction", {"campaignId": self.cid, "networkId": "id-member", "kind": kind, **extra}, token=self.member)[1]
+
+    def test_a_move_applies_its_damage_then_locks_the_turn_until_the_dm_moves_on(self):
+        # the server follows the DM's turnId, even though the player isn't first in the stored list
+        self.assertEqual(self.move(12), {"ok": True})
+        ft = self.ft()
+        self.assertEqual(next(c for c in ft["combatants"] if c["id"] == "c-wild")["mon"]["currentHp"], 12)
+        self.assertEqual(self.entry["state"]["wildPokemon"]["w1"]["currentHp"], 12, "damage reaches the Wild Library too")
+        self.assertEqual((ft["currentIndex"], ft["turnId"]), (0, "c-mia"), "a move no longer moves the turn on")
+        self.assertEqual(ft["acted"]["kind"], "move")
+        self.assertIn("already chosen", self.move(5)["error"])
+        self.assertIn("already chosen", self.act("run")["error"])
+        # the DM editing the same turn keeps the choice; the next turn clears it
+        self.save_turn(turn_id="c-mia", index=0)
+        self.assertIsNotNone(self.ft()["acted"])
+        self.save_turn(turn_id="c-wild", index=1)
+        self.assertIsNone(self.ft()["acted"])
+        self.assertIn("not your turn", self.act("run")["error"])
+
+    def test_items_running_switching_and_other_choices(self):
+        self.assertEqual(self.act("switch", monId="p2", text="Mia sends out Squirtle!"), {"ok": True})
+        mine = next(c for c in self.ft()["combatants"] if c["id"] == "c-mia")
+        self.assertEqual(mine["mon"]["name"], "Squirtle", "switching swaps in a Pokémon from the player's own party")
+        self.assertIn("Battle: Mia sends out Squirtle!", [m["text"] for m in self.entry["state"]["dmInbox"]])
+        self.save_turn(turn_id="c-mia", index=0, rnd=2)
+        self.assertIn("isn't in your party", self.act("switch", monId="not-mine")["error"])
+        self.assertEqual(self.act("other", text="Mia climbs a tree")["ok"], True)
+        self.assertEqual(self.ft()["acted"]["text"], "Mia climbs a tree")
+        self.save_turn(turn_id="c-mia", index=0, rnd=3)
+        self.assertEqual(self.act("item", text="Mia uses a Potion")["ok"], True)
+        self.save_turn(turn_id="c-mia", index=0, rnd=4)
+        self.assertEqual(self.act("explode").get("error"), "bad action")
+
+
+class SecondAccountOnOneDevice(Base):
+    def test_a_device_already_linked_to_an_account_can_still_make_another(self):
+        self.register("first@example.com", "id-device")
+        status, out = call(self.base, "POST", "/api/auth/register", {"email": "second@example.com", "password": "password-123", "networkId": "id-device", "deviceKey": DEV_A})
+        self.assertEqual(status, 200, out)
+        self.assertNotEqual(out["account"]["networkId"], "id-device", "the new account gets its own trainer id")
+        first = next(a for a in server.ACCOUNTS.values() if a["email"] == "first@example.com")
+        self.assertIn("id-device", first["linkedIds"], "the device's id stays with the account it belongs to")
+        # and signing back in to the first account on that device still works
+        self.assertIn("token", self.login("first@example.com", "id-device", DEV_A)[1])

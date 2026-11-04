@@ -84,6 +84,12 @@ function describeMon(state, p, level, rng) {
   const ability = pick([p.ability1, p.ability2, p.ability1].filter(Boolean), rng);
   return { name: p.name, dex: p.dex, level, types: [p.type1, p.type2].filter(Boolean), ability, moves: learnedMoves(state, p, level, rng), catchRate: p.catchRate };
 }
+// One Pokémon of a given species at a given level, with moves it would know by then (the Whiteboard's Dex drop).
+export function generateMon(state, name, level, rng = Math.random) {
+  const p = state?.pokemonByName?.get(name);
+  return p ? describeMon(state, p, Math.max(1, Math.min(100, Math.round(level) || 1)), rng) : null;
+}
+
 const monLine = (m) => `${m.name} (Lv ${m.level}, ${m.types.join("/")})${m.moves.length ? ` — ${m.moves.join(", ")}` : ""}`;
 
 // ---------------------------------------------------------------- generators
