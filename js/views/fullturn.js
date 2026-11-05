@@ -268,8 +268,13 @@ export function renderFullTurn(container, state, token) {
     const choice = up && (up.sourceKind === "player" || up.sourceKind === "team") && phase === "live" && !mineToPlay
       ? (theirs ? el("span", { class: "bc-choice done" }, [el("b", {}, "Their choice: "), theirs.text || theirs.kind, rollBtn].filter(Boolean)) : el("span", { class: "bc-choice" }, "Waiting for them to choose…"))
       : null;
-    const nextBtn = order.length ? el("button", { type: "button", class: "btn bc-next" }, "Next Turn ▶") : null;
+    // A player on turn who hasn't chosen yet: Next Turn is greyed out until they do (it can still skip them, after a
+    // confirm, so someone who has gone quiet can't hold the battle up).
+    const waitingFor = up && (up.sourceKind === "player" || up.sourceKind === "team") && phase === "live" && !mineToPlay && !theirs ? up : null;
+    const nextBtn = order.length ? el("button", { type: "button", class: `btn bc-next${waitingFor ? " waiting" : ""}`, "aria-disabled": waitingFor ? "true" : null,
+      title: waitingFor ? `Waiting for ${labelFor(waitingFor)} to choose (click to skip their turn)` : "Start the next turn" }, "Next Turn ▶") : null;
     nextBtn?.addEventListener("click", () => {
+      if (waitingFor && !confirm(`${labelFor(waitingFor)} hasn't chosen yet. Skip their turn?`)) return;
       combatants.forEach((c) => { delete c.cameInFor; });   // a switch only matters for the turn it happened in
       let steps = 0;
       do {

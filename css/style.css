@@ -1335,3 +1335,7 @@ a, button, input, select, textarea, label, .nav-item, .pill-btn { touch-action: 
 .bc-act .grid-2 .grid-2 { display: flex; flex-wrap: wrap; gap: calc(6px * var(--s)); }
 .bc-act .btn { padding: calc(6px * var(--s)) calc(12px * var(--s)); min-height: 0; font-size: max(12px, calc(14px * var(--s))); line-height: 1.25; border-radius: 10px; white-space: nowrap; }
 .bc-act select { padding-block: calc(6px * var(--s)); }
+
+/* Next Turn while the player on turn is still choosing: greyed out (it can still skip them after a confirm) */
+.bc-next.waiting, :root[data-theme] .bc-next.waiting { opacity: .4; filter: grayscale(1); cursor: not-allowed; box-shadow: none; }
+.bc-next.waiting:active { transform: none; }

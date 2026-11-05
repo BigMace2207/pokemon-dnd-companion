@@ -544,7 +544,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     flyout = id;
     drawRail();
     if (!id) { flyEl.hidden = true; if (was) hubSound("close"); return; }
-    if (was !== id) { hubSound("open"); play(flyEl, [{ transform: "translateX(-10px)", opacity: 0 }, { transform: "translateX(0)", opacity: 1 }], 200, "cubic-bezier(.2,.8,.2,1)"); }
+    if (was !== id) hubSound("open");   // the panel's own CSS pop-up animates it (a transform here would undo its centring)
     flyEl.hidden = false; bgPanel.hidden = true;
     if (id === "dungeon") {
       const rooms = numInput(9, () => {}, { min: 3, max: 24, ariaLabel: "Rooms in a new dungeon" });

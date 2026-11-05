@@ -304,3 +304,10 @@ html.planner-full #lavaFx, html.planner-full .lava-tower-wrap, html.planner-full
 .pl-node .pl-level-input::-webkit-inner-spin-button, .pl-node .pl-level-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .pl-level-step { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--text) 16%, var(--panel)); background: var(--panel-alt, rgba(255, 255, 255, .06)); color: var(--text); font-size: 14px; line-height: 1; cursor: pointer; }
 .pl-level-step:active { transform: scale(.92); }
+
+/* The cosmic theme fills every textarea with near-black (cosmic.css), which beat the note's own "transparent": a sticky's
+   dark ink then sat on black. Writing areas on cards stay see-through, so a sticky reads dark ink on its own paper. */
+:root[data-theme] .pl-node .pl-node-text { background: transparent; border: 0; border-radius: 0; box-shadow: none; }
+:root[data-theme] .pl-node.type-text .pl-node-text { color: #1f1806; font-weight: 500; }
+:root[data-theme] .pl-node.type-text .pl-node-text::placeholder { color: rgba(31, 24, 6, .55); }
+:root[data-theme] .pl-node .pl-node-text.room-note { border: 2px dashed var(--border); border-radius: 6px; }
