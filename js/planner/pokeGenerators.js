@@ -8,6 +8,45 @@ import { genName } from "../systems/dnd5e/engine/generators.js";
 const pick = (arr, rng) => arr[Math.floor(rng() * arr.length)];
 const between = (lo, hi, rng) => lo + Math.floor(rng() * (hi - lo + 1));
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+const clampLevel = (n) => Math.max(1, Math.min(100, Math.round(n)));
+
+// ---- encounter levels from the party (used by the Whiteboard through js/planner/partyLevel.js)
+const avg = (xs) => xs.reduce((t, x) => t + x, 0) / xs.length;
+// the average level of one party (only real Pokémon with a level count)
+export function partyAverage(party) {
+  const lv = (Array.isArray(party) ? party : []).filter((m) => m && m.name).map((m) => Number(m.level)).filter((n) => n > 0);
+  return lv.length ? avg(lv) : null;
+}
+
+/**
+ * The level to spawn at, from each player's average party level. players: [number] (players with no Pokémon left
+ * out). One player: their level; each extra player adds 1.5 (rounded), up to +8. Nothing known: level 10.
+ * Returns { base, players, bonus, level }.
+ */
+export function encounterLevel(perPlayer) {
+  const lv = (perPlayer || []).filter((n) => Number.isFinite(n) && n > 0);
+  if (!lv.length) return { base: null, players: 0, bonus: 0, level: 10 };
+  const base = avg(lv);
+  const bonus = Math.min(8, Math.round((lv.length - 1) * 1.5));
+  return { base: Math.round(base * 10) / 10, players: lv.length, bonus, level: clampLevel(base + bonus) };
+}
+
+/**
+ * `count` levels spread around `level`: each within 2 of it, averaging out at about `level`, the last one (the ace)
+ * the highest. e.g. 15 for two -> [14, 16]; for three -> [13, 15, 16].
+ */
+export function spreadLevels(level, count, rng = Math.random) {
+  if (count <= 0) return [];
+  if (count === 1) return [clampLevel(level)];
+  let offs = Array.from({ length: count }, () => Math.floor(rng() * 5) - 2);
+  const shift = Math.round(offs.reduce((t, x) => t + x, 0) / count);   // pull the average back onto the level
+  offs = offs.map((o) => Math.max(-2, Math.min(2, o - shift)));
+  if (offs.every((o) => o === offs[0])) offs[0] -= 1, offs[count - 1] += 1;   // never all the same: a little variety
+  const ace = offs.indexOf(Math.max(...offs));
+  [offs[ace], offs[count - 1]] = [offs[count - 1], offs[ace]];
+  return offs.map((o) => clampLevel(level + o));
+}
+
 
 export const toText = (r) => [r.title, ...r.lines.map((l) => (l.startsWith("#") || l === "" ? l.replace(/^#\s?/, "") : `- ${l}`))].join("\n");
 
@@ -82,7 +121,8 @@ export function learnedMoves(state, p, level, rng) {
 
 function describeMon(state, p, level, rng) {
   const ability = pick([p.ability1, p.ability2, p.ability1].filter(Boolean), rng);
-  return { name: p.name, dex: p.dex, level, types: [p.type1, p.type2].filter(Boolean), ability, moves: learnedMoves(state, p, level, rng), catchRate: p.catchRate };
+  // auto: generated here, so a new level may also give it new moves (js/planner/partyLevel.js relevelTeam)
+  return { name: p.name, dex: p.dex, level, types: [p.type1, p.type2].filter(Boolean), ability, moves: learnedMoves(state, p, level, rng), catchRate: p.catchRate, auto: true };
 }
 // One Pokémon of a given species at a given level, with moves it would know by then (the Whiteboard's Dex drop).
 export function generateMon(state, name, level, rng = Math.random) {
@@ -98,7 +138,8 @@ export function wildEncounter(state, rng = Math.random, { env = "grassland", lev
   const pool = candidates(state, { env, level, allowRare });
   if (!pool.length) return { title: "Nothing lives here", lines: ["No species fit that level and place. Try a higher level or another environment."], mons: [] };
   const n = count || between(1, level < 15 ? 3 : 4, rng);
-  const mons = Array.from({ length: n }, () => describeMon(state, weighted(pool, rng), Math.max(1, level + between(-2, 2, rng)), rng));
+  const levels = spreadLevels(level, n, rng);
+  const mons = levels.map((lv) => describeMon(state, weighted(pool, rng), lv, rng));
   const lines = mons.map((m) => `${monLine(m)} — ${rarityOf(m.catchRate).toLowerCase()} to find, catch rate ${m.catchRate}`);
   lines.push(`Behaviour: ${pick(["curious, keeps its distance", "territorial, attacks first", "scared, will flee at half HP", "protecting a nest or egg", "hunting something else and ignores you", "guarding a berry bush", "part of a bigger group nearby", "injured and aggressive"], rng)}`);
   return { title: `Wild encounter — ${ENVIRONMENTS[env]?.label || env}, level ~${level}`, lines, mons };
@@ -122,16 +163,18 @@ const TRAINER_CLASSES = [
 export function trainerTeam(state, rng, level, size, types) {
   const pool = candidates(state, { level, types: types && types.length ? types : Object.values(ENVIRONMENTS).flatMap((e) => e.types), allowRare: level > 30 });
   if (!pool.length) return [];
-  const team = [];
+  const picks = [];
   const seen = new Set();
   let guard = 0;
-  while (team.length < size && guard++ < 80) {
+  while (picks.length < size && guard++ < 80) {
     const p = weighted(pool, rng);
     if (seen.has(p.name)) continue;
     seen.add(p.name);
-    team.push(describeMon(state, p, Math.max(1, level + between(-2, 1, rng) + (team.length === size - 1 ? 1 : 0)), rng));
+    picks.push(p);
   }
-  return team;
+  // levels around the trainer's level, the last (the ace) highest: a level 15 trainer has e.g. 14 and 16
+  const levels = spreadLevels(level, picks.length, rng);
+  return picks.map((p, i) => describeMon(state, p, levels[i], rng));
 }
 
 export function trainerNpc(state, rng = Math.random, { level = 12, cls = "" } = {}) {
@@ -176,12 +219,13 @@ const GYM_THEMES = {
   Fairy: ["A glowing garden, with charm-based challenges.", "A twilight ballroom: trainers duel in costume."],
 };
 
-export function gymLeader(state, rng = Math.random, { badge = 1, type = "" } = {}) {
+// level: the leader's level (the Whiteboard passes the party's); without one it follows the badge number
+export function gymLeader(state, rng = Math.random, { badge = 1, type = "", level: atLevel = null } = {}) {
   const t = type || pick(Object.keys(GYM_THEMES), rng);
-  const level = 10 + (badge - 1) * 7;
+  const level = atLevel ? clampLevel(atLevel) : 10 + (badge - 1) * 7;
+  if (atLevel) badge = Math.max(1, Math.min(8, Math.round((level - 10) / 7) + 1));
   const size = Math.min(6, 2 + Math.floor((badge - 1) / 2) + (badge === 8 ? 1 : 0));
   const team = trainerTeam(state, rng, level, size, [t]);
-  if (team.length) team[team.length - 1].level += 2;
   const name = genName(pick(["human", "elf", "dwarf", "orc"], rng), rng);
   const badgeName = `${pick(["Ember", "Tide", "Gale", "Stone", "Leaf", "Spark", "Shade", "Frost", "Iron", "Dawn", "Thunder", "Quake"], rng)} Badge`;
   const tm = (state.moves || []).filter((m) => m.type === t && m.power && !m.stub);

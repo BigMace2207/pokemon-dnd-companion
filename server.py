@@ -1109,9 +1109,10 @@ def clean_draft(raw):
     return {"pts": pts, "color": _colour(raw.get("color"), "#5aa8f0"), "width": _num(raw.get("width"), 1, 40) or 4}
 
 
-def hub_roster(state, meta, with_details):
+def hub_roster(state, meta, with_details, dm_ids=()):
     """Everyone in the campaign, online or not: name, portrait and whether they're here. With details (the DM),
-    also each one's party, bag and money, from their live presence or, when they're away, their last saved copy."""
+    also each one's party, bag and money, from their live presence or, when they're away, their last saved copy,
+    and whether they're a DM (dm_ids), so the Whiteboard can level encounters on the players alone."""
     now = time.time()
     ids = list(dict.fromkeys(list(meta.get("memberIds") or []) + list(state["trainers"].keys())))
     out = []
@@ -1131,6 +1132,7 @@ def hub_roster(state, meta, with_details):
             row["bag"] = team.get("bag") if live and isinstance(team.get("bag"), dict) else saved.get("bag") or {}
             cash = team.get("cash") if live and "cash" in team else trainer.get("cash")
             row["cash"] = cash if isinstance(cash, (int, float)) else 0
+            row["dm"] = tid in dm_ids
         out.append(row)
     return out
 
@@ -1163,6 +1165,7 @@ MAX_PLAN = 200_000  # largest planner document (notes + checklists) one player m
 MAX_NAME = 60
 MAX_TEXT = 1000
 MAX_INBOX = 100
+BALL_NAMES = ("Poké Ball", "Great Ball", "Ultra Ball", "Master Ball")   # js/calc.js BALL_TYPES
 
 # Only the sign-in providers' own hosts may be scripted/framed/contacted, and
 # nothing but this site may frame us. 'unsafe-inline' is for style
@@ -2005,7 +2008,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
             if parts[1:] == ["roster"]:
                 # everyone in the campaign (for Send To and the DM's overview); parties, bags and money only for the DM
-                return self._send_json({"trainers": hub_roster(state, entry["meta"], self._dm_ok(qs.get("token", [None])[0], cid))})
+                is_dm = self._dm_ok(qs.get("token", [None])[0], cid)
+                return self._send_json({"trainers": hub_roster(state, entry["meta"], is_dm, set(dm_member_ids(entry)) if is_dm else ())})
 
             if len(parts) == 3 and parts[1] == "trainer":
                 t = state["trainers"].get(parts[2])
@@ -2791,6 +2795,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             current_index, round_no = data.get("currentIndex") or 0, data.get("round") or 1
             turn_id = data.get("turnId") if isinstance(data.get("turnId"), str) else None
             same_turn = (current_index, round_no, turn_id) == (existing.get("currentIndex"), existing.get("round"), existing.get("turnId"))
+            # a switch hands the turn to the Pokémon that came in: it's still the same turn, and the choice stands
+            if not same_turn and turn_id and round_no == existing.get("round") and existing.get("turnId"):
+                same_turn = any(isinstance(c, dict) and c.get("id") == turn_id and c.get("cameInFor") == existing.get("turnId") for c in data.get("combatants") or [])
             state["fullTurn"] = {
                 "combatants": data.get("combatants") or [],
                 "currentIndex": current_index,
@@ -2845,6 +2852,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             for k in ("sourceKind", "sourceId", "side"):
                 if c.get(k) != prev.get(k):
                     return {"error": "roster mismatch"}
+            if bool(c.get("benched")) != bool(prev.get("benched")):
+                return {"error": "roster mismatch"}
             if mon.get("id") != prev_mon.get("id"):
                 return {"error": "roster mismatch"}
             new_hp, old_hp = mon.get("currentHp"), prev_mon.get("currentHp")
@@ -2888,10 +2897,58 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return {"error": "you've already chosen this turn; the DM starts the next one"}
         return on_turn
 
+    def _handle_lead(self, state, data):
+        """Caller holds CAMPAIGNS_LOCK. Before the battle goes live (draft or the VS screen), a player picks which of
+        their own Pokémon in the roster goes out first: that one goes on the field and their others wait on the bench.
+        Never anyone else's, never once it's live (then it's a switch, which takes your turn)."""
+        ft = state.get("fullTurn") or {}
+        if ft.get("phase") not in ("draft", "vs"):
+            return {"error": "the battle has already started: switch on your turn instead"}
+        network_id = data.get("networkId")
+        combatants = ft.get("combatants") or []
+        own = [c for c in combatants if c.get("sourceKind") in ("player", "team") and c.get("sourceId") == network_id]
+        pick = next((c for c in own if c.get("id") == data.get("toCombatantId")), None)
+        if not pick:
+            return {"error": "that Pokémon isn't yours in this battle"}
+        if (pick.get("mon") or {}).get("currentHp") == 0:
+            return {"error": "that Pokémon has fainted"}
+        own_ids = {c.get("id") for c in own}
+        state["fullTurn"] = {**ft, "combatants": [{**c, "benched": c.get("id") != pick.get("id")} if c.get("id") in own_ids else c for c in combatants]}
+        return {"ok": True}
+
+    def _handle_replace(self, state, data):
+        """Caller holds CAMPAIGNS_LOCK. In a live battle, when one of a player's Pokémon on the field has fainted, they
+        send out one of their own benched Pokémon in its place straight away, as in the games: it isn't a turn."""
+        ft = state.get("fullTurn") or {}
+        if ft.get("phase") != "live":
+            return {"error": "not live"}
+        network_id = data.get("networkId")
+        combatants = ft.get("combatants") or []
+        own = lambda c: c.get("sourceKind") in ("player", "team") and c.get("sourceId") == network_id
+        down = next((c for c in combatants if c.get("id") == data.get("fromCombatantId") and own(c)), None)
+        pick = next((c for c in combatants if c.get("id") == data.get("toCombatantId") and own(c)), None)
+        if not down or not pick:
+            return {"error": "that Pokémon isn't yours in this battle"}
+        if down.get("benched") or (down.get("mon") or {}).get("currentHp") != 0:
+            return {"error": "only a fainted Pokémon can be replaced like this"}
+        if not pick.get("benched") or (pick.get("mon") or {}).get("currentHp") == 0:
+            return {"error": "that Pokémon can't come in"}
+        state["fullTurn"] = {**ft, "combatants": [{**c, "benched": True} if c.get("id") == down.get("id")
+                                                  else {**c, "benched": False} if c.get("id") == pick.get("id") else c for c in combatants]}
+        log_battle(state, down.get("sourceLabel") or "A trainer", f"{down.get('sourceLabel') or 'A trainer'} sent out {(pick.get('mon') or {}).get('nickname') or (pick.get('mon') or {}).get('name') or 'a Pokémon'}!")
+        return {"ok": True}
+
     def _handle_player_action(self, state, data):
         """Runs under CAMPAIGNS_LOCK. Any choice other than a move (an item, running, switching Pokémon, or something
         else): recorded as this turn's choice, told to the DM and the battle log, and locks the player until the DM
-        starts the next turn. Switching swaps in a Pokémon from the player's own saved party."""
+        starts the next turn. Switching sends out one of the player's own benched Pokémon from the roster
+        (toCombatantId: the one on the field goes to the bench, and the new one takes over its turn), or, when they
+        have none there, swaps in a Pokémon from their own saved party. "lead" (before the battle starts) picks who
+        goes out first and isn't a turn."""
+        if data.get("kind") == "lead":
+            return self._handle_lead(state, data)
+        if data.get("kind") == "replace":
+            return self._handle_replace(state, data)
         ft = state.get("fullTurn") or {}
         network_id = data.get("networkId")
         mover = self._player_on_turn(ft, network_id)
@@ -2902,7 +2959,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return {"error": "bad action"}
         text = _text(data.get("text"), MAX_TEXT) or {"item": "Used an item", "run": "Tried to run away", "switch": "Switched Pokémon", "other": "Did something else"}[kind]
         combatants = ft.get("combatants") or []
-        if kind == "switch":
+        if kind == "switch" and data.get("toCombatantId"):
+            pick = next((c for c in combatants if c.get("id") == data.get("toCombatantId")), None)
+            if not pick or pick.get("sourceKind") not in ("player", "team") or pick.get("sourceId") != network_id or pick.get("id") == mover.get("id"):
+                return {"error": "that Pokémon isn't yours in this battle"}
+            if not pick.get("benched"):
+                return {"error": "that Pokémon is already out"}
+            if (pick.get("mon") or {}).get("currentHp") == 0:
+                return {"error": "that Pokémon has fainted"}
+            combatants = [{**c, "benched": True} if c.get("id") == mover.get("id")
+                          else {**c, "benched": False, "cameInFor": mover.get("id")} if c.get("id") == pick.get("id") else c
+                          for c in combatants]
+        elif kind == "switch":
             party = ((state["playerSaves"].get(network_id) or {}).get("current") or {}).get("party") or []
             pick = next((m for m in party if isinstance(m, dict) and m.get("id") == data.get("monId") and m.get("name")), None)
             if not pick:
@@ -2911,8 +2979,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return {"error": "that Pokémon has fainted"}
             combatants = [{**c, "mon": copy.deepcopy(pick)} if c.get("id") == mover.get("id") else c for c in combatants]
         name = mover.get("sourceLabel") or "A trainer"
-        state["fullTurn"] = {**ft, "combatants": combatants,
-                             "acted": {"combatantId": mover.get("id"), "kind": kind, "text": text, "at": time.time()}}
+        acted = {"combatantId": mover.get("id"), "kind": kind, "text": text, "at": time.time()}
+        # a thrown ball names the ball and the target, so the DM's screen can roll the catch
+        if kind == "item" and data.get("ball") in BALL_NAMES and any(c.get("id") == data.get("targetId") for c in combatants):
+            acted.update({"ball": data["ball"], "targetId": data["targetId"]})
+        state["fullTurn"] = {**ft, "combatants": combatants, "acted": acted}
         log_battle(state, name, text)
         state["dmInbox"].append({"id": secrets.token_hex(8), "fromName": name, "text": f"Battle: {text}", "ts": time.time()})
         return {"ok": True}

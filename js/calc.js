@@ -94,13 +94,21 @@ export function hpMultiplier(hpPercent) {
   return 2;
 }
 
-export function catchChance({ catchRate, ball, hpPercent, status, mod }) {
+// A Pokémon's level: young ones are easier to catch, strong ones fight the ball harder. Smooth, from ×1.25 at level 5
+// through ×1.0 at about level 37 to ×0.5 at level 100 (no level given: ×1, the original sheet's formula).
+export function levelCatchMultiplier(level) {
+  const lv = Number(level);
+  if (!Number.isFinite(lv) || lv <= 0) return 1;
+  return Math.max(0.5, Math.min(1.3, 1.3 - (Math.min(100, lv) / 100) * 0.8));
+}
+
+export function catchChance({ catchRate, ball, hpPercent, status, mod = 0, level = null }) {
   if (ball === "Master Ball") return 100;
-  const ballMult = BALL_MULT[ball];
+  const ballMult = BALL_MULT[ball] ?? 1;
   const hpMult = hpMultiplier(hpPercent);
   const statusBonus = STATUS_BONUS[status] ?? 0;
-  const pct = (catchRate / 255 * 100) * ballMult * hpMult + mod * 5 + statusBonus;
-  return Math.min(100, pct);
+  const pct = (catchRate / 255 * 100) * ballMult * hpMult * levelCatchMultiplier(level) + mod * 5 + statusBonus;
+  return Math.max(0, Math.min(100, pct));
 }
 
 export const BALL_TYPES = Object.keys(BALL_MULT);

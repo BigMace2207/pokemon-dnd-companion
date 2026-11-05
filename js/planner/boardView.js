@@ -28,8 +28,22 @@ import { trainerSpriteUrl, openTrainerPortraitPicker } from "../trainerSpritePic
 import { dexPanel, CARD_MIME } from "../hubDex.js";
 import { pokemonState } from "./textGens.js";
 import { generateMon } from "./pokeGenerators.js";
+import { currentEncounterLevel, relevelTeam, partyAverage } from "./partyLevel.js";
 import { askLevel } from "../levelAsk.js";
 import { wheelIntent } from "../wheelIntent.js";
+import { hubSound, nodeSound } from "../hubSound.js";
+
+// Whiteboard motion and sound: a new node blooms in, a removed one shrinks away, a picked-up node lifts and tilts a
+// little and settles when dropped, a re-roll fades the new result in, a re-levelled team pops, cards snap into slots,
+// and each of those has its sound (js/hubSound.js kinds place, remove, pick, drop, snap, link, roll, levelUp/Down,
+// open, close). Motion is transform/opacity only, under 0.25s, played once per action (never on a redraw), and off
+// for prefers-reduced-motion.
+const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+function play(e, frames, ms = 220, easing = "cubic-bezier(.2,.9,.3,1.15)") {
+  if (!e || calm() || !e.animate) return null;
+  return e.animate(frames, { duration: ms, easing });
+}
+const screenX = (e) => { const r = e?.getBoundingClientRect?.(); return r ? r.left + r.width / 2 : null; };
 
 const SIZE = { note: [300, 240], list: [280, 300], gen: [320, 260], text: [210, 150], dungeon: [380, 320], libmon: [230, 190], libtrainer: [260, 240] };
 const SLOT_KINDS = new Set(["trainer", "gym", "wildmon"]);
@@ -186,6 +200,10 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
       if (n.type === "dungeon") acts.append(iconBtn(n.expanded ? "collapse" : "expand", n.expanded ? "Collapse" : "Expand to see every room and add notes", () => toggleDungeon(n)));
       acts.append(iconBtn("close", "Remove from the board", async () => {
         if (!(await confirmDialog(`Remove "${n.title || typeLabel}" from the board?`, { ok: "Remove", danger: true }))) return;
+        const gone = nodeEls.get(n.id);
+        hubSound("remove", screenX(gone));
+        const an = play(gone, [{ transform: "scale(1)", opacity: 1 }, { transform: "scale(.9)", opacity: 0 }], 180, "cubic-bezier(.4,0,1,1)");
+        if (an) await an.finished.catch(() => {});
         edit((b) => { b.nodes = b.nodes.filter((x) => x.id !== n.id); removeLinksOf(b, n.id); });
         drawNodes();
       }));
@@ -217,7 +235,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     } else if (n.type === "libmon") {
       body.append(...[monCard(n.mon), readonly ? null : el("p", { class: "pl-plug-hint" }, "Drag me into a trainer's Team slot")].filter(Boolean));
     } else if (n.type === "libtrainer") {
-      body.append(...[trainerCard(n), readonly ? null : el("p", { class: "pl-plug-hint" }, "Drag me into a trainer or gym leader's Trainer slot")].filter(Boolean));
+      body.append(...[trainerCard(n), n.mons?.length ? levelBox(n) : null, readonly ? null : el("p", { class: "pl-plug-hint" }, "Drag me into a trainer or gym leader's Trainer slot")].filter(Boolean));
     } else if (n.type === "gen") {
       const kind = kindOf(n);
       const slots = hasSlots(n);
@@ -296,6 +314,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
       n = nodeOf(board, n.id) || n;   // edit() reloads the board, so use its copy: the links are drawn from it and follow the node
       const sx = ev.clientX, sy = ev.clientY, ox = n.x, oy = n.y, z = view().z;
       e.classList.add("dragging");
+      nodeSound("pick", kindOf(n), ev.clientX);   // each kind of node has its own voice
       const plug = n.type === "libmon" || n.type === "libtrainer";
       let hot = null;
       if (plug) nodeLayer.classList.add(`carrying-${n.type}`);
@@ -314,7 +333,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
         const { x, y } = n;
         edit((b) => { const t = nodeOf(b, n.id); if (t) { t.x = x; t.y = y; syncSessions(b, t); } grow(b); });
         applyBounds(); drawSessions();
-        if (x !== ox || y !== oy) shake(e);   // put down somewhere new
+        if (x !== ox || y !== oy) { shake(e); nodeSound("drop", kindOf(n), m?.clientX); }   // put down somewhere new
       };
       handleEl.addEventListener("pointermove", move); handleEl.addEventListener("pointerup", up); handleEl.addEventListener("pointercancel", up);
     });
@@ -352,8 +371,9 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     }
     if (spec.type === "gen") {
       const g = gens.find((x) => x.id === spec.gen); if (!g) return null;
-      const res = await g.run({ ...defaults(g.id), edition: getSettings().edition }, Math.random);
-      return { ...base, title: res.title, genLabel: g.label, gen: g.id, kind: system !== "dnd5e" && g.id === "wild" ? "wildmon" : g.id, lines: res.lines, ...(res.mons ? { mons: res.mons } : {}) };
+      const level = await spawnLevel(g.id, true);
+      const res = await g.run({ ...defaults(g.id), ...(level ? { level } : {}), edition: getSettings().edition }, Math.random);
+      return { ...base, title: res.title, genLabel: g.label, gen: g.id, kind: system !== "dnd5e" && g.id === "wild" ? "wildmon" : g.id, lines: res.lines, ...(res.mons ? { mons: res.mons } : {}), ...(level ? { level } : {}) };
     }
     if (spec.type === "libmon") {
       const mon = cleanMon(spec.mon || (spec.wildId ? await getWildMon(spec.wildId) : null));
@@ -363,7 +383,8 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     if (spec.type === "libtrainer") {
       const npc = await getNpc(spec.npcId);
       if (!npc?.name) throw new Error("that trainer isn't in the library any more");
-      return { ...base, title: npc.name, npcId: spec.npcId, sprite: npc.sprite || "", mons: (npc.team?.party || []).map(cleanMon).filter(Boolean).slice(0, TEAM_MAX) };
+      const mons = (npc.team?.party || []).map(cleanMon).filter(Boolean).slice(0, TEAM_MAX);
+      return { ...base, title: npc.name, npcId: spec.npcId, sprite: npc.sprite || "", mons, ...(teamLevel(mons) ? { level: teamLevel(mons) } : {}) };
     }
     if (spec.type === "dungeon") {
       const { genDungeon } = await import("../systems/dnd5e/engine/generators.js");
@@ -402,7 +423,10 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     applyBounds(); drawNodes();
     nodeEls.get(node.id)?.style.setProperty("z-index", String(++zTop));
     closeFly();
-    fitNode(node.id, 0, () => shake(nodeEls.get(node.id)));   // sized to its text, then it lands with a little shake
+    const born = nodeEls.get(node.id);
+    nodeSound("place", kindOf(node), screenX(born));
+    play(born, [{ transform: "scale(.86)", opacity: 0 }, { transform: "scale(1)", opacity: 1 }], 240);
+    fitNode(node.id, 0);   // then it grows to fit its text
   }
 
   // a quick wobble when a node lands (added, or put down after a move); none for reduced motion
@@ -433,10 +457,59 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
   async function reroll(n) {
     const g = gens.find((x) => x.id === n.gen); if (!g) return;
     try {
-      const res = await g.run({ ...defaults(g.id), edition: getSettings().edition }, Math.random);
+      const level = n.level || await spawnLevel(g.id);   // a re-roll keeps the card's level
+      const res = await g.run({ ...defaults(g.id), ...(level && LEVELLED.has(g.id) ? { level } : {}), edition: getSettings().edition }, Math.random);
       edit((b) => { const x = nodeOf(b, n.id); if (x) { x.title = res.title; x.lines = res.lines; if (res.mons) x.mons = res.mons; delete x.identity; } });
       drawNodes();
+      const e2 = nodeEls.get(n.id);
+      hubSound("roll", screenX(e2));
+      play(e2?.querySelector(".pl-node-body"), [{ transform: "translateY(6px)", opacity: 0 }, { transform: "translateY(0)", opacity: 1 }], 220, "cubic-bezier(.2,.8,.2,1)");
     } catch (err) { toast(`Couldn't roll that: ${err.message || err}`, "bad"); }
+  }
+
+  // ---- levels: encounters spawn at the party's level, and a card's Level box re-levels its team (js/planner/partyLevel.js)
+  const LEVELLED = new Set(["wild", "trainer", "gym"]);
+  const teamLevel = (mons) => { const a = partyAverage(mons); return a ? Math.round(a) : null; };
+  // the level a new trainer (a gym leader 2 above) or wild encounter spawns at; announce = say how it was worked out
+  async function spawnLevel(genId, announce = false) {
+    if (!pokemon || !LEVELLED.has(genId)) return null;
+    const e = await currentEncounterLevel();
+    const level = Math.min(100, e.level + (genId === "gym" ? 2 : 0));
+    if (announce && e.players) toast(`Level ${level}: ${e.players === 1 ? "the player's Pokémon average" : `${e.players} players, their Pokémon average`} ${e.base}${e.bonus ? `, +${e.bonus} for the party size` : ""}${genId === "gym" ? ", +2 for a gym leader" : ""}.`, "good");
+    return level;
+  }
+  async function setLevel(nodeId, level) {
+    if (!level) return;
+    const before = nodeOf(board, nodeId)?.level || 0;
+    const st = await pokemonState();
+    edit((b) => {
+      const x = nodeOf(b, nodeId); if (!x) return;
+      x.level = level;
+      if (x.mons?.length) x.mons = relevelTeam(st, x.mons, level).map(cleanMon).filter(Boolean);
+      x.title = (x.title || "").replace(/level ~\d+/, `level ~${level}`);
+      if (x.lines) x.lines = x.lines.map((l) => l.replace(/level ~\d+/, `level ~${level}`));
+    });
+    drawNodes();
+    const e = nodeEls.get(nodeId);
+    hubSound(level >= before ? "levelUp" : "levelDown", screenX(e));
+    e?.querySelectorAll(".pl-team-row .pl-mon-lv").forEach((lv, i) => {
+      const an = play(lv, [{ transform: "scale(1)" }, { transform: "scale(1.3)" }, { transform: "scale(1)" }], 240, "ease-out");
+      if (an) an.startTime = (document.timeline?.currentTime || 0) + i * 30;
+    });
+  }
+  // the Level box on a trainer, gym leader or wild encounter card
+  function levelBox(n) {
+    const lv = n.level || teamLevel(n.mons || []) || 10;
+    const input = numInput(lv, (v) => setLevel(n.id, v), { min: 1, max: 100, cls: "pl-level-input", ariaLabel: "Level" });
+    if (readonly) input.setAttribute("readonly", "");
+    input.addEventListener("pointerdown", (ev) => ev.stopPropagation());   // typing in it isn't dragging the card
+    const step = (d, label) => {
+      const b = el("button", { type: "button", class: "pl-level-step", "aria-label": `${label} level`, title: `${label} level` }, d > 0 ? "+" : "−");
+      b.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+      b.addEventListener("click", (ev) => { ev.preventDefault(); const v = Math.max(1, Math.min(100, (Number(input.value) || lv) + d)); input.value = v; setLevel(n.id, v); });
+      return b;
+    };
+    return el("label", { class: "pl-level", title: "Change it to re-level the team around it" }, [el("span", {}, "Level"), ...(readonly ? [input] : [step(-1, "Lower"), input, step(1, "Raise")])]);
   }
 
   // ---- rail and flyouts ----------------------------------------------------------------------
@@ -467,9 +540,11 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     );
   }
   function openFly(id) {
+    const was = flyout;
     flyout = id;
     drawRail();
-    if (!id) { flyEl.hidden = true; return; }
+    if (!id) { flyEl.hidden = true; if (was) hubSound("close"); return; }
+    if (was !== id) { hubSound("open"); play(flyEl, [{ transform: "translateX(-10px)", opacity: 0 }, { transform: "translateX(0)", opacity: 1 }], 200, "cubic-bezier(.2,.8,.2,1)"); }
     flyEl.hidden = false; bgPanel.hidden = true;
     if (id === "dungeon") {
       const rooms = numInput(9, () => {}, { min: 3, max: 24, ariaLabel: "Rooms in a new dungeon" });
@@ -618,7 +693,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     });
     const room = TEAM_MAX - mons.length;
     const slot = el("div", { class: "pl-slot pl-slot-team", "data-slot": "team", "data-node": n.id }, [
-      el("div", { class: "pl-slot-head" }, [el("span", { class: "pl-socket", "aria-hidden": "true" }), el("strong", {}, "Team"), el("span", { class: "dnd-tiny dnd-muted" }, `${mons.length}/${TEAM_MAX}`)]),
+      el("div", { class: "pl-slot-head" }, [el("span", { class: "pl-socket", "aria-hidden": "true" }), el("strong", {}, "Team"), el("span", { class: "dnd-tiny dnd-muted" }, `${mons.length}/${TEAM_MAX}`), mons.length ? levelBox(n) : null].filter(Boolean)),
       ...rows,
       room > 0 && !readonly ? el("div", { class: "pl-team-drop" }, mons.length ? "Drop more Pokémon here" : "Drop Pokémon from the Libraries here") : null,
     ].filter(Boolean));
@@ -698,11 +773,12 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     edit((b) => {
       const x = nodeOf(b, targetId); if (!x) return;
       x.identity = { name, npcId: t.npcId || "", sprite: t.sprite || "" };
-      if (t.mons?.length) x.mons = t.mons.map(cleanMon).filter(Boolean).slice(0, TEAM_MAX);
+      if (t.mons?.length) { x.mons = t.mons.map(cleanMon).filter(Boolean).slice(0, TEAM_MAX); x.level = t.level || teamLevel(x.mons) || x.level; }
       x.title = kindOf(x) === "gym" && !/gym leader/i.test(name) ? `Gym Leader ${name}` : name;
     });
     drawNodes();
     toast(`${name} and their team are in.`, "good");
+    hubSound("snap", screenX(nodeEls.get(targetId)));
     return true;
   }
   function addToTeam(targetId, mon, at) {
@@ -711,6 +787,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     if ((target.mons || []).length >= TEAM_MAX) { toast(`A team holds ${TEAM_MAX} Pokémon.`, "bad"); return false; }
     edit((b) => { const x = nodeOf(b, targetId); if (!x) return; x.mons = x.mons || []; x.mons.splice(clamp(at, 0, x.mons.length), 0, cleanMon(mon)); });
     drawNodes();
+    hubSound("snap", screenX(nodeEls.get(targetId)));
     return true;
   }
   function moveInTeam(nodeId, from, to) {
@@ -926,7 +1003,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
       const data = { from: l.from, to: l.to, rel: state.rel, label, fromRoom: state.fromRoom, toRoom: state.toRoom };
       edit((bd) => { if (isNew) addLink(bd, data); else { const x = bd.links.find((k) => k.id === l.id); if (x) Object.assign(x, data); } });
       drawLinks();
-      if (isNew) toast("Connected.", "good");
+      if (isNew) { toast("Connected.", "good"); hubSound("link"); }
     };
     const actions = [{ label: "Cancel" }, { label: isNew ? "Connect" : "Save", cls: "btn", onClick: save }];
     if (!isNew) actions.unshift(

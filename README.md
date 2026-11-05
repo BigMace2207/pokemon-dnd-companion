@@ -91,6 +91,25 @@
   money, egg); a Pokémon dragged out of the Pokédex or your team plays its real cry from the games.
 - A trainer's own Pokémon cards show the whole sheet: HP, status, ability, held item and every move's numbers; open one
   for what the ability, item, status and moves do, and its stats.
+- Whiteboard encounters scale to the party: a trainer, gym leader (+2) or wild encounter spawns at the players' average
+  Pokémon level, a little higher the more players there are (+1.5 each after the first, up to +8). Each trainer, gym
+  leader and wild card has a Level box; changing it re-levels the team around it (e.g. 15 -> 14 and 16) and gives
+  generated Pokémon the moves they'd know at that level.
+- Audio (Settings -> Appearance -> Audio): sound on/off and sliders for Master, Sound effects, Ambience and Pokémon
+  (cries). Pokémon campaigns play a slow, spatial background soundscape (js/ambience.js). Placing hub encounters and
+  cards, and everything on the Whiteboard (adding, moving, removing, snapping into slots, linking, re-rolling,
+  re-levelling), has its own sound and a short animation.
+- Catching: a thrown ball rolls a d20 on screen (with the ball wobbling and a caught / broke-free sound). The chance
+  comes from the Pokémon's catch rate, its HP, its level (low levels are easier, high levels harder), its status and
+  the ball. A player's throw carries the ball and target; the DM rolls it from Battle Control's top bar.
+- Page changes blur and fade out, then the new page fades in from a blur, with a soft sound. Whiteboard nodes each
+  have their own sound when placed, picked up or dropped (notes, stickies, checklists, trainers, gym leaders, wild
+  Pokémon, dungeons...).
+- Battle bench: each combatant is out on the field or on the bench (the roster's Out box). A player's first Pokémon goes
+  out and the rest wait; the other side sends out everything. Players pick their lead on the VS screen, switch in a
+  benched Pokémon from POKÉMON (it uses their turn), and send out the next one for free when one faints. The DM can
+  switch NPC trainers' Pokémon the same way, and plays their own trainer's Pokémon from Battle Control when they're in
+  the battle too.
 - Battle: every move plays a short game-style animation with sound, picked by its type (fireballs, a water stream, a
   lightning bolt, falling rocks, psychic rings...). Physical moves lunge, special moves fly or beam across, status
   moves glow; everyone in the battle sees it.

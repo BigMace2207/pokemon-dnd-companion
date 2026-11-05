@@ -26,6 +26,9 @@ import { computeBattleDamage, moveEffectivenessSummary } from "../battleMath.js"
 import { targetKindForMove, resolveSpreadTargets, sideIsDefeated } from "../moveTargeting.js";
 import { registerInterval } from "../intervals.js";
 import { renderBattleView } from "./battleview.js";
+import { loadSave } from "../storage.js";
+import { showDiceRollFx } from "../diceRollFx.js";
+import { hubSound } from "../hubSound.js";
 
 // The server only distinguishes "online" (has a live client that applies
 // directives itself) from "npc"/"wild" (no client — the DM's action IS the
@@ -99,6 +102,7 @@ export function renderFullTurn(container, state, token) {
   // phase buttons in renderRoundCard() and the gate in battleview.js's poll().
   let phase = "draft"; // "draft" | "vs" | "live"
   let acted = null;     // what the player on turn chose (server-side; cleared when the turn moves on)
+  const rolledThrows = new Set();   // a player's ball throw (by when it was made) is only rolled once
 
   // turnId tells the server (and every player's screen) exactly whose turn it is: the order here is sorted by speed,
   // which only this console can work out.
@@ -123,8 +127,18 @@ export function renderFullTurn(container, state, token) {
     combatants = remote.combatants; currentIndex = remote.currentIndex || 0; round = remote.round || 1;
     phase = ["draft", "vs", "live"].includes(remote.phase) ? remote.phase : phase;
     acted = remote.acted || null;
+    followTurn(remote.turnId);
     render();
   }, 3000));
+
+  // After a switch the order changes (the new Pokémon has its own speed): keep "up now" on whoever holds the turn, or
+  // on the Pokémon that came in for them.
+  function followTurn(turnId) {
+    if (!turnId) return;
+    const order = orderedList();
+    const holder = order.find((c) => c.id === turnId) || order.find((c) => c.cameInFor === turnId);
+    if (holder) currentIndex = order.indexOf(holder);
+  }
 
   function speciesFor(mon) { return state.pokemonByName.get(mon.name); }
   function statsFor(mon) {
@@ -144,8 +158,9 @@ export function renderFullTurn(container, state, token) {
     return `${ownerName(c)}: ${monName(c.mon)}${mega}`;
   }
 
+  // The turn order: only Pokémon on the field (a benched one waits until it's switched in or ticked Out in the roster).
   function orderedList() {
-    return [...combatants].sort((a, b) => {
+    return combatants.filter((c) => !c.benched).sort((a, b) => {
       if (a.priority !== b.priority) return a.priority ? -1 : 1;
       const sa = statsFor(a.mon)?.spe ?? 0, sb = statsFor(b.mon)?.spe ?? 0;
       if (sb !== sa) return sb - sa;
@@ -166,7 +181,12 @@ export function renderFullTurn(container, state, token) {
       // side is flippable per-row in the roster table below, since a
       // session might put an NPC ally alongside the players instead.
       const defaultSide = (entry.sourceKind === "npc" || entry.sourceKind === "wild") ? "B" : "A";
+      // Players send out one each, so a player's second Pokémon starts on the bench; the other side sends out all of
+      // theirs. Either can be changed with the Out box in the roster (or the player picks their lead on the VS screen).
+      const isPlayer = entry.sourceKind === "player" || entry.sourceKind === "team";
+      const benched = isPlayer && combatants.some((c) => !c.benched && c.sourceKind === entry.sourceKind && c.sourceId === entry.sourceId);
       combatants.push({
+        benched,
         id: String(Date.now()) + Math.random(),
         sourceKind: entry.sourceKind, sourceId: entry.sourceId, sourceLabel: entry.sourceLabel,
         mon: cloneMon(mon), priority: false, tiebreak: null, megaEvolved: false, megaFrom: null,
@@ -203,7 +223,7 @@ export function renderFullTurn(container, state, token) {
   }
 
   function otherCombatants(exceptId) {
-    return combatants.filter((c) => c.id !== exceptId);
+    return combatants.filter((c) => c.id !== exceptId && !c.benched);
   }
 
   function postLog(text) {
@@ -235,11 +255,22 @@ export function renderFullTurn(container, state, token) {
       : aDown || bDown ? el("span", { class: `bc-info ${aDown ? "bad" : "good"}` }, aDown ? "DEFEAT: Side A is wiped out" : "VICTORY: Side B is wiped out")
       : el("span", { class: "bc-info" }, [el("b", {}, `Round ${round}`), " · Up now: ", el("b", {}, up ? labelFor(up) : "?")]);
     // A player on turn makes one choice (a move, an item, running, switching or something else); then it's yours.
-    const choice = up && (up.sourceKind === "player" || up.sourceKind === "team") && phase === "live"
-      ? (acted && acted.combatantId === up.id ? el("span", { class: "bc-choice done" }, [el("b", {}, "Their choice: "), acted.text || acted.kind]) : el("span", { class: "bc-choice" }, "Waiting for them to choose…"))
+    const mineToPlay = up && up.sourceId === loadSave().networkId;   // the DM's own trainer: played from the battle screen here
+    const theirs = acted && up && (acted.combatantId === up.id || acted.combatantId === up.cameInFor) ? acted : null;
+    let rollBtn = null;
+    if (theirs?.ball && phase === "live" && !rolledThrows.has(theirs.at)) {
+      const target = combatants.find((c) => c.id === theirs.targetId && !c.benched);
+      if (target) {
+        rollBtn = el("button", { type: "button", class: "btn bc-roll" }, `🎲 Roll the catch`);
+        rollBtn.addEventListener("click", async () => { rolledThrows.add(theirs.at); rollBtn.disabled = true; await rollCatch(up, theirs.ball, target); });
+      }
+    }
+    const choice = up && (up.sourceKind === "player" || up.sourceKind === "team") && phase === "live" && !mineToPlay
+      ? (theirs ? el("span", { class: "bc-choice done" }, [el("b", {}, "Their choice: "), theirs.text || theirs.kind, rollBtn].filter(Boolean)) : el("span", { class: "bc-choice" }, "Waiting for them to choose…"))
       : null;
     const nextBtn = order.length ? el("button", { type: "button", class: "btn bc-next" }, "Next Turn ▶") : null;
     nextBtn?.addEventListener("click", () => {
+      combatants.forEach((c) => { delete c.cameInFor; });   // a switch only matters for the turn it happened in
       let steps = 0;
       do {
         currentIndex++;
@@ -271,16 +302,27 @@ export function renderFullTurn(container, state, token) {
 
   function renderRoster() {
     rosterWrap.innerHTML = "";
-    const order = orderedList();
+    const onField = orderedList();
+    const order = [...onField, ...combatants.filter((c) => c.benched)];
     if (!order.length) {
       rosterWrap.appendChild(el("p", { class: "view-sub" }, "No combatants yet — add some above."));
       return;
     }
     const table = el("table", { class: "data-table" }, [
-      el("thead", {}, el("tr", {}, ["#", "Combatant", "Side", "Speed", "HP", "Status", "Priority", "Tiebreak", ""].map((h) => el("th", {}, h)))),
+      el("thead", {}, el("tr", {}, ["#", "Out", "Combatant", "Side", "Speed", "HP", "Status", "Priority", "Tiebreak", ""].map((h) => el("th", {}, h)))),
       el("tbody", {}, order.map((c, i) => {
+        // Out: on the field (taking turns) or waiting on the bench
+        const outCheck = el("input", { type: "checkbox", "aria-label": `${labelFor(c)} is out on the field`, title: "On the field (untick to put it on the bench)" });
+        outCheck.checked = !c.benched;
+        outCheck.style.width = "auto";
+        outCheck.addEventListener("change", () => {
+          const up = activeCombatant()?.id;
+          c.benched = !outCheck.checked; delete c.cameInFor;
+          followTurn(up);
+          persist(); render();
+        });
         const stats = statsFor(c.mon);
-        const sideSelect = el("select", {}, [
+        const sideSelect = el("select", { class: "bc-side-select", "aria-label": "Side" }, [
           el("option", { value: "A" }, "Side A"),
           el("option", { value: "B" }, "Side B"),
         ]);
@@ -295,7 +337,7 @@ export function renderFullTurn(container, state, token) {
         priorityCheck.checked = c.priority;
         priorityCheck.style.width = "auto";
         priorityCheck.addEventListener("input", () => { c.priority = priorityCheck.checked; persist(); render(); });
-        const tieBtn = el("button", { class: "btn secondary" }, c.tiebreak != null ? `d20: ${c.tiebreak}` : "Roll tiebreak");
+        const tieBtn = el("button", { class: "btn secondary bc-tie-btn" }, c.tiebreak != null ? `d20: ${c.tiebreak}` : "Roll tiebreak");
         tieBtn.addEventListener("click", () => { c.tiebreak = d20Roll(); persist(); render(); });
         const removeBtn = el("button", { class: "btn secondary" }, "✕");
         removeBtn.addEventListener("click", () => {
@@ -305,8 +347,9 @@ export function renderFullTurn(container, state, token) {
         });
         const hp = currentHpFor(c.mon);
         const max = maxHpFor(c.mon);
-        return el("tr", { class: i === currentIndex ? "hi" : "" }, [
-          el("td", {}, String(i + 1)),
+        return el("tr", { class: c.benched ? "benched" : i === currentIndex ? "hi" : "" }, [
+          el("td", {}, c.benched ? "–" : String(i + 1)),
+          el("td", {}, outCheck),
           el("td", {}, labelFor(c)),
           el("td", {}, sideSelect),
           el("td", {}, String(stats?.spe ?? "?")),
@@ -349,18 +392,67 @@ export function renderFullTurn(container, state, token) {
   // The same screen players get (renderBattleView), in its DM mode: on an NPC's or wild Pokémon's turn the DM picks the
   // move from it, and the result lands here (dmSubmit); on a player's turn it shows what they're choosing.
   async function dmSubmit({ combatants: next, logTexts }) {
+    const turnBefore = activeCombatant()?.id || null;
     for (const n of next || []) {
       const c = combatants.find((x) => x.id === n.id);
+      // a switch from the battle screen: who's on the field and who's on the bench
+      if (c && !!n.benched !== !!c.benched) { c.benched = !!n.benched; if (n.cameInFor) c.cameInFor = n.cameInFor; else delete c.cameInFor; }
       if (!c || n.mon?.currentHp === c.mon.currentHp || n.mon?.currentHp === undefined) continue;
       c.mon.currentHp = n.mon.currentHp;
       // reaches a player's own save, or the NPC / wild library entry, without a second log line
       await dmAction(token, "setHp", { targetId: c.sourceId, targetKind: toServerTargetKind(c.sourceKind), monId: c.mon.id, absolute: c.mon.currentHp, delta: null, inBattle: false });
     }
     for (const t of logTexts || []) await postLog(t);
+    followTurn(turnBefore);
     await persist();
     render();
   }
-  const battle = renderBattleView(stage, state, { embedded: true, dm: { submit: dmSubmit, log: (text) => postLog(text) } });
+  // ---------------- Catching: a d20 roll on the screen, the chance from the Pokémon's catch rate, HP, level, status
+  // and the ball (js/calc.js catchChance). Used by DM Control's ball buttons, the DM's own throws on the battle screen
+  // and a player's throw (their BAG choice carries the ball and the target, and the DM rolls it from the top bar).
+  async function rollCatch(thrower, ball, target) {
+    const species = speciesFor(target.mon);
+    if (!species) return "Target's species not recognized.";
+    const max = maxHpFor(target.mon) || 1;
+    const hpPercent = (currentHpFor(target.mon) / max) * 100;
+    const level = Number(target.mon.level) || null;
+    const pct = catchChance({ catchRate: species.catchRate, ball, hpPercent, status: toCatchStatusBucket(target.mon.status), mod: 0, level });
+    const d20 = d20Roll();
+    const caught = ball === "Master Ball" || d20 * 5 > successThreshold(pct);
+    const who = `${labelFor(thrower)} threw a ${ball} at ${labelFor(target)}`;
+    const text = ball === "Master Ball"
+      ? `${who} — AUTOMATIC CATCH!`
+      : `${who} (catch ${Math.round(pct)}%: HP ${Math.round(hpPercent)}%, level ${level ?? "?"}, d20 rolled ${d20}) — ${caught ? "CAUGHT!" : "broke free!"}`;
+    // the roll on screen: the die tumbles while the ball wobbles, then it clicks shut or pops open
+    showDiceRollFx({ label: `${ball} → ${monName(target.mon)} (${Math.round(pct)}%)`, d20, hit: caught, resultText: caught ? "CAUGHT!" : "broke free!" });
+    hubSound("ballShake"); setTimeout(() => hubSound("ballShake"), 220); setTimeout(() => hubSound("ballShake"), 440);
+    setTimeout(() => hubSound(caught ? "caught" : "breakFree"), 650);
+    await postLog(text);
+    if (caught) {
+      // Only a Wild Library entry actually has something to remove/hand over — catching a trainer's own or an NPC's
+      // Pokémon is logged as a roleplay outcome but doesn't seize anything from that library.
+      if (target.sourceKind === "wild") {
+        await dmAction(token, "wildDelete", { wildId: target.sourceId });
+        if (thrower.sourceKind === "npc" || thrower.sourceKind === "player") {
+          await sendToTrainer({ fromId: "dm", fromName: "Dungeon Master", toId: thrower.sourceId, type: "pokemon", payload: cloneMon(target.mon) });
+        }
+      }
+      combatants = combatants.filter((c) => c.id !== target.id);
+      if (targetId === target.id) targetId = null;
+      await persist();
+    }
+    render();
+    return text;
+  }
+
+  const battle = renderBattleView(stage, state, { embedded: true, dm: {
+    submit: dmSubmit, log: (text) => postLog(text),
+    // the DM's own throw on the battle screen (an NPC's or the DM's trainer's turn): rolled here
+    throwBall: async (throwerId, ball, targetCombatantId) => {
+      const thrower = combatants.find((c) => c.id === throwerId), target = combatants.find((c) => c.id === targetCombatantId);
+      return thrower && target ? rollCatch(thrower, ball, target) : "Pick a target first.";
+    },
+  } });
 
   // ---------------- Active turn: moves, bag, mega, run ----------------
 
@@ -413,7 +505,7 @@ export function renderFullTurn(container, state, token) {
       // (or the full spread-target set for a spread move) — informational
       // only, so a "mixed effectiveness" spread doesn't misrepresent a
       // clean super-effective single target as some averaged number.
-      const previewTargets = spread ? resolveSpreadTargets(moveName, active, combatants, spreadHitsAllies) : (getTarget() ? [getTarget()] : []);
+      const previewTargets = spread ? resolveSpreadTargets(moveName, active, combatants.filter((c) => !c.benched), spreadHitsAllies) : (getTarget() ? [getTarget()] : []);
       const effLabel = move ? moveEffectivenessSummary(state, move, previewTargets.map((t) => speciesFor(t.mon))) : "";
       const label = [spread ? `${moveName} (spread)` : moveName, effLabel ? `— ${effLabel}` : ""].filter(Boolean).join(" ");
       const btn = el("button", { class: "btn" }, label);
@@ -447,7 +539,7 @@ export function renderFullTurn(container, state, token) {
     runBtn.addEventListener("click", () => attemptRun(active));
 
     const resultOut = el("div", { class: "formula-note" }, "");
-    turnCard.appendChild(el("div", { class: "card" }, [
+    turnCard.appendChild(el("div", { class: "card bc-act" }, [
       el("p", { class: "view-sub" }, "Act for whoever's up with anything here; the battle view in the middle is the usual way."),
       el("h4", {}, `Turn: ${labelFor(active)}`),
       field("Target", targetSelect),
@@ -536,38 +628,7 @@ export function renderFullTurn(container, state, token) {
 
     async function throwBall(thrower, ball, target) {
       if (!target) { resultOut.textContent = "Pick a target first."; return; }
-      const species = speciesFor(target.mon);
-      if (!species) { resultOut.textContent = "Target's species not recognized."; return; }
-      const max = maxHpFor(target.mon) || 1;
-      const hpPercent = (currentHpFor(target.mon) / max) * 100;
-      const pct = catchChance({
-        catchRate: species.catchRate, ball, hpPercent,
-        status: toCatchStatusBucket(target.mon.status), mod: 0,
-      });
-      const d20 = d20Roll();
-      const roll5 = d20 * 5;
-      const threshold = successThreshold(pct);
-      const caught = ball === "Master Ball" || roll5 > threshold;
-      const text = ball === "Master Ball"
-        ? `${labelFor(thrower)} threw a Master Ball at ${labelFor(target)} — AUTOMATIC CATCH!`
-        : `${labelFor(thrower)} threw a ${ball} at ${labelFor(target)} (Catch % ${pct.toFixed(1)}, d20 rolled ${d20}) — ${caught ? "CAUGHT!" : "broke free!"}`;
-      resultOut.textContent = text;
-      await postLog(text);
-      if (caught) {
-        // Only a Wild Library entry actually has something to remove/hand
-        // over — catching a trainer's own or an NPC's Pokémon is logged as a
-        // roleplay outcome but doesn't seize anything from that library.
-        if (target.sourceKind === "wild") {
-          await dmAction(token, "wildDelete", { wildId: target.sourceId });
-          if (thrower.sourceKind === "npc" || thrower.sourceKind === "player") {
-            await sendToTrainer({ fromId: "dm", fromName: "Dungeon Master", toId: thrower.sourceId, type: "pokemon", payload: cloneMon(target.mon) });
-          }
-        }
-        combatants = combatants.filter((c) => c.id !== target.id);
-        if (targetId === target.id) targetId = null;
-        await persist();
-      }
-      render();
+      resultOut.textContent = await rollCatch(thrower, ball, target);
     }
 
     async function useHealItem(item, target) {

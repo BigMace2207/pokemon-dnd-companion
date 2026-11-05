@@ -150,6 +150,7 @@ export function cleanMon(m) {
     level: clamp(fin(m.level, 5), 1, 100), ability: str(m.ability, 40), item: str(m.item, 40),
     moves: (Array.isArray(m.moves) ? m.moves : []).map((x) => str(x, 40)).filter(Boolean).slice(0, 4),
     ...(Array.isArray(m.types) ? { types: m.types.slice(0, 2).map((t) => str(t, 12)) } : {}),
+    ...(m.auto ? { auto: true } : {}),   // made by a generator: a new level may also bring new moves
   };
 }
 const cleanMons = (list) => (Array.isArray(list) ? list : []).map(cleanMon).filter(Boolean).slice(0, TEAM_MAX);
@@ -170,6 +171,7 @@ function cleanNode(n) {
     if (Array.isArray(n.mons)) out.mons = cleanMons(n.mons);
     const who = cleanIdentity(n.identity);
     if (who) out.identity = who;
+    if (Number(n.level) > 0) out.level = clamp(fin(n.level, 10), 1, 100);   // the card's Level box
   }
   if (n.type === "libmon") {
     out.mon = cleanMon(n.mon);
@@ -177,7 +179,8 @@ function cleanNode(n) {
     out.source = { kind: n.source?.kind === "npc" ? "npc" : "wild", id: str(n.source?.id, 40) };
   }
   if (n.type === "libtrainer") {
-    out.npcId = str(n.npcId, 40); out.sprite = str(n.sprite, 100); out.mons = cleanMons(n.mons); }
+    out.npcId = str(n.npcId, 40); out.sprite = str(n.sprite, 100); out.mons = cleanMons(n.mons);
+    if (Number(n.level) > 0) out.level = clamp(fin(n.level, 10), 1, 100); }
   if (n.type === "dungeon") {
     out.dungeon = n.dungeon && Array.isArray(n.dungeon.rooms) ? n.dungeon : null;
     out.roomNotes = {};

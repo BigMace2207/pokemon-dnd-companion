@@ -408,6 +408,13 @@ class Roster(Base):
         mia = next(r for r in rows if r["id"] == "id-member")
         self.assertEqual((mia["cash"], mia["bag"], mia["party"][0]["name"]), (750, {"Potion": 3}, "Eevee"))
 
+    def test_the_dm_is_marked_so_encounters_level_on_the_players_alone(self):
+        self.entry["state"]["playerSaves"]["id-owner"] = {"current": {"trainer": {"name": "The DM"}, "party": [{"name": "Mewtwo", "level": 70}]}, "named": {}}
+        rows = {r["id"]: r for r in call(self.base, "GET", f"/api/roster?campaignId={self.cid}&token={self.dm}", token=self.owner)[1]["trainers"]}
+        self.assertEqual((rows["id-owner"]["dm"], rows["id-member"]["dm"]), (True, False))
+        rows = call(self.base, "GET", f"/api/roster?campaignId={self.cid}", token=self.member)[1]["trainers"]
+        self.assertTrue(all("dm" not in r for r in rows), "only the DM's view says who the DMs are")
+
     def test_items_and_money_can_be_sent(self):
         send = {"campaignId": self.cid, "fromId": "id-member", "toId": "id-owner", "fromName": "Mia"}
         self.assertEqual(call(self.base, "POST", "/api/send", {**send, "type": "item", "payload": {"name": "Potion", "count": 2}}, token=self.member)[0], 200)
@@ -576,6 +583,52 @@ class BattleTurns(Base):
         self.assertEqual(self.act("item", text="Mia uses a Potion")["ok"], True)
         self.save_turn(turn_id="c-mia", index=0, rnd=4)
         self.assertEqual(self.act("explode").get("error"), "bad action")
+        # a thrown ball tells the DM's screen which ball and at whom, so the DM can roll the catch
+        self.assertEqual(self.act("item", text="Mia throws a Great Ball!", ball="Great Ball", targetId="c-wild")["ok"], True)
+        self.assertEqual((self.ft()["acted"]["ball"], self.ft()["acted"]["targetId"]), ("Great Ball", "c-wild"))
+        self.save_turn(turn_id="c-mia", index=0, rnd=5)
+        self.act("item", text="?", ball="Love Ball", targetId="nobody")
+        self.assertNotIn("ball", self.ft()["acted"], "only a real ball at someone in the battle")
+
+    def test_benched_pokemon_switch_in_as_the_turn_and_leads_are_picked_before_the_battle(self):
+        bench = {"id": "c-mia2", "sourceKind": "player", "sourceId": "id-member", "sourceLabel": "Mia", "side": "A", "benched": True, "mon": {"id": "p2", "name": "Squirtle", "currentHp": 25}}
+        rival = {"id": "c-rival", "sourceKind": "player", "sourceId": "id-owner", "sourceLabel": "Owner", "side": "A", "benched": True, "mon": {"id": "o1", "name": "Eevee", "currentHp": 20}}
+        self.combatants = self.combatants + [bench, rival]
+        # before the battle: Mia picks her lead (only her own Pokémon, and only before it goes live)
+        call(self.base, "POST", "/api/dm/action", {"campaignId": self.cid, "token": self.dm, "action": "fullTurnSave", "combatants": self.combatants, "currentIndex": 0, "round": 1, "turnId": "c-mia", "phase": "vs"}, token=self.owner)
+        self.assertEqual(self.act("lead", toCombatantId="c-mia2"), {"ok": True})
+        by = {c["id"]: c for c in self.ft()["combatants"]}
+        self.assertEqual((by["c-mia"]["benched"], by["c-mia2"]["benched"], by["c-rival"]["benched"]), (True, False, True))
+        self.assertIn("isn't yours", self.act("lead", toCombatantId="c-rival")["error"])
+        self.assertIsNone(self.ft().get("acted"), "picking a lead isn't a turn")
+        # live: switching to a benched Pokémon swaps them over and is the turn
+        self.save_turn(turn_id="c-mia2", index=0, combatants=self.ft()["combatants"])
+        self.assertIn("already started", self.act("lead", toCombatantId="c-mia")["error"])
+        self.assertIn("isn't yours", self.act("switch", toCombatantId="c-rival")["error"])
+        self.assertEqual(self.act("switch", toCombatantId="c-mia", text="Mia sends out Pikachu!"), {"ok": True})
+        ft = self.ft()
+        by = {c["id"]: c for c in ft["combatants"]}
+        self.assertEqual((by["c-mia2"]["benched"], by["c-mia"]["benched"], by["c-mia"]["cameInFor"]), (True, False, "c-mia2"))
+        self.assertEqual((ft["acted"]["kind"], ft["acted"]["combatantId"]), ("switch", "c-mia2"))
+        # the DM's console hands the turn to the Pokémon that came in: the choice stands, so no second action
+        self.save_turn(turn_id="c-mia", index=1, combatants=ft["combatants"])
+        self.assertEqual(self.ft()["acted"]["kind"], "switch")
+        self.assertIn("already chosen", self.act("other", text="again")["error"])
+        # a move can't sneak a bench change through
+        self.save_turn(turn_id="c-mia", index=0, rnd=2, combatants=ft["combatants"])
+        sneaky = [{**c, "benched": False} for c in self.ft()["combatants"]]
+        out = call(self.base, "POST", "/api/fullturn/playermove", {"campaignId": self.cid, "networkId": "id-member", "combatants": sneaky, "logTexts": ["x"]}, token=self.member)[1]
+        self.assertEqual(out.get("error"), "roster mismatch")
+
+    def test_a_fainted_pokemon_is_replaced_from_the_bench_without_using_a_turn(self):
+        down = {**self.combatants[1], "mon": {**self.combatants[1]["mon"], "currentHp": 0}}
+        bench = {"id": "c-mia2", "sourceKind": "player", "sourceId": "id-member", "sourceLabel": "Mia", "side": "A", "benched": True, "mon": {"id": "p2", "name": "Squirtle", "currentHp": 25}}
+        self.save_turn(turn_id="c-wild", index=0, combatants=[self.combatants[0], down, bench])
+        self.assertIn("only a fainted", self.act("replace", fromCombatantId="c-mia2", toCombatantId="c-mia")["error"])
+        self.assertEqual(self.act("replace", fromCombatantId="c-mia", toCombatantId="c-mia2"), {"ok": True})
+        by = {c["id"]: c for c in self.ft()["combatants"]}
+        self.assertEqual((by["c-mia"]["benched"], by["c-mia2"]["benched"]), (True, False))
+        self.assertIsNone(self.ft().get("acted"), "it isn't a turn: it's still the wild Pokémon's")
 
 
 class SecondAccountOnOneDevice(Base):

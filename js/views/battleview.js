@@ -58,8 +58,9 @@ function currentHpFor(state, mon) {
 
 // Same ordering rule as the Initiative Tracker / DM's Full Turn console, so
 // "up now" here matches what the DM sees on their screen.
+const onField = (combatants) => combatants.filter((c) => !c.benched);
 function orderedList(state, combatants) {
-  return [...combatants].sort((a, b) => {
+  return onField(combatants).sort((a, b) => {
     if (a.priority !== b.priority) return a.priority ? -1 : 1;
     const sa = statsFor(state, a.mon)?.spe ?? 0, sb = statsFor(state, b.mon)?.spe ?? 0;
     if (sb !== sa) return sb - sa;
@@ -148,6 +149,22 @@ export function renderBattleView(container, state, options = {}) {
   // instead of the text box being a separate block underneath it.
   const stageEl = el("div", { class: "battle-stage" }, [sceneEl, dialogEl]);
   container.appendChild(stageEl);
+  // The text box sits over the bottom of the scene; the scene keeps that much room clear below the Pokémon, so a tall
+  // box (the FIGHT menu's moves) pushes the scene down instead of covering the health bars.
+  // (The box floats over the scene, so its holder never changes size: watch each new box itself.)
+  const roomForBox = () => {
+    const box = dialogEl.querySelector(".battle-textbox");
+    stageEl.style.setProperty("--tb-h", `${Math.ceil(box ? box.getBoundingClientRect().height : 0)}px`);
+  };
+  if (typeof ResizeObserver === "function") {
+    const ro = new ResizeObserver(roomForBox);
+    new MutationObserver(() => {
+      ro.disconnect();
+      const box = dialogEl.querySelector(".battle-textbox");
+      if (box) ro.observe(box);
+      roomForBox();
+    }).observe(dialogEl, { childList: true });
+  }
 
   // ---------------- Move animations (js/moveFx.js) ----------------
   // Your own move animates as you use it (its damage lands with the hit); everyone else's animates when its line
@@ -182,25 +199,39 @@ export function renderBattleView(container, state, options = {}) {
       return true;
     }).map((e) => parseMoveLine(e.text, fullTurn.combatants, moveNames, labelsOf)).filter((m) => m && (m.attacker || m.targets.length)).map((m) => {
       // a damaging move whose target the line doesn't name: it went at the other side
-      if (!m.targets.length && !m.status && m.attacker) m.targets = enemiesOf(m.attacker, fullTurn.combatants).filter((c) => currentHpFor(state, c.mon) > 0).slice(0, 1);
+      if (!m.targets.length && !m.status && m.attacker) m.targets = enemiesOf(m.attacker, onField(fullTurn.combatants)).filter((c) => currentHpFor(state, c.mon) > 0).slice(0, 1);
       return m;
     });
   }
 
   function myMon() { return dm ? myCombatant()?.mon || null : save.party[activeIndex] || null; }
   const dmTurnKey = () => `${fullTurn.turnId || activeCombatant()?.id}|${fullTurn.round}`;
-  // DM mode: is this an NPC's or wild Pokémon's turn (the DM's to play)?
-  const dmActs = () => !!dm && !!activeCombatant() && !isPlayerKind(activeCombatant());
+  // DM mode: is this turn the DM's to play? An NPC's or wild Pokémon's, or the DM's own trainer's when the DM is in
+  // the battle too (their trainer id on this device is in the roster).
+  const dmOwns = (c) => !!c && (!isPlayerKind(c) || c.sourceId === myNetworkId);
+  const dmActs = () => !!dm && dmOwns(activeCombatant());
   // My choice this turn, if I've made it: the menu stays locked until the DM starts the next turn.
   function myChoice() {
     if (dmActs()) return dmDone.has(dmTurnKey()) ? { text: "Done. Click Next Turn when you're ready." } : null;
     const mine = myCombatant();
-    return mine && fullTurn.acted && fullTurn.acted.combatantId === mine.id ? fullTurn.acted : null;
+    // (after a switch the choice was made by the Pokémon that went back: it still counts for the one that came in)
+    return mine && fullTurn.acted && (fullTurn.acted.combatantId === mine.id || fullTurn.acted.combatantId === mine.cameInFor) ? fullTurn.acted : null;
   }
 
   function myCombatant() {
     if (dm) return activeCombatant();   // the DM sees the battle as whoever's turn it is
-    return fullTurn.combatants.find((c) => (c.sourceKind === "player" || c.sourceKind === "team") && c.sourceId === myNetworkId) || null;
+    const mine = myCombatants();
+    return mine.find((c) => c.id === fullTurn.turnId) || mine.find((c) => !c.benched) || mine[0] || null;
+  }
+
+  // every Pokémon of mine in the roster (out or benched)
+  function myCombatants() {
+    return fullTurn.combatants.filter((c) => isPlayerKind(c) && c.sourceId === myNetworkId);
+  }
+  // who can come in for this Pokémon: the same trainer's benched Pokémon that haven't fainted
+  function benchFor(c) {
+    if (!c || c.sourceKind === "wild") return [];
+    return fullTurn.combatants.filter((x) => x !== c && x.benched && x.sourceKind === c.sourceKind && x.sourceId === c.sourceId && currentHpFor(state, x.mon) !== 0);
   }
 
   function activeCombatant() {
@@ -228,8 +259,8 @@ export function renderBattleView(container, state, options = {}) {
   // always had before "sides" existed.
   function enemyCombatants() {
     const mine = myCombatant();
-    if (!mine) return fullTurn.combatants;
-    return enemiesOf(mine, fullTurn.combatants);
+    if (!mine) return onField(fullTurn.combatants);
+    return enemiesOf(mine, onField(fullTurn.combatants));
   }
 
   // text: a single message, or an array shown one after another in the same
@@ -275,6 +306,23 @@ export function renderBattleView(container, state, options = {}) {
   }
 
   const targetLabel = combatantLabel;
+
+  async function switchTo(from, to) {
+    const text = `${ownerName(from)} withdrew ${monName(from.mon)} and sent out ${monName(to.mon)}!`;
+    if (dm) {
+      if (!dmActs()) return;
+      const next = fullTurn.combatants.map((c) => (c.id === from.id ? { ...c, benched: true } : c.id === to.id ? { ...c, benched: false, cameInFor: from.id } : c));
+      submitting = true;
+      const key = dmTurnKey();
+      try { await dm.submit({ combatants: next, logTexts: [text] }); fullTurn = { ...fullTurn, combatants: next }; }
+      finally { submitting = false; }
+      dmDone.add(key); dmDone.add(`${to.id}|${fullTurn.round}`);   // the new Pokémon holds the turn now: it's still used
+      menuMode = "root";
+      flash(text); renderScene();
+      return;
+    }
+    await sendRequest(text, "switch", { toCombatantId: to.id });
+  }
 
   // Single-target actions (a move, a thrown ball, ...): if there's exactly
   // one valid enemy, act on it immediately (no extra tap, matches how the
@@ -409,7 +457,7 @@ export function renderBattleView(container, state, options = {}) {
       withEnemyTarget((opp) => { if (opp) playMoveNow(mine, move, [opp]); });
       return;
     }
-    const targets = resolveSpreadTargets(moveName, mine, fullTurn.combatants, fullTurn.spreadHitsAllies);
+    const targets = resolveSpreadTargets(moveName, mine, onField(fullTurn.combatants), fullTurn.spreadHitsAllies);
     highlightedIds = new Set(targets.map((t) => t.id));
     renderScene();
     if (!targets.length) { flash("No valid targets nearby."); return; }
@@ -508,8 +556,8 @@ export function renderBattleView(container, state, options = {}) {
     turnOrderEl.innerHTML = "";
     dialogEl.innerHTML = "";
     sceneEl.innerHTML = "";
-    const sideA = combatantsBySide("A", fullTurn.combatants);
-    const sideB = combatantsBySide("B", fullTurn.combatants);
+    const sideA = combatantsBySide("A", onField(fullTurn.combatants));
+    const sideB = combatantsBySide("B", onField(fullTurn.combatants));
     const all = [...sideA, ...sideB];
 
     // Trainer/NPC portraits, not the Pokémon's own sprite -- a wild
@@ -544,6 +592,26 @@ export function renderBattleView(container, state, options = {}) {
         el("div", { class: "vs-side vs-side-b" }, sideB.length ? sideB.map(portrait) : [el("div", { class: "view-sub" }, "—")]),
       ]),
     ]));
+    const mine = myCombatants();
+    if (mine.length > 1) {
+      const box = el("div", { class: "battle-textbox" }, [
+        el("div", { class: "battle-prompt" }, "Who goes out first?"),
+        el("div", { class: "battle-party-list" }, mine.map((c) => {
+          const lead = !c.benched;
+          const b = el("button", { class: `btn ${lead ? "" : "secondary "}battle-party-btn`, "aria-pressed": String(lead) }, `${lead ? "✓ " : ""}${monName(c.mon)} (Lv.${levelText(c.mon.level)})`);
+          if (!lead) b.addEventListener("click", async () => {
+            const res = await playerAction({ networkId: myNetworkId, kind: "lead", toCombatantId: c.id });
+            if (!res || res.error) { flash(res?.error || "Couldn't reach the server — try again."); return; }
+            fullTurn = { ...fullTurn, combatants: fullTurn.combatants.map((x) => (mine.includes(x) ? { ...x, benched: x.id !== c.id } : x)) };
+            lastSnapshot = null;
+            renderVsScreen();
+          });
+          return b;
+        })),
+        el("p", { class: "battle-waiting" }, "The others wait on the bench: switch them in on your turn."),
+      ]);
+      dialogEl.replaceChildren(box);
+    }
   }
 
   function renderAll() {
@@ -597,7 +665,8 @@ export function renderBattleView(container, state, options = {}) {
     const otherBtn = el("button", { class: "battle-menu-btn other" }, "OTHER");
     otherBtn.addEventListener("click", () => { menuMode = "other"; renderDialog(); });
     // the DM swaps an NPC's Pokémon from DM Control, so there's no POKÉMON button for them here
-    return el("div", { class: `battle-menu-grid ${dm ? "four" : "five"}` }, dm ? [fightBtn, bagBtn, runBtn, otherBtn] : [fightBtn, bagBtn, pokemonBtn, runBtn, otherBtn]);
+    // POKÉMON (switching) sits beside FIGHT for everyone, the DM included
+    return el("div", { class: "battle-menu-grid five" }, [fightBtn, bagBtn, pokemonBtn, runBtn, otherBtn]);
   }
 
   function backButton() {
@@ -651,7 +720,7 @@ export function renderBattleView(container, state, options = {}) {
           const spread = targetKindForMove(m) !== "single";
           const move = state.moves[state.moveByName.get(m)];
           const previewTargets = combatant
-            ? (spread ? resolveSpreadTargets(m, combatant, fullTurn.combatants, fullTurn.spreadHitsAllies) : enemyCombatants())
+            ? (spread ? resolveSpreadTargets(m, combatant, onField(fullTurn.combatants), fullTurn.spreadHitsAllies) : enemyCombatants())
             : [];
           const effLabel = move ? moveEffectivenessSummary(state, move, previewTargets.map((t) => speciesFor(state, t.mon))) : "";
           const label = [spread ? `${m} (hits all)` : m, effLabel ? `— ${effLabel}` : ""].filter(Boolean).join(" ");
@@ -666,7 +735,17 @@ export function renderBattleView(container, state, options = {}) {
       box.appendChild(el("h4", {}, "Poké Balls"));
       box.appendChild(el("div", { class: "battle-menu-grid moves" }, BALL_TYPES.map((ball) => {
         const b = el("button", { class: "battle-menu-btn move" }, ball);
-        b.addEventListener("click", () => withEnemyTarget((opp) => sendRequest(`${myDisplayName} throws a ${ball}${opp ? ` at ${targetLabel(opp)}` : ""}!`, "item")));
+        b.addEventListener("click", () => withEnemyTarget(async (opp) => {
+          if (dm?.throwBall) {   // the DM throwing for a trainer: rolled straight away on this screen
+            if (!dmActs() || !opp) return;
+            const text = await dm.throwBall(myCombatant().id, ball, opp.id);
+            dmDone.add(dmTurnKey()); menuMode = "root"; pendingTarget = null;
+            flash(/CAUGHT|AUTOMATIC CATCH/.test(text) ? `Gotcha! ${monName(opp.mon)} was caught!` : `Oh no! ${monName(opp.mon)} broke free!`);
+            return;
+          }
+          // a player's throw: the DM rolls it (the ball and target travel with the choice)
+          sendRequest(`${myDisplayName} throws a ${ball}${opp ? ` at ${targetLabel(opp)}` : ""}!`, "item", opp ? { ball, targetId: opp.id } : {});
+        }));
         return b;
       })));
       box.appendChild(el("h4", {}, "Healing"));
@@ -686,6 +765,18 @@ export function renderBattleView(container, state, options = {}) {
       box.appendChild(text);
       box.appendChild(el("div", { class: "battle-other-row" }, [send, backButton()]));
       setTimeout(() => text.focus(), 0);
+    } else if (menuMode === "pokemon" && (dm || benchFor(combatant).length || myCombatants().length > 1)) {
+      const bench = benchFor(combatant);
+      box.appendChild(el("div", { class: "battle-prompt" }, bench.length ? `Switch ${monName(combatant?.mon)} for:` : `${ownerName(combatant)} has nobody on the bench to switch in.`));
+      if (!bench.length && dm) box.appendChild(el("p", { class: "battle-waiting" }, "In the Roster, untick Out on a Pokémon to put it on the bench (or Add more of this trainer's team), and it can be switched in here."));
+      box.appendChild(el("div", { class: "battle-party-list" }, bench.map((c) => {
+        const max = maxHpFor(state, c.mon), cur = currentHpFor(state, c.mon);
+        const b = el("button", { class: "btn secondary battle-party-btn" }, `${monName(c.mon)} (Lv.${levelText(c.mon.level)}) — ${max === null ? "HP unknown" : `${cur}/${max} HP`}`);
+        b.addEventListener("click", () => switchTo(combatant, c));
+        return b;
+      })));
+      if (bench.length) box.appendChild(el("p", { class: "battle-waiting" }, dm ? "Switching uses this turn." : "Switching uses your turn."));
+      box.appendChild(backButton());
     } else if (menuMode === "pokemon") {
       box.appendChild(el("div", { class: "battle-prompt" }, "Choose a Pokémon:"));
       box.appendChild(el("div", { class: "battle-party-list" }, save.party.filter((m) => m.name).map((m) => {
@@ -715,11 +806,30 @@ export function renderBattleView(container, state, options = {}) {
       // The blow-by-blow history lives in the Battle Log drawer (the LOG
       // button) now, not here -- this box only ever shows the one current
       // line, same as the real games' battle screen.
+      // one of mine fainted on the field and I have others waiting: send one out now (free, like the games)
+      const downed = !dm && fullTurn.phase === "live" ? myCombatants().find((c) => !c.benched && currentHpFor(state, c.mon) === 0 && benchFor(c).length) : null;
+      if (downed) {
+        box.appendChild(el("div", { class: "battle-prompt" }, `${monName(downed.mon)} fainted! Who will you send out?`));
+        box.appendChild(el("div", { class: "battle-party-list" }, benchFor(downed).map((c) => {
+          const max = maxHpFor(state, c.mon), cur = currentHpFor(state, c.mon);
+          const b = el("button", { class: "btn battle-party-btn" }, `${monName(c.mon)} (Lv.${levelText(c.mon.level)}) — ${max === null ? "HP unknown" : `${cur}/${max} HP`}`);
+          b.addEventListener("click", async () => {
+            const res = await playerAction({ networkId: myNetworkId, kind: "replace", fromCombatantId: downed.id, toCombatantId: c.id });
+            if (!res || res.error) { flash(res?.error || "Couldn't reach the server — try again."); return; }
+            fullTurn = { ...fullTurn, combatants: fullTurn.combatants.map((x) => (x.id === downed.id ? { ...x, benched: true } : x.id === c.id ? { ...x, benched: false } : x)) };
+            lastSnapshot = null;
+            flash(`Go, ${monName(c.mon)}!`); renderScene();
+          });
+          return b;
+        })));
+        dialogEl.appendChild(box);
+        return;
+      }
       if (!fullTurn.combatants.length) {
         box.appendChild(el("div", { class: "battle-prompt" }, "No encounter in progress right now."));
       } else if (dm && !dmActs()) {
         // a player's turn: show what they're doing; their own screen has the menu
-        const choice = fullTurn.acted && active && fullTurn.acted.combatantId === active.id ? fullTurn.acted : null;
+        const choice = fullTurn.acted && active && (fullTurn.acted.combatantId === active.id || fullTurn.acted.combatantId === active.cameInFor) ? fullTurn.acted : null;
         box.appendChild(el("div", { class: "battle-prompt" }, choice ? `${combatantLabel(active)}: ${choice.text || choice.kind}` : `Waiting for ${active ? combatantLabel(active) : "the next turn"} to choose…`));
         if (choice) box.appendChild(el("div", { class: "battle-waiting" }, "Resolve it, then click Next Turn."));
       } else if (!combatant) {

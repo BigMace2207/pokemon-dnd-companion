@@ -46,8 +46,30 @@ let current = null;
 // Phone layout: page changes run through a view transition (supported by Safari and Chrome), so the old page fades into
 // the new one and the white dot glides between pages instead of vanishing (it has the same view-transition-name on
 // every page: the hub's wheel dot, and #mDot elsewhere). Skipped on first load and for reduced motion.
+// Changing page (desktop): the page blurs and fades out, the new one is drawn and fades in from a blur, with a soft
+// sound, like the hub's background changing. Under 0.45s in all, never on the first page or a redraw; Low graphics
+// fades without the blur, reduced motion skips it. A second click mid-change just goes straight to the newest page.
+let pageSwap = 0;
 function setView(name, opts = {}) {
   const phone = document.documentElement.classList.contains("m");
+  const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!opts.initial && VIEWS[name] && name !== current && !document.hidden) import("./hubSound.js").then((m) => m.hubSound("page")).catch(() => {});
+  if (!phone && !opts.initial && !calm && !document.hidden && VIEWS[name] && name !== current && mainView.animate) {
+    const mine = ++pageSwap;
+    const blur = document.documentElement.dataset.gfx === "low" ? "blur(0px)" : "blur(8px)";
+    const out = mainView.animate([{ opacity: 1, filter: "blur(0px)" }, { opacity: 0, filter: blur }], { duration: 150, easing: "cubic-bezier(.4,0,1,1)", fill: "forwards" });
+    let swapped = false;
+    const swap = () => {
+      if (swapped || mine !== pageSwap) return;
+      swapped = true;
+      out.cancel();
+      setViewNow(name, opts);
+      mainView.animate([{ opacity: 0, filter: blur }, { opacity: 1, filter: "blur(0px)" }], { duration: 260, easing: "cubic-bezier(.2,.8,.2,1)" });
+    };
+    out.finished.then(swap, swap);
+    setTimeout(swap, 300);   // the page change never waits on the animation
+    return;
+  }
   if (phone && !opts.initial && !document.hidden && document.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches && VIEWS[name] && name !== current) {
     // the page change never waits on the animation: if the transition hasn't swapped the page within 400ms (no frames
     // being drawn, say), it happens anyway
@@ -350,6 +372,7 @@ async function startApp() {
   // Log/Battle Log), and the dice tray all live outside the router —
   // mounted once, present no matter which view is open.
   system.mount?.(state);
+  if (system?.id === "pokemon-dnd") import("./ambience.js").then((m) => m.startAmbience()).catch(() => {});   // the background soundscape
   mountLogDrawer(document.body, { tabs: system.pullTabs || [], state });   // LOG plus the system's own pull tabs
   mountDiceWidget();
   mountShortcuts();

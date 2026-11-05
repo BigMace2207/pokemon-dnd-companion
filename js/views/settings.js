@@ -1,6 +1,6 @@
 import { el, field } from "../components.js";
 import { getGfx, setGfx } from "../gfx.js";
-import { hubSound, hubSoundOn, setHubSoundOn } from "../hubSound.js";
+import { hubSound, hubSoundOn, setHubSoundOn, getAudioLevels, setAudioLevel, playCry } from "../hubSound.js";
 import { getForcedTheme, getTheme, setTheme, getLavaFx, setLavaFx, getHiddenViews, setViewHidden, getSelectedCampaignId, clearSelectedCampaignId } from "../deviceSettings.js";
 import {
   getCampaign, renameCampaign, setCampaignEdition, regenerateInviteCode, setCampaignDm, getRoster,
@@ -136,11 +136,33 @@ export function renderSettings(container) {
     ]);
   }
 
-  // The hub's sound effects (js/hubSound.js), on or off for this device
+  // Sound for this device (js/hubSound.js): on or off, and a level each for everything, the sound effects, the
+  // background ambience (js/ambience.js) and the Pokémon cries. Letting go of a slider plays a sample at the new level.
   function soundCard() {
+    const lv = getAudioLevels();
+    const rows = [
+      ["master", "Master", "Everything at once"],
+      ["sfx", "Sound effects", "Clicks, drags, drops, items, Whiteboard and battle moves"],
+      ["ambience", "Ambience", "The slow, spatial background in Pokémon campaigns"],
+      ["pokemon", "Pokémon", "Cries when a Pokémon comes out of the Pokédex or your team"],
+    ];
+    const sample = (key) => {
+      if (key === "pokemon") playCry(25, "Pikachu");
+      else if (key !== "ambience") hubSound("click");
+    };
+    const sliders = rows.map(([key, label, hint]) => {
+      const value = el("span", { class: "audio-value" }, `${lv[key]}%`);
+      const input = el("input", { type: "range", min: "0", max: "100", step: "1", value: String(lv[key]), class: "audio-slider", "aria-label": `${label} volume` });
+      input.style.setProperty("--fill", `${lv[key]}%`);
+      input.addEventListener("input", () => { setAudioLevel(key, input.value); value.textContent = `${input.value}%`; input.style.setProperty("--fill", `${input.value}%`); });
+      input.addEventListener("change", () => sample(key));
+      return el("div", { class: "audio-row" }, [el("div", { class: "audio-label" }, [el("strong", {}, label), el("span", {}, hint)]), input, value]);
+    });
+    const list = el("div", { class: `audio-sliders${hubSoundOn() ? "" : " off"}` }, sliders);
     return el("div", { class: "card" }, [
-      el("h4", {}, "Hub sounds"),
-      el("div", { class: "settings-dm-toggle" }, [toggleSwitch(hubSoundOn(), (on) => { setHubSoundOn(on); if (on) hubSound("click"); }), el("span", {}, "Soft spatial sounds for clicks, drags, drops and pings on the hub")]),
+      el("h4", {}, "Audio"),
+      el("div", { class: "settings-dm-toggle" }, [toggleSwitch(hubSoundOn(), (on) => { setHubSoundOn(on); list.classList.toggle("off", !on); if (on) hubSound("click"); }), el("span", {}, "Sound on this device")]),
+      list,
     ]);
   }
 

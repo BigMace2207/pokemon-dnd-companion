@@ -324,6 +324,10 @@ Inter was dropped as too generic. If you add a family, add it to the `<link>` in
   a hit timed by js/moveFx.js) and `playCry`: the real game cries streamed from the PokeAPI cries collection by sprite id
   (Ogg), or Pokémon Showdown's MP3 by name where Ogg won't play. Those two hosts are the only extra `media-src` in the CSP;
   cries are never stored in the repo or on the server.
+  Levels: the game cries are mastered ~40 dB hotter than the hub's sounds, so the Ogg runs through the hub mix
+  (crossOrigin; PokeAPI allows it) at CRY_GAIN with a little reverb; Showdown has no CORS, so its MP3 just plays very
+  quietly. Item and move sounds use only sine/triangle tones and noise filtered below ~3kHz, and each has a LEVEL trim
+  measured with `renderSound` (an OfflineAudioContext render) so they all sit within ~1 dB of a hub click / drop.
 - Move animations: `js/moveFx.js` draws on a throw-away `.move-fx` layer inside `.battle-stage` (transform/opacity
   only, Web Animations). battleview.js plays your own move before submitting it (the HP drops on the hit), and on a poll
   plays new "used <move>" Battle Log lines (`parseMoveLine`) on the old scene before drawing the new HP. Slots carry
@@ -360,3 +364,31 @@ Inter was dropped as too generic. If you add a family, add it to the `<link>` in
   `syncLinkedCards` (hub.js) rewrites your linked cards when your sheet changes (details, HP, moves, held item).
 - Hub panning is transform-only: `applyView` moves the dot grid and star layers with `transform`/`translate` (wrapped by a
   tile) and only touches CSS variables when the zoom changes, on those layers, never on `.hub` (that restyled every card).
+
+## Encounter levels on the Whiteboard
+
+`js/planner/partyLevel.js` works out the spawn level: the DM's roster (`/api/roster?token=`, which marks DMs with
+`dm: true`) gives each player's party; each player counts as their party's average, the party as the average of those,
+plus 1.5 per extra player (max +8). Without the DM token it falls back to your own party. The pure helpers
+(`encounterLevel`, `partyAverage`, `spreadLevels`) are in pokeGenerators.js (tested in tests/js/partyLevel.test.mjs).
+boardView.js passes the level to the wild / trainer / gym generators (gym +2), stores it as the node's `level`, and the
+Level box calls `relevelTeam`: new levels spread around it (ace highest), new moves only for generated (`auto`) Pokémon.
+
+## Audio buses and the ambience
+
+js/hubSound.js builds one graph: master (0.32 x the Master slider) -> compressor, a shared echo + reverb, and three
+buses (sfx, ambience, pokemon), each a dry gain and a reverb send set from its slider (`pkdnd-audio`, percent, squared
+for the gain). `renderSound(play)` renders any sound offline for measuring; its callback gets `{ ctx, ambience }`.
+js/ambience.js (`buildAmbience`) is the background: a four-voice pad gliding through four chords, wandering noise, and
+far-off bells, all moved by AudioParam LFOs; it starts from app.js for Pokémon campaigns once the context is running
+and stops when sound is turned off. The whole context is suspended in a hidden tab.
+
+## Battle bench and switching
+
+A combatant may carry `benched: true`: it's off the field (not drawn, not in the turn order, not a target) but still
+counts for a side being wiped out. Battle Control's roster has an Out box; a player's second Pokémon is added benched.
+Player actions (`/api/fullturn/playeraction`): `lead` (draft/VS only, own Pokémon, not a turn), `switch` with
+`toCombatantId` (own benched Pokémon; the old one is benched, the new one gets `cameInFor` and holds the turn; it's the
+turn's choice), `replace` (live, after one of yours on the field faints; free). A player's move may not change
+`benched`. fullTurnSave treats a turnId handed to the `cameInFor` Pokémon as the same turn, so the choice stands; Next
+Turn clears `cameInFor`. In DM mode the battle screen also plays combatants whose sourceId is the DM's own trainer id.

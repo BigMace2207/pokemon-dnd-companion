@@ -1568,16 +1568,22 @@ export function renderHub(container, state) {
     const node = planEncounter(src.id);
     const mons = node?.mons?.length ? node.mons : src.mons;
     const owner = node?.identity?.name || (node && node.gen !== "wild" ? node.title : "");
+    // Each team slot keeps one Wild Library entry (its id comes from the board, the card and the slot), so starting the
+    // battle again, after a level change or anything else, updates that entry instead of adding another copy; a slot
+    // the team no longer has loses its entry.
+    const base = `pl-${String(src.id || "").replace(/[^A-Za-z0-9_-]/g, "-")}`.slice(0, 34);
     const out = [];
-    for (const m of mons || []) {
+    for (const [i, m] of (mons || []).entries()) {
+      const wildId = `${base}-${i}`;
       const species = state?.pokemonByName?.get(m.name);
       const mon = {
-        id: crypto.randomUUID ? crypto.randomUUID() : uid(), dex: m.dex ?? species?.dex ?? null, name: m.name, nickname: m.nickname || "", level: m.level || 5, currentHp: null,
+        id: wildId, dex: m.dex ?? species?.dex ?? null, name: m.name, nickname: m.nickname || "", level: m.level || 5, currentHp: null,
         item: m.item || "", ability: m.ability || "", status: "None", moves: [...(m.moves || []), "", "", "", ""].slice(0, 4),
       };
-      const res = await dmAction(dmToken, "wildSave", { mon });
+      const res = await dmAction(dmToken, "wildSave", { wildId, mon });
       if (res?.wildId) out.push(combatant("wild", res.wildId, owner || `Wild ${m.name}`, { ...mon, id: res.wildId }, "B"));
     }
+    for (let i = (mons || []).length; i < 6; i++) await dmAction(dmToken, "wildDelete", { wildId: `${base}-${i}` });
     return out;
   }
 
@@ -1679,10 +1685,11 @@ export function renderHub(container, state) {
   });
   stage.addEventListener("drop", (e) => {
     const card = e.dataTransfer.getData(CARD_MIME);
-    if (card) { e.preventDefault(); try { placeCard(JSON.parse(card), toWorld(e.clientX, e.clientY), { x: e.clientX, y: e.clientY }); } catch { /* not ours */ } return; }
+    if (card) { e.preventDefault(); hubSound("place", e.clientX); try { placeCard(JSON.parse(card), toWorld(e.clientX, e.clientY), { x: e.clientX, y: e.clientY }); } catch { /* not ours */ } return; }
     const raw = e.dataTransfer.getData("application/x-hub-button");
     if (!raw || !dmToken) return;
     e.preventDefault();
+    hubSound("place", e.clientX);   // an encounter lands on the board
     addButton(JSON.parse(raw), toWorld(e.clientX, e.clientY));
   });
 

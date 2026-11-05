@@ -89,6 +89,10 @@ html.planner-full #lavaFx, html.planner-full .lava-tower-wrap, html.planner-full
 /* nodes */
 .pl-node { position: absolute; display: flex; flex-direction: column; min-width: 170px; min-height: 110px; background: var(--panel); color: var(--text); border: 3px solid var(--text); border-radius: 8px; box-shadow: 6px 6px 0 rgba(0, 0, 0, .35); font-size: 16px; cursor: default; user-select: text; }
 .pl-node.dragging { box-shadow: 10px 12px 0 rgba(0, 0, 0, .4); }
+/* a picked-up node lifts and tilts a touch, and settles back when dropped (js/planner/boardView.js plays the rest) */
+.pl-node { transition: transform .18s cubic-bezier(.2, .9, .3, 1.15); }
+.pl-node.dragging { transform: scale(1.015) rotate(-.6deg); transition-duration: .12s; }
+@media (prefers-reduced-motion: reduce) { .pl-node, .pl-node.dragging { transition: none; transform: none; } }
 .pl-session-tags { position: absolute; left: 0; bottom: calc(100% + 8px + 4px * var(--rings, 1)); display: flex; gap: 4px; flex-wrap: wrap; }
 .pl-session-tag { padding: 2px 9px; border-radius: 6px; border: 2px solid var(--text); color: #fff; font-size: 13px; font-weight: 700; text-shadow: 0 1px 1px rgba(0, 0, 0, .6); }
 .pl-node { --k: var(--text); --ink: #1a1208; }
@@ -286,3 +290,17 @@ html.planner-full #lavaFx, html.planner-full .lava-tower-wrap, html.planner-full
 }
 @keyframes pl-snap { 0% { transform: scale(1); } 35% { transform: scale(1.04); } 100% { transform: scale(1); } }
 @keyframes pl-beckon { 50% { transform: scale(1.015); } }
+
+/* a trainer, gym leader or wild encounter's Level box: changing it re-levels the team around it (js/planner/partyLevel.js) */
+.pl-level { display: inline-flex; align-items: center; gap: calc(6px * var(--s)); margin-left: auto; font-size: calc(12px * var(--s)); color: var(--muted, #a1a1aa); }
+.pl-level .pl-level-input { width: calc(58px * var(--s)); padding: calc(3px * var(--s)) calc(6px * var(--s)); font-size: calc(13px * var(--s)); }
+.pl-trainer-card + .pl-level { margin: calc(8px * var(--s)) 0 0; }
+
+/* Controls on a card are drawn inside the board's scale(): a pill radius (999px) with a see-through border makes Chrome
+   paint the two rounded ends over each other when zoomed out, which shows as a line through the middle. On cards they
+   get an ordinary radius and a solid border colour instead, and the Level box drops the browser's tiny spinner. */
+.pl-node .btn, .pl-node input:not([type="checkbox"]), .pl-node select { border-radius: 8px; border-color: color-mix(in srgb, var(--text) 16%, var(--panel)); }
+.pl-node .pl-level-input { -moz-appearance: textfield; appearance: textfield; text-align: center; }
+.pl-node .pl-level-input::-webkit-inner-spin-button, .pl-node .pl-level-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.pl-level-step { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--text) 16%, var(--panel)); background: var(--panel-alt, rgba(255, 255, 255, .06)); color: var(--text); font-size: 14px; line-height: 1; cursor: pointer; }
+.pl-level-step:active { transform: scale(.92); }
