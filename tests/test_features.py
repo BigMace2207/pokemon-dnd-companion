@@ -443,6 +443,17 @@ class MapFog(Base):
     def view(self, tok, nid):
         return call(self.base, "GET", f"/api/partymap?campaignId={self.cid}&id={nid}", token=tok)[1]["map"]
 
+    def test_the_dm_sections_the_map_into_areas_that_survive_moves_and_republishing(self):
+        areas = [{"id": "a1", "name": "Greenmantle", "x": .1, "y": .1, "w": .3, "h": .2}, {"name": "", "x": 0, "y": 0, "w": .2, "h": .2}, {"name": "Sliver", "x": .9, "y": .9, "w": 0, "h": .1}]
+        self.assertEqual(self.post("/api/partymap/live", {"areas": areas}, self.mia)[0], 403, "players can't draw areas")
+        self.assertEqual(self.post("/api/partymap/live", {"token": self.dm, "areas": areas}, self.owner)[0], 200)
+        got = self.view(self.mia, "id-mia")
+        self.assertEqual([a["name"] for a in got["areas"]], ["Greenmantle"], "nameless and empty areas are dropped")
+        self.assertEqual(len(got["pins"]), 1, "sending only areas leaves the places alone")
+        self.post("/api/partymap/move", {"id": "id-mia", "x": .2, "y": .15}, self.mia)
+        self.post("/api/partymap", {"token": self.dm, "map": self.map}, self.owner)
+        self.assertEqual([a["name"] for a in self.view(self.mia, "id-mia")["areas"]], ["Greenmantle"], "republishing the same map keeps its areas")
+
     def test_a_new_hub_map_starts_hidden_in_fog(self):
         self.assertTrue(self.view(self.mia, "id-mia")["fog"]["enabled"], "players mustn't glimpse a new map before the DM is ready")
         self.post("/api/partymap/fog", {"token": self.dm, "fog": {"enabled": False}}, self.owner)

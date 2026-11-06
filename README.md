@@ -105,6 +105,15 @@
 - Page changes blur and fade out, then the new page fades in from a blur, with a soft sound. Whiteboard nodes each
   have their own sound when placed, picked up or dropped (notes, stickies, checklists, trainers, gym leaders, wild
   Pokémon, dungeons...).
+- Hub map: the minimap wears a cosmic ring with the name of the area you're standing in. The full map has a coordinate
+  grid (letters along the top, numbers down the left, following the pan and zoom), and the DM can section it into named
+  areas (Draw an area), rename or delete them; each player's ring follows the area their token is in.
+- Hub zoom glides (buttons, mouse-wheel notches, Fit, going to a player) with the board, stars and constellations moving
+  together; pinches follow the fingers. The sky has three constellations: Rayquaza, Charizard and Entei
+  (`tools/make_constellation_lines.py` traces new ones from a picture).
+- Phones: as a Home Screen web app the hub uses the whole screen (no reserved status-bar strip). Your trainer and team
+  sit down the left (the team two across, three down), and press-and-hold drags them, bag items, Dex rows and Whiteboard
+  items onto the board, a trainer's card or Send To (`js/mobile/touchDrag.js`).
 - Battle bench: each combatant is out on the field or on the bench (the roster's Out box). A player's first Pokémon goes
   out and the rest wait; the other side sends out everything. Players pick their lead on the VS screen, switch in a
   benched Pokémon from POKÉMON (it uses their turn), and send out the next one for free when one faints. The DM can

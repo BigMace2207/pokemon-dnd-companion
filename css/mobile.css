@@ -46,7 +46,7 @@ html.wheel-open #widgetDock { opacity: 0; pointer-events: none; }
 
 /* ---- the hub: the board edge to edge, one dot at the bottom ---- */
 html.m .hub { height: 100dvh; }
-html.m .hub :is(.hub-toolbar, .hub-quick, .hub-zoom, .hub-left-dock, .hub-top-right .hub-apps, .hub-gear) { display: none !important; }
+html.m .hub :is(.hub-toolbar, .hub-quick, .hub-zoom, .hub-top-right .hub-apps, .hub-gear) { display: none !important; }   /* the left dock (trainer + team) stays: see the end of this file */
 html.m .hub-top { padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px 0; }
 html.m .hub-title { padding: 6px 14px; }
 html.m .hub-title strong { font-size: 22px; }
@@ -200,3 +200,35 @@ html.m .pen-arc .pen-clear { transform: translate(calc(-120px - 50%), -50%); min
 .wheel-pages { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 238px); transform: translateX(-50%); display: flex; gap: 7px; opacity: 0; pointer-events: none; }
 .wheel-pages i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255, 255, 255, .3); transition: background-color .2s, transform .2s cubic-bezier(.23, 1, .32, 1); }
 .wheel-pages i.on { background: #fff; transform: scale(1.25); }
+
+/* ---- web shortcut (Add to Home Screen): the page runs under the status bar, so the safe area is counted once. --topbar-h
+   already includes env(safe-area-inset-top); adding it again here reserved a second status-bar strip (the blurred band
+   at the top of the hub) and pushed the hub's title and buttons down. ---- */
+html.m .topbar { height: var(--topbar-h); }
+html.m #app { grid-template-rows: var(--topbar-h) 1fr; }
+html.m.hub-full #app { grid-template-rows: 0 1fr; }
+html.m .hub-top { padding-top: calc(env(safe-area-inset-top, 0px) + 4px); }
+@media (display-mode: standalone) {
+  html.m .hub-top { padding-top: max(6px, env(safe-area-inset-top, 0px)); }
+  html.m .hub-mini { top: calc(env(safe-area-inset-top, 0px) + 66px); }
+  html.m .hub .hub-left-dock { top: calc(env(safe-area-inset-top, 0px) + 222px); }
+}
+
+/* ---- your trainer and team down the left on the phone: the trainer on top, the team two across, three down. Press and
+   hold any of them (or a bag item) to drag it onto the board, a trainer's card or Send To (js/mobile/touchDrag.js). ---- */
+html.m .hub .hub-left-dock { display: grid !important; position: absolute; left: max(10px, env(safe-area-inset-left, 0px)); right: auto; top: calc(env(safe-area-inset-top, 0px) + 236px); bottom: auto; justify-items: start; gap: 4px; z-index: 6; }
+html.m .hub-left-dock .hub-me { flex-direction: column; align-items: flex-start; gap: 0; margin: 0 0 2px; padding: 0; min-height: 0; }
+html.m .hub-left-dock .hub-me-face { width: 56px; height: 56px; min-width: 56px; min-height: 56px; }
+html.m .hub-left-dock .hub-me-text { padding: 0 0 0 2px; }
+html.m .hub-left-dock .hub-me-text strong { font-size: 13px; max-width: 108px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.m .hub-left-dock .hub-team { display: grid; grid-template-columns: repeat(2, 50px); gap: 4px; padding: 5px; border-radius: 16px; }
+html.m .hub-left-dock .hub-team-mon { width: 50px; height: 52px; padding-bottom: 5px; }
+html.m .hub-left-dock .hub-team-mon img { width: 44px; height: 44px; margin-left: -22px; }
+html.m .hub-left-dock .hub-team-hp { width: 36px; }
+html.m .hub-left-dock .hub-team-empty { grid-column: 1 / -1; max-width: 104px; font-size: 12px; }
+/* the browser's own drag would fight the touch one */
+html.m [draggable="true"] { -webkit-user-drag: none; }
+html.m [draggable="true"]:not(input) { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.touch-drag-ghost { position: fixed; left: 0; top: 0; z-index: 10000; pointer-events: none; opacity: .92; will-change: transform; border-radius: 14px; }
+.touch-drag-ghost.img { width: 64px; height: 64px; object-fit: contain; image-rendering: pixelated; filter: drop-shadow(0 8px 16px rgba(0, 0, 0, .55)); }
+.touch-dragging { opacity: .4; }

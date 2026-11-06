@@ -340,6 +340,22 @@ def clean_map_pins(raw):
     return out
 
 
+def clean_map_areas(raw):
+    """The DM's named areas on the shared map: rectangles in map units (0-1), e.g. a town or a forest. A player's
+    current area (shown round the hub's minimap) is the smallest one their token stands in."""
+    out = []
+    for a in (raw if isinstance(raw, list) else [])[:60]:
+        if not isinstance(a, dict) or not _text(a.get("name"), 60):
+            continue
+        x, y = _unit(a.get("x")), _unit(a.get("y"))
+        w, h = min(_unit(a.get("w")), 1 - x), min(_unit(a.get("h")), 1 - y)
+        if w < 0.005 or h < 0.005:
+            continue
+        out.append({"id": _text(a.get("id"), 40) or secrets.token_hex(4), "name": _text(a.get("name"), 60),
+                    "x": round(x, 4), "y": round(y, 4), "w": round(w, 4), "h": round(h, 4), "color": _colour(a.get("color"), "#9b7be0")})
+    return out
+
+
 def clean_map_tokens(raw):
     """Where the DM has placed each player on the shared map."""
     out = []
@@ -2391,10 +2407,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     pm = state.get("partyMap")
                     if not pm:
                         return self._send_json({"error": "no shared map"}, 404)
-                    pm["pins"] = clean_map_pins(data.get("pins"))
+                    if "pins" in data:
+                        pm["pins"] = clean_map_pins(data.get("pins"))
+                    if "areas" in data:
+                        pm["areas"] = clean_map_areas(data.get("areas"))
                     members = set(entry["meta"].get("memberIds") or [])
                     before = {t["id"] for t in pm.get("tokens", [])}
-                    pm["tokens"] = merge_map_tokens(pm.get("tokens", []), clean_map_tokens(data.get("tokens")), members)
+                    if "tokens" in data:
+                        pm["tokens"] = merge_map_tokens(pm.get("tokens", []), clean_map_tokens(data.get("tokens")), members)
                     if map_fog(pm)["enabled"]:   # someone newly placed sees where they are
                         for t in pm["tokens"]:
                             if t["id"] not in before and t["id"] in members:
@@ -2430,6 +2450,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     "name": name.strip()[:80] if isinstance(name, str) and name.strip() else "Map",
                     **({"fileId": file_id} if file_id is not None else {"image": image}), "w": dim(raw.get("w")), "h": dim(raw.get("h")),
                     "pins": clean_map_pins(raw.get("pins")),
+                    # the DM's areas: sent with the map, or kept from before when the same map is published again
+                    "areas": clean_map_areas(raw.get("areas")) if "areas" in raw else (old.get("areas", []) if same else []),
                     "tokens": merge_map_tokens(old.get("tokens", []) if same else [], clean_map_tokens(raw.get("tokens")), members),
                     # a new map goes up hidden in fog, so nobody glimpses it before the DM is ready; the same map keeps its fog
                     "fog": clean_fog(raw.get("fog"), map_fog(old) if same else {**FOG_DEFAULT, "enabled": True}),

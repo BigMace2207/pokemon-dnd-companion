@@ -8,7 +8,7 @@
 // (exponential smoothing, frame-rate independent), so the motion stays continuous between mouse events. Scrolling wraps
 // each layer by its own tile size, so the layers never run out. Off for prefers-reduced-motion.
 
-import { rayquazaConstellation } from "./constellation.js";
+import { constellation } from "./constellation.js";
 import { nebulaLayer } from "./nebula.js";
 import { createStarCanvas, HUB_STAR_LAYERS } from "./starCanvas.js";
 
@@ -35,8 +35,8 @@ export function mountCosmicParallax() {
   });
   const starCv = createStarCanvas(HUB_STAR_LAYERS, "sky-star-canvas");
   sky.prepend(nebulaLayer(), starCv.canvas);   // the violet smoke and light, then the stars, behind the dot grid
-  const con = rayquazaConstellation("sky-constellation");
-  sky.append(con);
+  const cons = ["rayquaza", "charizard", "entei"].map((n) => constellation(n, "sky-constellation"));
+  sky.append(...cons);
   document.body.prepend(sky);
   starCv.start();
   if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
@@ -67,7 +67,7 @@ export function mountCosmicParallax() {
     starCv.setOffsets(starAt);
     const cx = -mx * CON_AMP, cy = -my * CON_AMP - sc * CON_RATE;   // glides like the star layers
     conAt.x += (cx - conAt.x) * k; conAt.y += (cy - conAt.y) * k;
-    con.style.transform = `translate3d(${conAt.x.toFixed(2)}px, ${conAt.y.toFixed(2)}px, 0)`;
+    for (const con of cons) con.style.transform = `translate3d(${conAt.x.toFixed(2)}px, ${conAt.y.toFixed(2)}px, 0)`;
     raf = moving ? requestAnimationFrame(frame) : 0;
     if (!raf) last = 0;
   };

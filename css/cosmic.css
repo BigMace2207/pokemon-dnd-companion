@@ -158,6 +158,8 @@
    outline of the figure, gold four-point stars along its body joined by one thin line ---- */
 .constellation { position: absolute; display: block; width: min(46vmin, 500px); height: auto; overflow: visible; pointer-events: none; will-change: transform; }
 .sky-constellation { right: 5vw; top: 10vh; }
+.sky-constellation.con-charizard { right: auto; left: -8vw; top: 42vh; width: min(70vmin, 800px); }
+.sky-constellation.con-entei { right: auto; left: 46vw; top: 70vh; width: min(54vmin, 620px); }
 .constellation .con-art { opacity: .3; filter: drop-shadow(0 0 3px rgba(150, 175, 255, .55)); }
 .constellation .con-lines line { stroke: rgba(255, 236, 190, .55); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-linecap: round; }
 .constellation .con-star { fill: #ffd977; }   /* the halo circles behind give the glow: a filter here re-rendered the whole SVG each twinkle */
@@ -166,6 +168,8 @@
 }
 @keyframes con-twinkle { from { opacity: 1; } to { opacity: .45; } }
 html.m .sky-constellation { width: 62vw; right: 4vw; top: 9vh; }
+html.m .sky-constellation.con-charizard { width: 92vw; left: -22vw; top: 46vh; }
+html.m .sky-constellation.con-entei { width: 74vw; left: 38vw; right: auto; top: 80vh; }
 
 /* ---- the sign-in page (js/views/loginGate.js): always cosmic, Rayquaza above a glass card ---- */
 .login-page { max-width: 420px; margin: 0 auto; padding: clamp(16px, 6vh, 64px) 0 48px; display: grid; justify-items: center; text-align: center; }

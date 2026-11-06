@@ -392,3 +392,13 @@ Player actions (`/api/fullturn/playeraction`): `lead` (draft/VS only, own Pokém
 turn's choice), `replace` (live, after one of yours on the field faints; free). A player's move may not change
 `benched`. fullTurnSave treats a turnId handed to the `cameInFor` Pokémon as the same turn, so the choice stands; Next
 Turn clears `cameInFor`. In DM mode the battle screen also plays combatants whose sourceId is the DM's own trainer id.
+
+## Map areas, the minimap ring, touch dragging
+
+The shared map (`partyMap`) has `areas`: [{id, name, x, y, w, h, color}] in map units, cleaned by `clean_map_areas`.
+The DM changes them with `/api/partymap/live` sending only `areas` (live now updates pins, tokens and areas each only
+when sent); publishing the same map again keeps them. `js/mapView.js` draws the grid (`mapGrid`, `gridRef`) and the
+areas under the fog; `areaAt` finds the smallest area holding a point, which `js/hubMap.js` writes round the minimap's
+ring. `js/mobile/touchDrag.js` turns a press-and-hold on any `[draggable=true]` into synthetic dragstart / dragover /
+drop / dragend events (with a stand-in DataTransfer) on the phone layout, so existing drop targets work with touch.
+

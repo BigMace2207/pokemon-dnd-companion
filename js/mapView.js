@@ -11,6 +11,24 @@ import { fileUrl, cachedFileUrl } from "./network.js";
 import { wheelIntent, wheelPx } from "./wheelIntent.js";
 
 const FOG_RES = 720;   // the fog canvas's longest side, in pixels
+const GRID_COLS = 12;   // the coordinate grid: this many columns across (A, B, C...), rows of the same size down (1, 2, 3...)
+
+/** The map's coordinate grid: { cols, rows, cell } (cell in map pixels). */
+export function mapGrid(map) {
+  const cell = (map.w || 1) / GRID_COLS;
+  return { cols: GRID_COLS, rows: Math.max(1, Math.round((map.h || 1) / cell)), cell };
+}
+export const colName = (i) => (i < 26 ? String.fromCharCode(65 + i) : String.fromCharCode(64 + Math.floor(i / 26)) + String.fromCharCode(65 + (i % 26)));
+/** The grid square a point (map units 0-1) is in, e.g. "C4". */
+export function gridRef(map, x, y) {
+  const g = mapGrid(map);
+  return `${colName(Math.min(g.cols - 1, Math.max(0, Math.floor(x * g.cols))))}${Math.min(g.rows, Math.max(1, Math.floor(y * g.rows) + 1))}`;
+}
+/** The DM's area a point (map units) is in: the smallest one holding it, or null. */
+export function areaAt(map, x, y) {
+  const hits = (map?.areas || []).filter((a) => x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h);
+  return hits.sort((a, b) => a.w * a.h - b.w * b.h)[0] || null;
+}
 
 export function mapImageSrc(map, img) {
   if (map.image) { img.src = map.image; return; }
@@ -71,7 +89,10 @@ export function mapStage(map, opts = {}) {
   const img = el("img", { class: "mv-img", alt: map.name || "Map", draggable: "false" });
   const fog = el("canvas", { class: "mv-fog", "aria-hidden": "true" });
   const marks = el("div", { class: "mv-marks" });
-  const stage = el("div", { class: `mv-stage${opts.labels === false ? " no-labels" : ""}` }, [img, fog, marks]);
+  // the coordinate grid and the DM's areas sit on the picture, under the fog (an unexplored area stays hidden)
+  const grid = el("div", { class: "mv-grid", "aria-hidden": "true" });
+  const areas = el("div", { class: "mv-areas" });
+  const stage = el("div", { class: `mv-stage${opts.labels === false ? " no-labels" : ""}` }, [img, grid, areas, fog, marks]);
   let shownImage = "", fogSig = "";
   function update(m) {
     map = m;
@@ -80,6 +101,10 @@ export function mapStage(map, opts = {}) {
     if (key !== shownImage) { shownImage = key; mapImageSrc(m, img); }
     const sig = JSON.stringify([m.fog, m.reveals?.length, m.reveals?.[m.reveals.length - 1], m.w, m.h, opts.see]);
     if (sig !== fogSig) { fogSig = sig; drawFog(fog, m, { see: opts.see }); }
+    grid.style.backgroundSize = `${mapGrid(m).cell}px ${mapGrid(m).cell}px`;
+    grid.hidden = opts.grid === false;
+    areas.replaceChildren(...(m.areas || []).map((a) => el("div", { class: "mv-area", "data-id": a.id, style: `left:${a.x * m.w}px;top:${a.y * m.h}px;width:${a.w * m.w}px;height:${a.h * m.h}px;--c:${a.color || "#9b7be0"}` },
+      el("span", { class: "mv-area-name" }, a.name))));
     marks.replaceChildren(
       ...(m.pins || []).map((p) => el("div", { class: `mv-pin${p.revealed === false ? " secret" : ""}`, "data-id": p.id, style: `left:${p.x * m.w}px;top:${p.y * m.h}px;--c:${p.color || "#ff4a22"}`, title: p.label || "" }, [
         el("span", { class: "mv-pin-dot" }, p.icon || "●"), p.label ? el("span", { class: "mv-pin-text" }, p.label) : null,
@@ -90,7 +115,7 @@ export function mapStage(map, opts = {}) {
     );
   }
   update(map);
-  return { stage, update, get map() { return map; }, tokenEl: (id) => marks.querySelector(`.mv-token[data-id="${CSS.escape(id)}"]`), pinEl: (id) => marks.querySelector(`.mv-pin[data-id="${CSS.escape(id)}"]`) };
+  return { stage, update, areasEl: areas, get map() { return map; }, tokenEl: (id) => marks.querySelector(`.mv-token[data-id="${CSS.escape(id)}"]`), pinEl: (id) => marks.querySelector(`.mv-pin[data-id="${CSS.escape(id)}"]`) };
 }
 
 // Pan and zoom a stage inside a frame: drag to pan, wheel or pinch to zoom. onTap(mapPoint, event) for a press that

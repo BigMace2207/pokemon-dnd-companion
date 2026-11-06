@@ -269,6 +269,8 @@ export function moveOnMap({ id, tokenId, x, y, color, token }) { return postJSON
 export function setMapFog(token, fog, op = null, pts = null) { return postJSON("/api/partymap/fog", { token, fog, ...(op ? { op } : {}), ...(pts ? { pts } : {}) }); }
 export function publishPartyMap(token, map) { return postJSON("/api/partymap", { token, map }); }
 export function updatePartyMapLive(token, pins, tokens) { return postJSON("/api/partymap/live", { token, pins, tokens }); }
+// the DM's named areas on the shared map (only the areas change)
+export function setMapAreas(token, areas) { return postJSON("/api/partymap/live", { token, areas }); }
 export function clearPartyMap(token) { return postJSON("/api/partymap/clear", { token }); }
 export function dmAction(token, action, payload) {
   return postJSON("/api/dm/action", { token, action, ...payload });

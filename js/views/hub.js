@@ -36,7 +36,7 @@ import { itemIconSrc, MONEY } from "../bagIcon.js";
 import { myEggs, hatch, EGG_ICON } from "../eggs.js";
 import { hubSound, itemSound, playCry } from "../hubSound.js";
 import { wheelIntent, wheelPx } from "../wheelIntent.js";
-import { rayquazaConstellation } from "../constellation.js";
+import { constellation as makeConstellation } from "../constellation.js";
 import { nebulaLayer } from "../nebula.js";
 import { createStarCanvas, HUB_STAR_LAYERS } from "../starCanvas.js";
 import { cursorColorOf } from "../cursorColor.js";
@@ -145,8 +145,9 @@ export function renderHub(container, state) {
   let shownK = null;
   // Rayquaza's constellation, far off: it follows a fifth of the pan, from wherever the board opened
   stars.prepend(nebulaLayer("hub-nebula"));   // violet smoke, light flares and drifting shards, behind the stars
-  const constellation = rayquazaConstellation("hub-constellation");
-  stars.append(constellation);
+  // Rayquaza, Charizard and Entei: far-off figures that drift and zoom together (applyView)
+  const constellations = ["rayquaza", "charizard", "entei"].map((n) => makeConstellation(n, "hub-constellation"));
+  stars.append(...constellations);
   // where each star layer (and the constellation) sits on screen: set from the board's pan and zoom in applyView
   const skyPos = starLayers.map(() => null);
   let conPos = null, lastView = null;
@@ -759,26 +760,52 @@ export function renderHub(container, state) {
     // the constellation stays where it is when you zoom and only grows or shrinks about its own centre; a pan drifts it
     // a fifth of the way, like something far off
     conPos = !conPos || !lastView ? { x: 0, y: 0 } : f === 1 ? { x: conPos.x + (view.x - lastView.x) * 0.2, y: conPos.y + (view.y - lastView.y) * 0.2 } : conPos;
-    constellation.style.transform = `translate3d(${conPos.x.toFixed(2)}px, ${conPos.y.toFixed(2)}px, 0) scale(${view.k.toFixed(4)})`;
+    const conT = `translate3d(${conPos.x.toFixed(2)}px, ${conPos.y.toFixed(2)}px, 0) scale(${view.k.toFixed(4)})`;
+    for (const c of constellations) c.style.transform = conT;
     lastView = { x: view.x, y: view.y, k: view.k };
     backdropLayer.style.transform = `translate(${(view.x * 0.03).toFixed(1)}px, ${(view.y * 0.03).toFixed(1)}px)`;
   }
-  // a smooth move for jumps (zoom buttons, fit, going to a player); dragging and the wheel stay instant
-  let glideTimer = null;
-  function glide(fn) {
-    root.classList.add("gliding");
-    fn(); applyView();
-    clearTimeout(glideTimer);
-    glideTimer = setTimeout(() => root.classList.remove("gliding"), 380);
+  // ---- animated zoom: the buttons, a mouse-wheel notch, Fit and going to someone glide there, and the board, the stars
+  // and the constellations move together, frame by frame (a CSS transition on the board alone left the sky jumping).
+  // A move keeps one world point under one screen point while the zoom changes (the cursor for the wheel, the middle
+  // for the buttons), easing out over ~0.3s. Any new zoom, a drag or a pinch takes over from wherever it has got to.
+  // Pinches and touchpad zooms follow the fingers directly; reduced motion jumps.
+  let viewAnim = 0, zoomGoal = null;
+  const calmMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function stopViewAnim() { if (viewAnim) cancelAnimationFrame(viewAnim); viewAnim = 0; zoomGoal = null; }
+  // sx, sy: the screen point (in the stage); w0 -> w1: the world point that should sit there; k1: the zoom to end on
+  function animateView(sx, sy, w1, k1, ms = 300) {
+    k1 = clamp(k1, 0.25, 3);
+    const k0 = view.k, w0 = { x: (sx - view.x) / k0, y: (sy - view.y) / k0 };
+    if (viewAnim) cancelAnimationFrame(viewAnim);
+    if (calmMotion()) { view.k = k1; view.x = sx - w1.x * k1; view.y = sy - w1.y * k1; viewAnim = 0; applyView(); return; }
+    const t0 = performance.now();
+    const step = (now) => {
+      const p = Math.min(1, (now - t0) / ms), e = 1 - Math.pow(1 - p, 3);
+      const k = k0 * Math.pow(k1 / k0, e);   // the zoom changes evenly to the eye (geometrically)
+      const wx = w0.x + (w1.x - w0.x) * e, wy = w0.y + (w1.y - w0.y) * e;
+      view.k = k; view.x = sx - wx * k; view.y = sy - wy * k;
+      applyView();
+      viewAnim = p < 1 ? requestAnimationFrame(step) : 0;
+      if (!viewAnim) zoomGoal = null;
+    };
+    viewAnim = requestAnimationFrame(step);
+  }
+  // zoom by a factor about a screen point (stage coordinates), building on a zoom that's still under way
+  function zoomAround(factor, sx, sy) {
+    const goal = clamp((zoomGoal ?? view.k) * factor, 0.25, 3);
+    const w = { x: (sx - view.x) / view.k, y: (sy - view.y) / view.k };
+    animateView(sx, sy, w, goal);
+    zoomGoal = goal;
   }
   function zoomAt(factor) {
     const r = stage.getBoundingClientRect();
-    const c = toWorld(r.left + r.width / 2, r.top + r.height / 2);
-    glide(() => { view.k = clamp(view.k * factor, 0.25, 3); view.x = r.width / 2 - c.x * view.k; view.y = r.height / 2 - c.y * view.k; });
+    zoomAround(factor, r.width / 2, r.height / 2);
   }
+  stage.addEventListener("pointerdown", stopViewAnim, true);   // grabbing the board takes over from a glide
   function lookAt(wx, wy, k = view.k) {
     const r = stage.getBoundingClientRect();
-    glide(() => { view.k = k; view.x = r.width / 2 - wx * k; view.y = r.height / 2 - wy * k; });
+    animateView(r.width / 2, r.height / 2, { x: wx, y: wy }, k, 420);
   }
   function fitAll() {
     const boxes = items.map((it) => it.type === "stroke"
@@ -803,8 +830,11 @@ export function renderHub(container, state) {
   // a touchpad's two-finger scroll pans; a pinch (or a mouse wheel) zooms, about the pointer (js/wheelIntent.js)
   stage.addEventListener("wheel", (e) => {
     e.preventDefault();
-    if (wheelIntent(e) === "pan") { view.x -= e.deltaX; view.y -= e.deltaY; applyView(true); return; }
+    if (wheelIntent(e) === "pan") { stopViewAnim(); view.x -= e.deltaX; view.y -= e.deltaY; applyView(true); return; }
     const r = stage.getBoundingClientRect();
+    const notch = !e.ctrlKey && Math.abs(wheelPx(e)) >= 40;   // a mouse wheel's click; a pinch reports small steps
+    if (notch) { zoomAround(Math.exp(-wheelPx(e) * 0.0015), e.clientX - r.left, e.clientY - r.top); return; }
+    stopViewAnim();
     const before = toWorld(e.clientX, e.clientY);
     view.k = clamp(view.k * Math.exp(-wheelPx(e) * (e.ctrlKey ? 0.01 : 0.0015)), 0.25, 3);   // pinches report small steps
     view.x = e.clientX - r.left - before.x * view.k;

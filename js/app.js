@@ -21,6 +21,8 @@ import { mountCosmicParallax } from "./cosmicParallax.js";
 import { watchLayout } from "./mobileMode.js";
 import { NAV_ICONS } from "./navIcons.js";
 import { mountLavaToggle, goToFloor } from "./lavaTheme.js";
+import { enableTouchDrag } from "./mobile/touchDrag.js";
+enableTouchDrag();   // press-and-hold dragging for fingers on the phone layout (team, trainer, bag, Dex, Whiteboard)
 import {
   applyTheme, getTheme, setTheme, getHiddenViews, onHiddenViewsChanged,
   getSelectedCampaignId, setSelectedCampaignId, clearSelectedCampaignId, setForcedTheme,

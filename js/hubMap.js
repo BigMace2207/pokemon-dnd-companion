@@ -3,14 +3,19 @@
 // back to you. Click it for the full map: zoom and pan, a legend of places and players, and drag your own token to move
 // (the mist clears round you as you go). The DM (with DM tools unlocked) sees everything, through a thinner mist, and
 // can drag anyone.
+//
+// The minimap wears a cosmic ring with the name of the area you're standing in written round its foot (the DM's
+// areas, or the map's name outside them). The full map has a coordinate grid with letters along the top and numbers
+// down the left that follow the pan and zoom, and the DM can section the map into named areas (Areas: drag a box).
 
 import { el } from "./components.js";
-import { getPartyMap, moveOnMap } from "./network.js";
-import { mapStage, panZoom } from "./mapView.js";
+import { getPartyMap, moveOnMap, setMapAreas } from "./network.js";
+import { mapStage, panZoom, mapGrid, colName, areaAt, gridRef } from "./mapView.js";
 
 const POLL_MS = 3000;
 const MINI = 252;           // the minimap's diameter
 const MINI_SPAN = 0.32;     // how much of the map (of its longest side) the minimap shows across
+const AREA_COLOURS = ["#9b7be0", "#5aa8f0", "#7bc96f", "#e8a33a", "#f07ab8", "#17a5a5", "#e05a5a", "#e0c05a"];
 
 export function mountHubMap(root, { me, getDmToken, say }) {
   let map = null, sig = "", offset = { x: 0, y: 0 };
@@ -18,7 +23,26 @@ export function mountHubMap(root, { me, getDmToken, say }) {
   const miniEmpty = el("span", { class: "hub-mini-empty" }, "No map yet");
   const recentre = el("button", { type: "button", class: "hub-round small hub-mini-centre", "aria-label": "Back to me", title: "Back to me" });
   recentre.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="8"/></svg>';
-  const wrap = el("div", { class: "hub-mini" }, [miniFrame, recentre]);
+  // the area's name, written round the foot of the ring (an SVG text on a circular path)
+  const NS = "http://www.w3.org/2000/svg";
+  const areaSvg = document.createElementNS(NS, "svg");
+  areaSvg.setAttribute("class", "hub-mini-area"); areaSvg.setAttribute("viewBox", "0 0 200 200"); areaSvg.setAttribute("aria-hidden", "true");
+  const arcId = `hub-mini-arc-${Math.random().toString(36).slice(2, 8)}`;
+  areaSvg.innerHTML = `<defs><path id="${arcId}" d="M 18 100 A 82 82 0 0 0 182 100"/></defs><text><textPath href="#${arcId}" startOffset="50%" text-anchor="middle"></textPath></text>`;
+  const areaText = areaSvg.querySelector("textPath");
+  const ring = el("div", { class: "hub-mini-ring" }, [miniFrame, areaSvg]);
+  const wrap = el("div", { class: "hub-mini" }, [ring, recentre]);
+  let shownArea = null;
+  function drawArea() {
+    const t = myToken();
+    const a = map && t ? areaAt(map, t.x, t.y) : null;
+    const name = a ? a.name : map ? (map.name || "Map") : "";
+    if (name === shownArea) return;
+    shownArea = name;
+    areaText.textContent = name.length > 22 ? `${name.slice(0, 21)}…` : name;
+    ring.title = a ? `You're in ${a.name}${t ? ` (${gridRef(map, t.x, t.y)})` : ""}` : name;
+    areaSvg.classList.remove("changed"); void areaSvg.getBoundingClientRect(); areaSvg.classList.add("changed");
+  }
   root.append(wrap);
   let mini = null, full = null;
 
@@ -58,10 +82,11 @@ export function mountHubMap(root, { me, getDmToken, say }) {
     if (next === sig) return;
     sig = next; map = m;
     wrap.classList.toggle("empty", !map);
-    if (!map) { mini = null; miniFrame.replaceChildren(miniEmpty); full?.close(); return; }
-    if (!mini) { mini = mapStage(map, { labels: false, meId: me.id, see: !!getDmToken() }); miniFrame.replaceChildren(mini.stage); }
+    if (!map) { mini = null; miniFrame.replaceChildren(miniEmpty); full?.close(); shownArea = null; areaText.textContent = ""; return; }
+    if (!mini) { mini = mapStage(map, { labels: false, grid: false, meId: me.id, see: !!getDmToken() }); miniFrame.replaceChildren(mini.stage); }
     else mini.update(map);
     placeMini();
+    drawArea();
     full?.update(map);
   }
 
@@ -78,13 +103,25 @@ export function mountHubMap(root, { me, getDmToken, say }) {
     const dm = !!getDmToken();
     const st = mapStage(map, { labels: true, meId: me.id, see: dm });
     const frame = el("div", { class: "hub-map-frame" }, st.stage);
+    const rulerTop = el("div", { class: "hub-map-ruler top", "aria-hidden": "true" });
+    const rulerLeft = el("div", { class: "hub-map-ruler left", "aria-hidden": "true" });
+    let areaMode = false, draft = null;
+    // the letters and numbers follow the map: each sits over the middle of its column / row as you pan and zoom
+    function drawRulers(v) {
+      const m = st.map, g = mapGrid(m), step = g.cell * v.k;
+      const every = step < 18 ? Math.ceil(18 / step) : 1;   // zoomed far out: label every other one (or fewer)
+      const top = [], left = [];
+      for (let i = 0; i < g.cols; i += every) top.push(el("span", { style: `left:${(v.x + (i + 0.5) * step).toFixed(1)}px` }, colName(i)));
+      for (let j = 0; j < g.rows; j += every) left.push(el("span", { style: `top:${(v.y + (j + 0.5) * step).toFixed(1)}px` }, String(j + 1)));
+      rulerTop.replaceChildren(...top); rulerLeft.replaceChildren(...left);
+    }
     const legend = el("aside", { class: "hub-map-legend" });
     const note = el("div", { class: "hub-map-note" });
     let placing = false;
     const btn = (label, aria, fn, cls = "") => { const b = el("button", { type: "button", class: `hub-zoom-btn ${cls}`, "aria-label": aria, title: aria }, label); b.addEventListener("click", fn); return b; };
     const close = el("button", { type: "button", class: "hub-round small", "aria-label": "Close the map", title: "Close (Esc)" }, "×");
     const panel = el("div", { class: "hub-map-full", role: "dialog", "aria-label": `Map: ${map.name}` }, [
-      el("div", { class: "hub-map-main" }, [frame, el("div", { class: "hub-map-tools" }, [
+      el("div", { class: "hub-map-main" }, [el("div", { class: "hub-map-corner" }), rulerTop, rulerLeft, frame, el("div", { class: "hub-map-tools" }, [
         btn("−", "Zoom out", () => pz.zoomBy(1 / 1.3)), btn("+", "Zoom in", () => pz.zoomBy(1.3)), btn("⤢", "Fit the map", () => pz.fit()), btn("◎", "Centre on me", () => centreOnMe()),
       ])]),
       legend,
@@ -99,7 +136,16 @@ export function mountHubMap(root, { me, getDmToken, say }) {
     let tokDrag = null;
     const pz = panZoom(frame, st.stage, {
       getSize: () => ({ w: st.map.w, h: st.map.h }), minK: 0.02, maxK: 8,
+      onChange: (v) => drawRulers(v),
       canDrag: (e) => {
+        if (areaMode && dm) {   // the DM drawing an area: the press is theirs, not a pan
+          const pt = pz.toMap(e.clientX, e.clientY);
+          const box = el("div", { class: "mv-area drafting", style: "--c:#9b7be0" });
+          st.areasEl.append(box);
+          draft = { sx: pt.x, sy: pt.y, box, pt };
+          try { frame.setPointerCapture(e.pointerId); } catch { /* gone */ }
+          return true;
+        }
         const t = e.target.closest(".mv-token");
         if (!t || (t.dataset.id !== me.id && !dm)) return false;
         tokDrag = { node: t, id: t.dataset.id, moved: false };
@@ -112,7 +158,15 @@ export function mountHubMap(root, { me, getDmToken, say }) {
         if (placing) { placing = false; panel.classList.remove("placing"); move(me.id, pt.x, pt.y); drawLegend(); }
       },
     });
+    const clamp01 = (v) => Math.max(0, Math.min(1, v));
+    const draftRect = (pt) => ({ x: clamp01(Math.min(draft.sx, pt.x)), y: clamp01(Math.min(draft.sy, pt.y)), w: Math.abs(pt.x - draft.sx), h: Math.abs(pt.y - draft.sy) });
     frame.addEventListener("pointermove", (e) => {
+      if (draft) {
+        draft.pt = pz.toMap(e.clientX, e.clientY);
+        const r = draftRect(draft.pt), m = st.map;
+        Object.assign(draft.box.style, { left: `${r.x * m.w}px`, top: `${r.y * m.h}px`, width: `${r.w * m.w}px`, height: `${r.h * m.h}px` });
+        return;
+      }
       if (!tokDrag) return;
       tokDrag.moved = true;
       const pt = pz.toMap(e.clientX, e.clientY);
@@ -120,7 +174,22 @@ export function mountHubMap(root, { me, getDmToken, say }) {
       tokDrag.node.style.top = `${Math.max(0, Math.min(1, pt.y)) * st.map.h}px`;
       tokDrag.pt = pt;
     });
-    frame.addEventListener("pointerup", () => { const d = tokDrag; tokDrag = null; if (d?.moved && d.pt) move(d.id, d.pt.x, d.pt.y); });
+    frame.addEventListener("pointerup", () => {
+      if (draft) {
+        const r = draftRect(draft.pt);
+        draft.box.remove(); draft = null;
+        if (r.w < 0.01 || r.h < 0.01) return;
+        const name = prompt("Name this area (e.g. Greenmantle Forest):", "");
+        if (name && name.trim()) saveAreas([...(st.map.areas || []), { id: `a${Date.now().toString(36)}`, name: name.trim().slice(0, 60), ...r, color: AREA_COLOURS[(st.map.areas || []).length % AREA_COLOURS.length] }]);
+        return;
+      }
+      const d = tokDrag; tokDrag = null; if (d?.moved && d.pt) move(d.id, d.pt.x, d.pt.y);
+    });
+    async function saveAreas(areas) {
+      const res = await setMapAreas(getDmToken(), areas.map(({ id, name, x, y, w, h, color }) => ({ id, name, x, y, w, h, color })));
+      if (!res || res.error) { say(res?.error || "Couldn't save the areas."); return; }
+      sig = ""; await load();
+    }
 
     function centreOnMe() {
       const t = st.map.tokens?.find((x) => x.id === me.id);
@@ -142,6 +211,18 @@ export function mountHubMap(root, { me, getDmToken, say }) {
       legend.replaceChildren(
         el("div", { class: "hub-map-head" }, [el("strong", {}, m.name || "Map"), el("span", { class: "hub-menu-note" }, m.fog?.enabled ? (m.fog.shared ? "Fog of war: shared" : "Fog of war: you see what you've explored") : "No fog of war")]),
         placeBtn,
+        el("h4", {}, `Areas (${(m.areas || []).length})`),
+        ...(dm ? [(() => { const b = el("button", { type: "button", class: `hub-pill${areaMode ? " solid" : ""}` }, areaMode ? "Drag on the map to draw an area… (click to stop)" : "Draw an area"); b.addEventListener("click", () => { areaMode = !areaMode; panel.classList.toggle("areas", areaMode); drawLegend(); }); return b; })()] : []),
+        el("div", { class: "hub-map-list" }, (m.areas || []).length ? m.areas.map((a) => {
+          const go = el("button", { type: "button", class: "hub-map-row" }, [el("span", { class: "mv-token-dot small", style: `--c:${a.color}` }, "▦"), el("span", {}, a.name), el("small", {}, `${gridRef(m, a.x, a.y)}–${gridRef(m, a.x + a.w, a.y + a.h)}`)]);
+          go.addEventListener("click", () => { pz.centreOn((a.x + a.w / 2) * m.w, (a.y + a.h / 2) * m.h); const n = st.areasEl.querySelector(`[data-id="${CSS.escape(a.id)}"]`); n?.classList.add("picked"); setTimeout(() => n?.classList.remove("picked"), 1500); });
+          if (!dm) return go;
+          const ren = el("button", { type: "button", class: "hub-bag-mini", title: "Rename" }, "Rename");
+          ren.addEventListener("click", () => { const name = prompt("Rename the area:", a.name); if (name && name.trim()) saveAreas(m.areas.map((x) => (x.id === a.id ? { ...x, name: name.trim().slice(0, 60) } : x))); });
+          const del = el("button", { type: "button", class: "hub-bag-mini", title: "Delete" }, "×");
+          del.addEventListener("click", () => { if (confirm(`Delete the area "${a.name}"?`)) saveAreas(m.areas.filter((x) => x.id !== a.id)); });
+          return el("div", { class: "hub-map-area-row" }, [go, ren, del]);
+        }) : [el("p", { class: "hub-menu-note" }, dm ? "None yet: Draw an area to section the map (towns, forests, routes). Each player's minimap shows the area they're in." : "The DM hasn't marked any areas.")]),
         el("h4", {}, `Places (${m.pins.length})`),
         el("div", { class: "hub-map-list" }, m.pins.length ? m.pins.map((p) => {
           const b = el("button", { type: "button", class: "hub-map-row" }, [el("span", { class: "mv-pin-dot small", style: `--c:${p.color}` }, p.icon || "●"), el("span", {}, p.label || "(unnamed)"), dm && p.revealed === false ? el("small", {}, "hidden") : null].filter(Boolean));
@@ -150,7 +231,7 @@ export function mountHubMap(root, { me, getDmToken, say }) {
         }) : [el("p", { class: "hub-menu-note" }, dm ? "No places yet. Add them in the Whiteboard's Map editor." : "The DM hasn't revealed any places yet.")]),
         el("h4", {}, `Players (${(m.tokens || []).length})`),
         el("div", { class: "hub-map-list" }, (m.tokens || []).length ? m.tokens.map((t) => {
-          const b = el("button", { type: "button", class: "hub-map-row" }, [el("span", { class: "mv-token-dot small", style: `--c:${t.color}` }, (t.name || "?").slice(0, 1).toUpperCase()), el("span", {}, `${t.name}${t.id === me.id ? " (you)" : ""}`)]);
+          const b = el("button", { type: "button", class: "hub-map-row" }, [el("span", { class: "mv-token-dot small", style: `--c:${t.color}` }, (t.name || "?").slice(0, 1).toUpperCase()), el("span", {}, `${t.name}${t.id === me.id ? " (you)" : ""}`), el("small", {}, [areaAt(m, t.x, t.y)?.name, gridRef(m, t.x, t.y)].filter(Boolean).join(" · "))]);
           b.addEventListener("click", () => pz.centreOn(t.x * m.w, t.y * m.h));
           return b;
         }) : [el("p", { class: "hub-menu-note" }, "Nobody is on the map yet.")]),
@@ -163,7 +244,7 @@ export function mountHubMap(root, { me, getDmToken, say }) {
     document.addEventListener("keydown", onKey);
     function doClose() { document.removeEventListener("keydown", onKey); panel.classList.remove("open"); setTimeout(() => panel.remove(), 220); full = null; }
     close.addEventListener("click", doClose);
-    full = { update: (m) => { st.update(m); drawLegend(); }, close: doClose, centreOnMe };
+    full = { update: (m) => { st.update(m); drawLegend(); drawRulers(pz.view); }, close: doClose, centreOnMe };
   }
 
   load();
