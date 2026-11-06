@@ -6,11 +6,12 @@
 //
 // The minimap wears a cosmic ring with the name of the area you're standing in written round its foot (the DM's
 // areas, or the map's name outside them). The full map has a coordinate grid with letters along the top and numbers
-// down the left that follow the pan and zoom, and the DM can section the map into named areas (Areas: drag a box).
+// down the left that follow the pan and zoom, and the DM can section the map into named areas of any shape (Draw an
+// area: click the corners one by one, then click the first one again, or Finish, to close it and name it).
 
 import { el } from "./components.js";
 import { getPartyMap, moveOnMap, setMapAreas } from "./network.js";
-import { mapStage, panZoom, mapGrid, colName, areaAt, gridRef } from "./mapView.js";
+import { mapStage, panZoom, mapGrid, colName, areaAt, gridRef, areaPoints } from "./mapView.js";
 
 const POLL_MS = 3000;
 const MINI = 252;           // the minimap's diameter
@@ -105,7 +106,8 @@ export function mountHubMap(root, { me, getDmToken, say }) {
     const frame = el("div", { class: "hub-map-frame" }, st.stage);
     const rulerTop = el("div", { class: "hub-map-ruler top", "aria-hidden": "true" });
     const rulerLeft = el("div", { class: "hub-map-ruler left", "aria-hidden": "true" });
-    let areaMode = false, draft = null;
+    let areaMode = false, draft = [];   // the corners of the area being drawn (map units)
+    let hoverPt = null;                  // where the mouse is, for the rubber-band line to the next corner
     // the letters and numbers follow the map: each sits over the middle of its column / row as you pan and zoom
     function drawRulers(v) {
       const m = st.map, g = mapGrid(m), step = g.cell * v.k;
@@ -136,16 +138,8 @@ export function mountHubMap(root, { me, getDmToken, say }) {
     let tokDrag = null;
     const pz = panZoom(frame, st.stage, {
       getSize: () => ({ w: st.map.w, h: st.map.h }), minK: 0.02, maxK: 8,
-      onChange: (v) => drawRulers(v),
+      onChange: (v) => { drawRulers(v); drawDraft(); },
       canDrag: (e) => {
-        if (areaMode && dm) {   // the DM drawing an area: the press is theirs, not a pan
-          const pt = pz.toMap(e.clientX, e.clientY);
-          const box = el("div", { class: "mv-area drafting", style: "--c:#9b7be0" });
-          st.areasEl.append(box);
-          draft = { sx: pt.x, sy: pt.y, box, pt };
-          try { frame.setPointerCapture(e.pointerId); } catch { /* gone */ }
-          return true;
-        }
         const t = e.target.closest(".mv-token");
         if (!t || (t.dataset.id !== me.id && !dm)) return false;
         tokDrag = { node: t, id: t.dataset.id, moved: false };
@@ -153,20 +147,55 @@ export function mountHubMap(root, { me, getDmToken, say }) {
         return true;
       },
       onTap: (pt, e) => {
+        if (areaMode && dm) { addCorner(pt); return; }
         const pin = e.target.closest?.(".mv-pin");
         if (pin) { showPlace(pin.dataset.id); return; }
         if (placing) { placing = false; panel.classList.remove("placing"); move(me.id, pt.x, pt.y); drawLegend(); }
       },
     });
     const clamp01 = (v) => Math.max(0, Math.min(1, v));
-    const draftRect = (pt) => ({ x: clamp01(Math.min(draft.sx, pt.x)), y: clamp01(Math.min(draft.sy, pt.y)), w: Math.abs(pt.x - draft.sx), h: Math.abs(pt.y - draft.sy) });
-    frame.addEventListener("pointermove", (e) => {
-      if (draft) {
-        draft.pt = pz.toMap(e.clientX, e.clientY);
-        const r = draftRect(draft.pt), m = st.map;
-        Object.assign(draft.box.style, { left: `${r.x * m.w}px`, top: `${r.y * m.h}px`, width: `${r.w * m.w}px`, height: `${r.h * m.h}px` });
-        return;
+    // ---- drawing an area: each tap adds a corner; tapping near the first corner (or Finish / Enter) closes the shape
+    const NS = "http://www.w3.org/2000/svg";
+    const draftSvg = document.createElementNS(NS, "svg");
+    draftSvg.setAttribute("class", "mv-area-shapes");
+    st.stage.append(draftSvg);
+    function drawDraft() {
+      const m = st.map, k = pz?.view?.k || 1;
+      draftSvg.setAttribute("viewBox", `0 0 ${m.w} ${m.h}`); draftSvg.setAttribute("width", m.w); draftSvg.setAttribute("height", m.h);
+      if (!areaMode || !draft.length) { draftSvg.replaceChildren(); return; }
+      const px = (p) => `${(p[0] * m.w).toFixed(1)},${(p[1] * m.h).toFixed(1)}`;
+      const shape = document.createElementNS(NS, draft.length >= 3 ? "polygon" : "polyline");
+      shape.setAttribute("points", [...draft, ...(hoverPt ? [hoverPt] : [])].map(px).join(" "));
+      shape.setAttribute("class", "mv-area-draft");
+      const corners = draft.map((p, i) => {
+        const c = document.createElementNS(NS, "circle");
+        c.setAttribute("cx", (p[0] * m.w).toFixed(1)); c.setAttribute("cy", (p[1] * m.h).toFixed(1)); c.setAttribute("r", ((i === 0 ? 8 : 5) / k).toFixed(2));
+        c.setAttribute("class", `mv-area-corner${i === 0 ? " first" : ""}`);
+        return c;
+      });
+      draftSvg.replaceChildren(shape, ...corners);
+    }
+    function addCorner(pt) {
+      const p = [clamp01(pt.x), clamp01(pt.y)];
+      if (draft.length >= 3) {   // close to the first corner (on screen): that finishes the shape
+        const k = pz.view.k, f = draft[0];
+        if (Math.hypot((p[0] - f[0]) * st.map.w * k, (p[1] - f[1]) * st.map.h * k) < 14) { finishArea(); return; }
       }
+      if (draft.length >= 60) { say("An area can have up to 60 corners: Finish it, or Undo a corner."); return; }
+      draft.push(p);
+      drawDraft(); drawLegend();
+    }
+    function finishArea() {
+      if (draft.length < 3) { say("Click at least three corners to make an area."); return; }
+      const pts = draft.map(([x, y]) => [Number(x.toFixed(4)), Number(y.toFixed(4))]);
+      draft = []; hoverPt = null; drawDraft();
+      const name = prompt("Name this area (e.g. Greenmantle Forest):", "");
+      if (name && name.trim()) saveAreas([...(st.map.areas || []), { id: `a${Date.now().toString(36)}`, name: name.trim().slice(0, 60), pts, color: AREA_COLOURS[(st.map.areas || []).length % AREA_COLOURS.length] }]);
+      else drawLegend();
+    }
+    function stopDrawing() { areaMode = false; draft = []; hoverPt = null; panel.classList.remove("areas"); drawDraft(); drawLegend(); }
+    frame.addEventListener("pointermove", (e) => {
+      if (areaMode && draft.length && e.pointerType === "mouse") { const p = pz.toMap(e.clientX, e.clientY); hoverPt = [clamp01(p.x), clamp01(p.y)]; drawDraft(); }
       if (!tokDrag) return;
       tokDrag.moved = true;
       const pt = pz.toMap(e.clientX, e.clientY);
@@ -174,19 +203,12 @@ export function mountHubMap(root, { me, getDmToken, say }) {
       tokDrag.node.style.top = `${Math.max(0, Math.min(1, pt.y)) * st.map.h}px`;
       tokDrag.pt = pt;
     });
+    frame.addEventListener("pointerleave", () => { if (hoverPt) { hoverPt = null; drawDraft(); } });
     frame.addEventListener("pointerup", () => {
-      if (draft) {
-        const r = draftRect(draft.pt);
-        draft.box.remove(); draft = null;
-        if (r.w < 0.01 || r.h < 0.01) return;
-        const name = prompt("Name this area (e.g. Greenmantle Forest):", "");
-        if (name && name.trim()) saveAreas([...(st.map.areas || []), { id: `a${Date.now().toString(36)}`, name: name.trim().slice(0, 60), ...r, color: AREA_COLOURS[(st.map.areas || []).length % AREA_COLOURS.length] }]);
-        return;
-      }
       const d = tokDrag; tokDrag = null; if (d?.moved && d.pt) move(d.id, d.pt.x, d.pt.y);
     });
     async function saveAreas(areas) {
-      const res = await setMapAreas(getDmToken(), areas.map(({ id, name, x, y, w, h, color }) => ({ id, name, x, y, w, h, color })));
+      const res = await setMapAreas(getDmToken(), areas.map(({ id, name, x, y, w, h, pts, color }) => (pts ? { id, name, pts, color } : { id, name, x, y, w, h, color })));
       if (!res || res.error) { say(res?.error || "Couldn't save the areas."); return; }
       sig = ""; await load();
     }
@@ -212,10 +234,17 @@ export function mountHubMap(root, { me, getDmToken, say }) {
         el("div", { class: "hub-map-head" }, [el("strong", {}, m.name || "Map"), el("span", { class: "hub-menu-note" }, m.fog?.enabled ? (m.fog.shared ? "Fog of war: shared" : "Fog of war: you see what you've explored") : "No fog of war")]),
         placeBtn,
         el("h4", {}, `Areas (${(m.areas || []).length})`),
-        ...(dm ? [(() => { const b = el("button", { type: "button", class: `hub-pill${areaMode ? " solid" : ""}` }, areaMode ? "Drag on the map to draw an area… (click to stop)" : "Draw an area"); b.addEventListener("click", () => { areaMode = !areaMode; panel.classList.toggle("areas", areaMode); drawLegend(); }); return b; })()] : []),
+        ...(dm ? (areaMode ? [
+          el("p", { class: "hub-menu-note" }, draft.length ? `${draft.length} corner${draft.length === 1 ? "" : "s"}. Keep clicking round the area, then click the first corner (or Finish) to close it.` : "Click the map to place the area's first corner, then each corner round it. Drag to move the map."),
+          el("div", { class: "hub-map-area-tools" }, [
+            (() => { const b = el("button", { type: "button", class: "hub-pill solid", ...(draft.length < 3 ? { disabled: "" } : {}) }, "Finish"); b.addEventListener("click", finishArea); return b; })(),
+            (() => { const b = el("button", { type: "button", class: "hub-pill", ...(draft.length ? {} : { disabled: "" }) }, "Undo corner"); b.addEventListener("click", () => { draft.pop(); drawDraft(); drawLegend(); }); return b; })(),
+            (() => { const b = el("button", { type: "button", class: "hub-pill" }, "Stop drawing"); b.addEventListener("click", stopDrawing); return b; })(),
+          ]),
+        ] : [(() => { const b = el("button", { type: "button", class: "hub-pill" }, "Draw an area"); b.addEventListener("click", () => { areaMode = true; draft = []; panel.classList.add("areas"); drawLegend(); }); return b; })()]) : []),
         el("div", { class: "hub-map-list" }, (m.areas || []).length ? m.areas.map((a) => {
           const go = el("button", { type: "button", class: "hub-map-row" }, [el("span", { class: "mv-token-dot small", style: `--c:${a.color}` }, "▦"), el("span", {}, a.name), el("small", {}, `${gridRef(m, a.x, a.y)}–${gridRef(m, a.x + a.w, a.y + a.h)}`)]);
-          go.addEventListener("click", () => { pz.centreOn((a.x + a.w / 2) * m.w, (a.y + a.h / 2) * m.h); const n = st.areasEl.querySelector(`[data-id="${CSS.escape(a.id)}"]`); n?.classList.add("picked"); setTimeout(() => n?.classList.remove("picked"), 1500); });
+          go.addEventListener("click", () => { pz.centreOn((a.x + a.w / 2) * m.w, (a.y + a.h / 2) * m.h); const n = st.areaShape(a.id); n?.classList.add("picked"); setTimeout(() => n?.classList.remove("picked"), 1500); });
           if (!dm) return go;
           const ren = el("button", { type: "button", class: "hub-bag-mini", title: "Rename" }, "Rename");
           ren.addEventListener("click", () => { const name = prompt("Rename the area:", a.name); if (name && name.trim()) saveAreas(m.areas.map((x) => (x.id === a.id ? { ...x, name: name.trim().slice(0, 60) } : x))); });
@@ -240,11 +269,18 @@ export function mountHubMap(root, { me, getDmToken, say }) {
     }
     drawLegend();
     requestAnimationFrame(() => { pz.fit(); if (myToken()) centreOnMe(); });
-    const onKey = (e) => { if (e.key === "Escape") doClose(); };
+    const onKey = (e) => {
+      if (areaMode && !e.target.closest?.("input, textarea")) {
+        if (e.key === "Enter") { e.preventDefault(); finishArea(); return; }
+        if (e.key === "Backspace" && draft.length) { e.preventDefault(); draft.pop(); drawDraft(); drawLegend(); return; }
+        if (e.key === "Escape") { stopDrawing(); return; }
+      }
+      if (e.key === "Escape") doClose();
+    };
     document.addEventListener("keydown", onKey);
     function doClose() { document.removeEventListener("keydown", onKey); panel.classList.remove("open"); setTimeout(() => panel.remove(), 220); full = null; }
     close.addEventListener("click", doClose);
-    full = { update: (m) => { st.update(m); drawLegend(); drawRulers(pz.view); }, close: doClose, centreOnMe };
+    full = { update: (m) => { st.update(m); drawLegend(); drawRulers(pz.view); drawDraft(); }, close: doClose, centreOnMe };
   }
 
   load();

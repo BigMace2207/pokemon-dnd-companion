@@ -880,10 +880,14 @@ html.m .hub-constellation.con-entei { width: 78vw; left: 40vw; right: auto; top:
 .mv-grid { position: absolute; inset: 0; pointer-events: none; background-image: linear-gradient(to right, rgba(255, 255, 255, .14) 1px, transparent 1px), linear-gradient(to bottom, rgba(255, 255, 255, .14) 1px, transparent 1px); }
 .mv-grid[hidden] { display: none; }
 .mv-areas { position: absolute; inset: 0; pointer-events: none; }
-.mv-area { position: absolute; border: calc(2px * var(--inv, 1)) dashed color-mix(in srgb, var(--c) 80%, #fff); background: color-mix(in srgb, var(--c) 14%, transparent); border-radius: calc(10px * var(--inv, 1)); }
-.mv-area.picked { background: color-mix(in srgb, var(--c) 28%, transparent); }
-.mv-area-name { position: absolute; left: 0; top: 0; transform: scale(var(--inv, 1)); transform-origin: 0 0; padding: 3px 8px; margin: 4px; font-size: 13px; font-weight: 700; color: #fff; background: color-mix(in srgb, var(--c) 70%, #000); border-radius: 999px; white-space: nowrap; }
-.mv-area.drafting { border-style: solid; }
+.mv-area-shapes { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.mv-area { fill: color-mix(in srgb, var(--c) 14%, transparent); stroke: color-mix(in srgb, var(--c) 80%, #fff); stroke-width: 2; stroke-dasharray: 7 5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.mv-area.picked { fill: color-mix(in srgb, var(--c) 30%, transparent); }
+.mv-area-name { position: absolute; transform: scale(var(--inv, 1)); transform-origin: 0 0; padding: 3px 8px; margin: 4px; font-size: 13px; font-weight: 700; color: #fff; background: color-mix(in srgb, var(--c) 70%, #000); border-radius: 999px; white-space: nowrap; }
+/* the shape being drawn: its corners so far, and the first one to click to close it */
+.mv-area-draft { fill: rgba(155, 123, 224, .18); stroke: #fff; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.mv-area-corner { fill: #9b7be0; stroke: #fff; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.mv-area-corner.first { fill: #fff; stroke: #9b7be0; }
 /* the rulers along the full map's top and left */
 .hub-map-ruler { position: absolute; z-index: 2; pointer-events: none; overflow: hidden; font: 600 12px/1 "Space Grotesk", system-ui, sans-serif; color: rgba(255, 255, 255, .8); background: rgba(8, 8, 12, .78); }
 .hub-map-ruler.top { left: 26px; right: 0; top: 0; height: 22px; border-radius: 0 16px 0 0; }
@@ -911,3 +915,6 @@ html.m .hub-constellation.con-entei { width: 78vw; left: 40vw; right: auto; top:
 .hub-mini.empty .hub-mini-area { display: none; }
 @media (prefers-reduced-motion: no-preference) { .hub-mini-area.changed text { animation: hub-area-in .45s ease-out; } }
 @keyframes hub-area-in { from { opacity: 0; } to { opacity: 1; } }
+
+.hub-map-area-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.hub-map-area-tools .hub-pill[disabled] { opacity: .45; cursor: default; }

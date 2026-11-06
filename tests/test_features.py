@@ -453,6 +453,12 @@ class MapFog(Base):
         self.post("/api/partymap/move", {"id": "id-mia", "x": .2, "y": .15}, self.mia)
         self.post("/api/partymap", {"token": self.dm, "map": self.map}, self.owner)
         self.assertEqual([a["name"] for a in self.view(self.mia, "id-mia")["areas"]], ["Greenmantle"], "republishing the same map keeps its areas")
+        shape = {"id": "a2", "name": "Lake", "pts": [[.5, .5], [.7, .52], [.65, .8], [.48, .7]]}
+        self.post("/api/partymap/live", {"token": self.dm, "areas": [shape, {"name": "Line", "pts": [[.1, .1], [.2, .2]]}]}, self.owner)
+        lake = self.view(self.mia, "id-mia")["areas"]
+        self.assertEqual([a["name"] for a in lake], ["Lake"], "a shape needs at least three corners")
+        self.assertEqual((lake[0]["x"], lake[0]["y"], lake[0]["w"], lake[0]["h"]), (.48, .5, .22, .3), "a shape keeps its bounding box too")
+        self.assertEqual(len(lake[0]["pts"]), 4)
 
     def test_a_new_hub_map_starts_hidden_in_fog(self):
         self.assertTrue(self.view(self.mia, "id-mia")["fog"]["enabled"], "players mustn't glimpse a new map before the DM is ready")

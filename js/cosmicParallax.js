@@ -8,7 +8,7 @@
 // (exponential smoothing, frame-rate independent), so the motion stays continuous between mouse events. Scrolling wraps
 // each layer by its own tile size, so the layers never run out. Off for prefers-reduced-motion.
 
-import { constellation } from "./constellation.js";
+import { constellation, cycleConstellations } from "./constellation.js";
 import { nebulaLayer } from "./nebula.js";
 import { createStarCanvas, HUB_STAR_LAYERS } from "./starCanvas.js";
 
@@ -37,6 +37,7 @@ export function mountCosmicParallax() {
   sky.prepend(nebulaLayer(), starCv.canvas);   // the violet smoke and light, then the stars, behind the dot grid
   const cons = ["rayquaza", "charizard", "entei"].map((n) => constellation(n, "sky-constellation"));
   sky.append(...cons);
+  cycleConstellations(cons);   // one at a time, at random, fading in and out
   document.body.prepend(sky);
   starCv.start();
   if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;

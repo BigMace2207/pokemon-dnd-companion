@@ -256,3 +256,8 @@ html.m .neb-shard:nth-child(2n) { display: none; }   /* fewer on a phone */
 :root[data-gfx="low"] .hub-edge > span > i { animation: none !important; }
 /* without the blur, the see-through cards need a solid dark fill so their text stays readable over the sky */
 :root[data-theme="cosmic"]:is([data-gfx="medium"], [data-gfx="low"]) :is(.card, .table-wrap, .pull-panel, .pl-drawer, .hub-drawer, .hub-dex, .hub-people-drop) { background-color: rgba(20, 20, 24, .93); }
+
+/* One constellation at a time (js/constellation.js cycleConstellations): fades in, stays a few seconds, fades out */
+.constellation.cycle { opacity: 0; transition: opacity 1.6s ease-in-out; }
+.constellation.cycle.shown { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .constellation.cycle { transition: none; } }

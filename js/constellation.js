@@ -63,3 +63,28 @@ export function constellation(name, extraClass = "") {
 }
 /** Rayquaza (the sign-in page's and the sky's first figure). */
 export const rayquazaConstellation = (extraClass = "") => constellation("rayquaza", extraClass);
+
+/**
+ * Show one of these constellations at a time, picked at random (never the same one twice running): it fades in, stays
+ * a few seconds, fades out, and another takes its place. Opacity only (css/cosmic.css .constellation.cycle). With
+ * reduced motion one random figure just stays; nothing runs in a hidden tab or once the figures leave the page.
+ */
+export function cycleConstellations(list, { show = 7000, fade = 1600 } = {}) {
+  if (!list.length) return;
+  for (const c of list) c.classList.add("cycle");
+  let shown = -1, timer = 0;
+  const pick = () => { if (list.length === 1) return 0; let i; do { i = Math.floor(Math.random() * list.length); } while (i === shown); return i; };
+  const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function next() {
+    timer = 0;
+    if (shown >= 0 && !list[0].isConnected) return;   // the page went away (the first pick can come before it's added)
+    if (document.hidden) { document.addEventListener("visibilitychange", next, { once: true }); return; }
+    if (shown >= 0) list[shown].classList.remove("shown");
+    shown = pick();
+    // the next one fades in as the last fades out (they're far apart in the sky, so the crossfade never overlaps)
+    list[shown].classList.add("shown");
+    if (!calm()) timer = setTimeout(next, show + fade);
+  }
+  next();
+  return { stop: () => clearTimeout(timer) };
+}

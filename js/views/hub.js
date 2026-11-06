@@ -36,7 +36,7 @@ import { itemIconSrc, MONEY } from "../bagIcon.js";
 import { myEggs, hatch, EGG_ICON } from "../eggs.js";
 import { hubSound, itemSound, playCry } from "../hubSound.js";
 import { wheelIntent, wheelPx } from "../wheelIntent.js";
-import { constellation as makeConstellation } from "../constellation.js";
+import { constellation as makeConstellation, cycleConstellations } from "../constellation.js";
 import { nebulaLayer } from "../nebula.js";
 import { createStarCanvas, HUB_STAR_LAYERS } from "../starCanvas.js";
 import { cursorColorOf } from "../cursorColor.js";
@@ -148,6 +148,7 @@ export function renderHub(container, state) {
   // Rayquaza, Charizard and Entei: far-off figures that drift and zoom together (applyView)
   const constellations = ["rayquaza", "charizard", "entei"].map((n) => makeConstellation(n, "hub-constellation"));
   stars.append(...constellations);
+  cycleConstellations(constellations);   // one at a time, at random, fading in and out
   // where each star layer (and the constellation) sits on screen: set from the board's pan and zoom in applyView
   const skyPos = starLayers.map(() => null);
   let conPos = null, lastView = null;
@@ -757,10 +758,9 @@ export function renderHub(container, state) {
     starLayers.forEach((par, i) => { skyPos[i] = follow(skyPos[i], par); });
     starCv.setOffsets(skyPos);
     starCv.setScale(view.k);
-    // the constellation stays where it is when you zoom and only grows or shrinks about its own centre; a pan drifts it
-    // a fifth of the way, like something far off
+    // the constellations keep their size and place when you zoom (they're far off); a pan drifts them a fifth of the way
     conPos = !conPos || !lastView ? { x: 0, y: 0 } : f === 1 ? { x: conPos.x + (view.x - lastView.x) * 0.2, y: conPos.y + (view.y - lastView.y) * 0.2 } : conPos;
-    const conT = `translate3d(${conPos.x.toFixed(2)}px, ${conPos.y.toFixed(2)}px, 0) scale(${view.k.toFixed(4)})`;
+    const conT = `translate3d(${conPos.x.toFixed(2)}px, ${conPos.y.toFixed(2)}px, 0)`;
     for (const c of constellations) c.style.transform = conT;
     lastView = { x: view.x, y: view.y, k: view.k };
     backdropLayer.style.transform = `translate(${(view.x * 0.03).toFixed(1)}px, ${(view.y * 0.03).toFixed(1)}px)`;

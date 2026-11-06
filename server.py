@@ -341,18 +341,29 @@ def clean_map_pins(raw):
 
 
 def clean_map_areas(raw):
-    """The DM's named areas on the shared map: rectangles in map units (0-1), e.g. a town or a forest. A player's
-    current area (shown round the hub's minimap) is the smallest one their token stands in."""
+    """The DM's named areas on the shared map, in map units (0-1), e.g. a town or a forest: a shape (`pts`, 3 to 60
+    corners, drawn by clicking points) with its bounding box (x, y, w, h), or an older plain rectangle (the box alone).
+    A player's current area (shown round the hub's minimap) is the smallest one their token stands in."""
     out = []
     for a in (raw if isinstance(raw, list) else [])[:60]:
         if not isinstance(a, dict) or not _text(a.get("name"), 60):
             continue
-        x, y = _unit(a.get("x")), _unit(a.get("y"))
-        w, h = min(_unit(a.get("w")), 1 - x), min(_unit(a.get("h")), 1 - y)
+        area = {"id": _text(a.get("id"), 40) or secrets.token_hex(4), "name": _text(a.get("name"), 60), "color": _colour(a.get("color"), "#9b7be0")}
+        pts = [[round(_unit(p[0]), 4), round(_unit(p[1]), 4)] for p in (a.get("pts") if isinstance(a.get("pts"), list) else [])[:60]
+               if isinstance(p, list) and len(p) == 2]
+        if pts:
+            if len(pts) < 3:
+                continue
+            xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+            x, y, w, h = min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)
+            area["pts"] = pts
+        else:
+            x, y = _unit(a.get("x")), _unit(a.get("y"))
+            w, h = min(_unit(a.get("w")), 1 - x), min(_unit(a.get("h")), 1 - y)
         if w < 0.005 or h < 0.005:
             continue
-        out.append({"id": _text(a.get("id"), 40) or secrets.token_hex(4), "name": _text(a.get("name"), 60),
-                    "x": round(x, 4), "y": round(y, 4), "w": round(w, 4), "h": round(h, 4), "color": _colour(a.get("color"), "#9b7be0")})
+        area.update({"x": round(x, 4), "y": round(y, 4), "w": round(w, 4), "h": round(h, 4)})
+        out.append(area)
     return out
 
 

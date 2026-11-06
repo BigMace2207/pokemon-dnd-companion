@@ -207,16 +207,17 @@ html.m .pen-arc .pen-clear { transform: translate(calc(-120px - 50%), -50%); min
 html.m .topbar { height: var(--topbar-h); }
 html.m #app { grid-template-rows: var(--topbar-h) 1fr; }
 html.m.hub-full #app { grid-template-rows: 0 1fr; }
-html.m .hub-top { padding-top: calc(env(safe-area-inset-top, 0px) + 4px); }
+/* the hub's top bar sits right under the status bar (no extra offset on top of the safe area) */
+html.m .hub-top { top: 0; padding-top: calc(env(safe-area-inset-top, 0px) + 4px); }
+html.m .hub-mini { top: calc(env(safe-area-inset-top, 0px) + 58px); }
 @media (display-mode: standalone) {
-  html.m .hub-top { padding-top: max(6px, env(safe-area-inset-top, 0px)); }
-  html.m .hub-mini { top: calc(env(safe-area-inset-top, 0px) + 66px); }
-  html.m .hub .hub-left-dock { top: calc(env(safe-area-inset-top, 0px) + 222px); }
+  html.m .hub-top { padding-top: max(4px, calc(env(safe-area-inset-top, 0px) - 6px)); }
+  html.m .hub-mini { top: calc(env(safe-area-inset-top, 0px) + 48px); }
 }
 
 /* ---- your trainer and team down the left on the phone: the trainer on top, the team two across, three down. Press and
    hold any of them (or a bag item) to drag it onto the board, a trainer's card or Send To (js/mobile/touchDrag.js). ---- */
-html.m .hub .hub-left-dock { display: grid !important; position: absolute; left: max(10px, env(safe-area-inset-left, 0px)); right: auto; top: calc(env(safe-area-inset-top, 0px) + 236px); bottom: auto; justify-items: start; gap: 4px; z-index: 6; }
+html.m .hub .hub-left-dock { display: grid !important; position: absolute; left: max(10px, env(safe-area-inset-left, 0px)); right: auto; top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); justify-items: start; gap: 4px; z-index: 6; }   /* the bottom-left corner, beside the dot */
 html.m .hub-left-dock .hub-me { flex-direction: column; align-items: flex-start; gap: 0; margin: 0 0 2px; padding: 0; min-height: 0; }
 html.m .hub-left-dock .hub-me-face { width: 56px; height: 56px; min-width: 56px; min-height: 56px; }
 html.m .hub-left-dock .hub-me-text { padding: 0 0 0 2px; }

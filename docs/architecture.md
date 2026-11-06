@@ -395,7 +395,7 @@ Turn clears `cameInFor`. In DM mode the battle screen also plays combatants whos
 
 ## Map areas, the minimap ring, touch dragging
 
-The shared map (`partyMap`) has `areas`: [{id, name, x, y, w, h, color}] in map units, cleaned by `clean_map_areas`.
+The shared map (`partyMap`) has `areas`: [{id, name, pts?, x, y, w, h, color}] in map units, cleaned by `clean_map_areas` (`pts`: a shape of 3-60 corners, with x/y/w/h its bounding box; an area without `pts` is a plain rectangle).
 The DM changes them with `/api/partymap/live` sending only `areas` (live now updates pins, tokens and areas each only
 when sent); publishing the same map again keeps them. `js/mapView.js` draws the grid (`mapGrid`, `gridRef`) and the
 areas under the fog; `areaAt` finds the smallest area holding a point, which `js/hubMap.js` writes round the minimap's

@@ -107,12 +107,12 @@
   Pokémon, dungeons...).
 - Hub map: the minimap wears a cosmic ring with the name of the area you're standing in. The full map has a coordinate
   grid (letters along the top, numbers down the left, following the pan and zoom), and the DM can section it into named
-  areas (Draw an area), rename or delete them; each player's ring follows the area their token is in.
+  areas of any shape (Draw an area: click the corners, then the first one again or Finish), rename or delete them; each player's ring follows the area their token is in.
 - Hub zoom glides (buttons, mouse-wheel notches, Fit, going to a player) with the board, stars and constellations moving
-  together; pinches follow the fingers. The sky has three constellations: Rayquaza, Charizard and Entei
-  (`tools/make_constellation_lines.py` traces new ones from a picture).
+  together; pinches follow the fingers. The sky shows one of three constellations at a time (Rayquaza, Charizard or Entei, at random),
+  fading in and out every few seconds; they keep their size when you zoom (`tools/make_constellation_lines.py` traces new ones).
 - Phones: as a Home Screen web app the hub uses the whole screen (no reserved status-bar strip). Your trainer and team
-  sit down the left (the team two across, three down), and press-and-hold drags them, bag items, Dex rows and Whiteboard
+  sit in the bottom-left corner (the team two across, three down), and press-and-hold drags them, bag items, Dex rows and Whiteboard
   items onto the board, a trainer's card or Send To (`js/mobile/touchDrag.js`).
 - Battle bench: each combatant is out on the field or on the bench (the roster's Out box). A player's first Pokémon goes
   out and the rest wait; the other side sends out everything. Players pick their lead on the VS screen, switch in a

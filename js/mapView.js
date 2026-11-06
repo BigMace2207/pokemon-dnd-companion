@@ -24,9 +24,19 @@ export function gridRef(map, x, y) {
   const g = mapGrid(map);
   return `${colName(Math.min(g.cols - 1, Math.max(0, Math.floor(x * g.cols))))}${Math.min(g.rows, Math.max(1, Math.floor(y * g.rows) + 1))}`;
 }
+/** An area's corners (map units): its shape, or the four corners of an older rectangle. */
+export const areaPoints = (a) => (a.pts?.length >= 3 ? a.pts : [[a.x, a.y], [a.x + a.w, a.y], [a.x + a.w, a.y + a.h], [a.x, a.y + a.h]]);
+function inPolygon(x, y, pts) {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [xi, yi] = pts[i], [xj, yj] = pts[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
 /** The DM's area a point (map units) is in: the smallest one holding it, or null. */
 export function areaAt(map, x, y) {
-  const hits = (map?.areas || []).filter((a) => x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h);
+  const hits = (map?.areas || []).filter((a) => x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h && inPolygon(x, y, areaPoints(a)));
   return hits.sort((a, b) => a.w * a.h - b.w * b.h)[0] || null;
 }
 
@@ -92,6 +102,9 @@ export function mapStage(map, opts = {}) {
   // the coordinate grid and the DM's areas sit on the picture, under the fog (an unexplored area stays hidden)
   const grid = el("div", { class: "mv-grid", "aria-hidden": "true" });
   const areas = el("div", { class: "mv-areas" });
+  const NS = "http://www.w3.org/2000/svg";
+  const areaSvg = document.createElementNS(NS, "svg");
+  areaSvg.setAttribute("class", "mv-area-shapes");
   const stage = el("div", { class: `mv-stage${opts.labels === false ? " no-labels" : ""}` }, [img, grid, areas, fog, marks]);
   let shownImage = "", fogSig = "";
   function update(m) {
@@ -103,8 +116,15 @@ export function mapStage(map, opts = {}) {
     if (sig !== fogSig) { fogSig = sig; drawFog(fog, m, { see: opts.see }); }
     grid.style.backgroundSize = `${mapGrid(m).cell}px ${mapGrid(m).cell}px`;
     grid.hidden = opts.grid === false;
-    areas.replaceChildren(...(m.areas || []).map((a) => el("div", { class: "mv-area", "data-id": a.id, style: `left:${a.x * m.w}px;top:${a.y * m.h}px;width:${a.w * m.w}px;height:${a.h * m.h}px;--c:${a.color || "#9b7be0"}` },
-      el("span", { class: "mv-area-name" }, a.name))));
+    // each area is its outline (an SVG polygon, so any shape) plus its name at the top-left of its box
+    areaSvg.setAttribute("viewBox", `0 0 ${m.w} ${m.h}`); areaSvg.setAttribute("width", m.w); areaSvg.setAttribute("height", m.h);
+    areaSvg.replaceChildren(...(m.areas || []).map((a) => {
+      const poly = document.createElementNS(NS, "polygon");
+      poly.setAttribute("points", areaPoints(a).map(([x, y]) => `${(x * m.w).toFixed(1)},${(y * m.h).toFixed(1)}`).join(" "));
+      poly.setAttribute("class", "mv-area"); poly.dataset.id = a.id; poly.style.setProperty("--c", a.color || "#9b7be0");
+      return poly;
+    }));
+    areas.replaceChildren(areaSvg, ...(m.areas || []).map((a) => el("span", { class: "mv-area-name", "data-id": a.id, style: `left:${a.x * m.w}px;top:${a.y * m.h}px;--c:${a.color || "#9b7be0"}` }, a.name)));
     marks.replaceChildren(
       ...(m.pins || []).map((p) => el("div", { class: `mv-pin${p.revealed === false ? " secret" : ""}`, "data-id": p.id, style: `left:${p.x * m.w}px;top:${p.y * m.h}px;--c:${p.color || "#ff4a22"}`, title: p.label || "" }, [
         el("span", { class: "mv-pin-dot" }, p.icon || "●"), p.label ? el("span", { class: "mv-pin-text" }, p.label) : null,
@@ -115,7 +135,7 @@ export function mapStage(map, opts = {}) {
     );
   }
   update(map);
-  return { stage, update, areasEl: areas, get map() { return map; }, tokenEl: (id) => marks.querySelector(`.mv-token[data-id="${CSS.escape(id)}"]`), pinEl: (id) => marks.querySelector(`.mv-pin[data-id="${CSS.escape(id)}"]`) };
+  return { stage, update, areasEl: areas, areaShape: (id) => areaSvg.querySelector(`[data-id="${CSS.escape(id)}"]`), get map() { return map; }, tokenEl: (id) => marks.querySelector(`.mv-token[data-id="${CSS.escape(id)}"]`), pinEl: (id) => marks.querySelector(`.mv-pin[data-id="${CSS.escape(id)}"]`) };
 }
 
 // Pan and zoom a stage inside a frame: drag to pan, wheel or pinch to zoom. onTap(mapPoint, event) for a press that
