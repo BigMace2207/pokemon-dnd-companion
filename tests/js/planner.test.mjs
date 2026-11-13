@@ -57,3 +57,12 @@ test("a player shares notes, checklists and whiteboards, never scenarios or maps
   assert.deepEqual(Object.keys(shared).sort(), ["boards", "lists", "notes", "updated"]);
   assert.ok(!JSON.stringify(shared).includes("secret plot"));
 });
+
+test("a place's DM notes never go with a shared whiteboard", () => {
+  const place = { id: "p", type: "place", title: "The Rusty Anchor", body: "A tavern.", dmNotes: "The owner is a spy." };
+  const plan = { notes: [], lists: [], boards: [{ id: "b", nodes: [place, { id: "n", type: "note", body: "hi" }] }], updated: 1 };
+  const shared = sharedPart(plan);
+  assert.ok(!JSON.stringify(shared).includes("spy"));
+  assert.equal(shared.boards[0].nodes[0].body, "A tavern.", "the rest of the place is shared");
+  assert.equal(plan.boards[0].nodes[0].dmNotes, "The owner is a spy.", "the DM's own copy is untouched");
+});

@@ -330,12 +330,14 @@ def _colour(v, default):
 
 
 def clean_map_pins(raw):
-    """The DM's labelled places on the shared map. `revealed` is what players are allowed to see."""
+    """The DM's labelled places on the shared map. `revealed` is what players are allowed to see. A label made from a
+    Whiteboard place also has its type (`kind`) and a line it is known for (`known`); the place's DM notes never get here."""
     out = []
     for p in (raw if isinstance(raw, list) else [])[:300]:
         if isinstance(p, dict):
             out.append({"id": _text(p.get("id"), 40) or secrets.token_hex(4), "x": _unit(p.get("x")), "y": _unit(p.get("y")),
                         "label": _text(p.get("label"), 80), "note": _text(p.get("note"), 2000), "icon": _text(p.get("icon"), 2) or "●",
+                        "kind": _text(p.get("kind"), 40), "known": _text(p.get("known"), 160),
                         "color": _colour(p.get("color"), "#ff4a22"), "revealed": p.get("revealed") is True})
     return out
 
@@ -400,6 +402,64 @@ def clean_fog(raw, old):
         if raw.get("radius") is not None:
             out["radius"] = round(min(0.4, max(0.02, _unit(raw.get("radius")))), 3)
     return out
+
+
+def hub_page_at(hub, item):
+    """The page (the topmost) an item's corner is on, or None. A drawing's corner is its first point."""
+    if item["type"] == "page":
+        return None
+    if item["type"] == "stroke" and item.get("pts"):
+        ax, ay = item["pts"][0][0], item["pts"][0][1]
+    else:
+        ax, ay = item["x"], item["y"]
+    hit = None
+    for pg in hub["items"]:
+        if pg["type"] == "page" and pg["id"] != item["id"] and pg["x"] <= ax <= pg["x"] + HUB_PAGE_W and pg["y"] <= ay <= pg["y"] + HUB_PAGE_H:
+            hit = pg
+    return hit
+
+
+def hub_attach(hub, item):
+    """Set or clear item["page"]: on a page means attached to it. Decided here, from where the item is, never from the client."""
+    pg = hub_page_at(hub, item)
+    if pg:
+        item["page"] = pg["id"]
+    else:
+        item.pop("page", None)
+
+
+def hub_move_page(hub, page_id, dx, dy):
+    """Move everything attached to a page by the same amount the page moved."""
+    if not (dx or dy):
+        return
+    for it in hub["items"]:
+        if it.get("page") != page_id:
+            continue
+        if it["type"] == "stroke":   # (a drawing is its points: its own x and y stay 0)
+            it["pts"] = [[q[0] + dx, q[1] + dy] for q in it.get("pts", [])]
+        else:
+            it["x"], it["y"] = it["x"] + dx, it["y"] + dy
+            if it["type"] == "shape":
+                it["x2"], it["y2"] = it.get("x2", 0) + dx, it.get("y2", 0) + dy
+        it["updated"] = time.time()
+
+
+def move_map_token(state, entry, pm, tid, x, y, color, is_dm):
+    """Put a token on the shared map at (x, y), adding it if it isn't there, and clear the mist round it. Returns (token, error)."""
+    tokens = pm.setdefault("tokens", [])
+    tok = next((t for t in tokens if t["id"] == tid), None)
+    if not tok:
+        if not is_dm and len(tokens) >= 40:
+            return None, "the map is full"
+        saved = ((state["playerSaves"].get(tid) or {}).get("current") or {}).get("trainer") or {}
+        name = (state["trainers"].get(tid) or {}).get("name") or saved.get("name") or default_player_name(entry["meta"])
+        tok = {"id": tid, "name": _text(name, 40) or default_player_name(entry["meta"]), "x": x, "y": y, "color": _colour(color, "#5aa8f0")}
+        tokens.append(tok)
+    tok["x"], tok["y"] = x, y
+    if map_fog(pm)["enabled"] and tid in (entry["meta"].get("memberIds") or []) + list(state["trainers"].keys()):
+        map_reveal(pm, tid, x, y)
+    pm["updated"] = time.time()
+    return tok, None
 
 
 def map_reveal(pm, who, x, y, spacing=0.35):
@@ -1013,9 +1073,19 @@ HUB_CURSOR_TTL = 6
 HUB_CURSORS = {}   # campaignId -> {networkId: {name, color, x, y, t, down}}
 HUB_PING_TTL = 4
 HUB_PINGS = {}     # campaignId -> [{id, x, y, color, name, t}] -- "look here" ripples, gone after a few seconds
-HUB_TYPES = ("note", "stroke", "text", "button", "mon", "move", "shape", "prop", "item", "trainer")   # mon / move: a Pokédex or Move Dex card; shape: a drawn rectangle, ellipse, line or arrow; prop: a picture from the prop library; item: a card for something from a bag; trainer: a player's character card
+HUB_TYPES = ("note", "stroke", "text", "button", "mon", "move", "shape", "prop", "item", "trainer", "monster", "spell", "place", "widget", "page")   # mon / move: a Pokédex or Move Dex card; shape: a drawn rectangle, ellipse, line or arrow; prop: a picture from the prop library; item: a card for something from a bag; trainer: a player's character card
 HUB_SHAPES = ("rect", "ellipse", "line", "arrow")
-HUB_SOURCES = ("npc", "wild", "plan")
+# widget: a smart widget on a D&D hub (its data comes from the live game, shown by the client); place: somewhere the DM put on the hub,
+# which players can travel to. The DM alone places a place, and the weather and combat-control widgets.
+HUB_WIDGETS = ("positions", "vitals", "weather", "turn", "order", "mine", "combatdm", "battles", "here", "online", "dice", "purse", "clock")
+HUB_DM_WIDGETS = ("weather", "combatdm")
+HUB_WIDGET_SIZES = ("1x1", "1x2", "2x2")   # a widget is one square, two squares wide, or two by two (the client draws them)
+# page: a sheet of paper on the board (A4 in proportion). Anything whose corner is on a page is attached to it and moves with it.
+HUB_PAGE_W, HUB_PAGE_H = 900, 1273
+HUB_PAGE_KINDS = ("blank", "battle", "sheet", "log")
+HUB_MAX_PAGES = 12
+HUB_WEATHER = ("clear", "cloudy", "rain", "storm", "snow", "fog", "wind", "heat", "cold")
+HUB_SOURCES = ("npc", "wild", "plan", "encounter", "monster")   # encounter / monster: a D&D campaign's saved encounter or a bestiary monster
 
 
 def _num(v, lo=-200000, hi=200000):
@@ -1041,7 +1111,7 @@ def clean_hub_item(raw, owner, is_dm):
     if not isinstance(raw, dict) or raw.get("type") not in HUB_TYPES:
         return None
     kind = raw["type"]
-    if kind == "button" and not is_dm:
+    if kind in ("button", "place") and not is_dm:
         return None
     item = {"id": _text(raw.get("id"), 40) or secrets.token_hex(6), "type": kind, "owner": owner,
             "x": _num(raw.get("x")), "y": _num(raw.get("y")), "color": _colour(raw.get("color"), "#f0b45a"), "updated": time.time()}
@@ -1085,11 +1155,35 @@ def clean_hub_item(raw, owner, is_dm):
         link = _hub_link(raw.get("link"), "mon")
         if link:
             item["link"] = link
-    elif kind == "item":
+    elif kind in ("item", "monster", "spell"):
+        # a bag item (Pokémon or D&D), or a D&D bestiary monster or spell: the name, and the details come from the rules data
         item["name"] = _text(raw.get("name"), 60)
         if not item["name"]:
             return None
         item["open"] = raw.get("open") is True
+    elif kind == "place":
+        # somewhere on the DM's map, as a card: only what players may read (the DM's notes never come here), and the id of its
+        # label on the shared map, which "travel" checks against the map itself
+        item["name"] = _text(raw.get("name"), 60)
+        if not item["name"]:
+            return None
+        item.update({"kind": _text(raw.get("kind"), 40), "known": _text(raw.get("known"), 160), "note": _text(raw.get("note"), 2000),
+                     "icon": _text(raw.get("icon"), 2) or "📍", "pin": _text(raw.get("pin"), 40), "color": _colour(raw.get("color"), "#c8402f"),
+                     "open": raw.get("open") is True})
+    elif kind == "widget":
+        w = raw.get("widget")   # (not "w": that is a note's width, and the hub measures every item by it)
+        if w not in HUB_WIDGETS or (w in HUB_DM_WIDGETS and not is_dm):
+            return None
+        item["widget"] = w
+        if raw.get("size") in HUB_WIDGET_SIZES:
+            item["size"] = raw["size"]
+        if w == "weather":
+            d = raw.get("data") if isinstance(raw.get("data"), dict) else {}
+            item["data"] = {"weather": d.get("weather") if d.get("weather") in HUB_WEATHER else "clear", "temp": _text(d.get("temp"), 12),
+                            "time": int(_num(d.get("time"), 0, 1439)), "day": int(_num(d.get("day"), 1, 99999) or 1), "note": _text(d.get("note"), 120)}
+    elif kind == "page":
+        item["title"] = _text(raw.get("title"), 40) or "Page"
+        item["pageKind"] = raw.get("pageKind") if raw.get("pageKind") in HUB_PAGE_KINDS else "blank"
     elif kind == "trainer":
         # a player's character card: a snapshot of their sheet, as label / value rows
         item["name"] = _text(raw.get("name"), MAX_NAME) or "Trainer"
@@ -1136,6 +1230,25 @@ def clean_draft(raw):
     return {"pts": pts, "color": _colour(raw.get("color"), "#5aa8f0"), "width": _num(raw.get("width"), 1, 40) or 4}
 
 
+def default_player_name(meta):
+    """What a player with no name is called: a D&D campaign has players, a Pokémon one has trainers."""
+    return "Player" if (meta or {}).get("system") == "dnd5e" else "Trainer"
+
+
+def roster_pc(pc):
+    """A D&D character's presence summary, trimmed to what the DM's roster needs: name, class, level, HP and AC
+    (numbers only where numbers belong), or None when there isn't one."""
+    if not isinstance(pc, dict):
+        return None
+    def num(v, hi):
+        return int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= hi else None
+    level = num(pc.get("level"), 20)
+    if not level:
+        return None
+    return {"name": str(pc.get("name") or "")[:60], "classes": str(pc.get("classes") or "")[:80], "level": level,
+            "hp": num(pc.get("hp"), 9999), "maxHp": num(pc.get("maxHp"), 9999), "ac": num(pc.get("ac"), 99)}
+
+
 def hub_roster(state, meta, with_details, dm_ids=()):
     """Everyone in the campaign, online or not: name, portrait and whether they're here. With details (the DM),
     also each one's party, bag and money, from their live presence or, when they're away, their last saved copy,
@@ -1150,7 +1263,7 @@ def hub_roster(state, meta, with_details, dm_ids=()):
         name = (live or {}).get("name") or trainer.get("name") or ""
         if not name and not saved and not live:
             continue
-        row = {"id": tid, "name": name or "Trainer", "sprite": (live or {}).get("sprite") or trainer.get("sprite") or "",
+        row = {"id": tid, "name": name or default_player_name(meta), "sprite": (live or {}).get("sprite") or trainer.get("sprite") or "",
                "online": bool(live and now - live.get("lastSeen", 0) < TRAINER_TIMEOUT),
                "lastSeen": (live or {}).get("lastSeen") or 0}
         if with_details:
@@ -1160,6 +1273,9 @@ def hub_roster(state, meta, with_details, dm_ids=()):
             cash = team.get("cash") if live and "cash" in team else trainer.get("cash")
             row["cash"] = cash if isinstance(cash, (int, float)) else 0
             row["dm"] = tid in dm_ids
+            pc = roster_pc(team.get("dnd") if live else None)
+            if pc:
+                row["dnd"] = pc   # a D&D player's character (level, class, HP, AC), so the Whiteboard can size encounters
         out.append(row)
     return out
 
@@ -2328,7 +2444,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     return self._send_json({"error": "missing id"}, 400)
                 if tid not in mine:
                     return self._send_json({"error": "not your identity"}, 403)
-                name = name.strip()[:MAX_NAME] if isinstance(name, str) and name.strip() else "Trainer"
+                name = name.strip()[:MAX_NAME] if isinstance(name, str) and name.strip() else default_player_name(entry["meta"])
                 sprite = sprite[:100] if isinstance(sprite, str) else ""
                 state["trainers"][tid] = {"name": name, "team": team if isinstance(team, dict) else {}, "sprite": sprite, "lastSeen": time.time()}
                 mark_dirty()
@@ -2367,19 +2483,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 if not is_dm and (nid not in mine or tid != nid):
                     return self._send_json({"error": "you can only move yourself"}, 403)
                 x, y = _unit(data.get("x")), _unit(data.get("y"))
-                tokens = pm.setdefault("tokens", [])
-                tok = next((t for t in tokens if t["id"] == tid), None)
-                if not tok:
-                    if not is_dm and len(tokens) >= 40:
-                        return self._send_json({"error": "the map is full"}, 409)
-                    saved = ((state["playerSaves"].get(tid) or {}).get("current") or {}).get("trainer") or {}
-                    name = (state["trainers"].get(tid) or {}).get("name") or saved.get("name") or "Player"
-                    tok = {"id": tid, "name": _text(name, 40) or "Player", "x": x, "y": y, "color": _colour(data.get("color"), "#5aa8f0")}
-                    tokens.append(tok)
-                tok["x"], tok["y"] = x, y
-                if map_fog(pm)["enabled"] and tid in (entry["meta"].get("memberIds") or []) + list(state["trainers"].keys()):
-                    map_reveal(pm, tid, x, y)
-                pm["updated"] = time.time()
+                tok, err = move_map_token(state, entry, pm, tid, x, y, data.get("color"), is_dm)
+                if err:
+                    return self._send_json({"error": err}, 409)
                 mark_dirty()
                 return self._send_json({"ok": True})
 
@@ -2521,6 +2627,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     # who wrote it, from the server's own list (shown on notes; never taken from the client)
                     item["byName"] = (state["trainers"].get(nid) or {}).get("name") or ""
                     existing = next((i for i, it in enumerate(hub["items"]) if it["id"] == item["id"]), None)
+                    if item["type"] == "page" and existing is None and sum(1 for it in hub["items"] if it["type"] == "page") >= HUB_MAX_PAGES:
+                        return self._send_json({"error": f"the hub can hold {HUB_MAX_PAGES} pages"}, 409)
+                    if item["type"] != "page":
+                        hub_attach(hub, item)
                     if existing is not None:
                         old = hub["items"][existing]
                         if old["owner"] not in mine and not is_dm:
@@ -2529,6 +2639,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                             return self._send_json({"error": "DM only"}, 403)
                         item["owner"], item["byName"] = old["owner"], old.get("byName", "")
                         hub["items"][existing] = item
+                        if item["type"] == "page":   # the page moved: what is on it goes with it
+                            hub_move_page(hub, item["id"], item["x"] - old["x"], item["y"] - old["y"])
                     else:
                         if item.get("link"):
                             # one card per thing: a player's trainer, or one of their Pokémon, is only on the board once
@@ -2544,6 +2656,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     if not is_dm and (old["owner"] not in mine or old["type"] == "button"):
                         return self._send_json({"error": "not yours"}, 403)
                     hub["items"] = [it for it in hub["items"] if it["id"] != item_id]
+                    for it in hub["items"]:   # what was on a page that's gone stays where it is, on the bare board
+                        if it.get("page") == item_id:
+                            it.pop("page", None)
                     if hub.get("activeButton") == item_id:
                         hub["activeButton"] = None
                 elif op == "clearDrawings":
@@ -2561,6 +2676,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                         if not rec or rec.get("deleted") or rec["kind"] != "map" or rec.get("campaignId") != cid or rec["owner"] != acc["id"]:
                             return self._send_json({"error": "upload the map first"}, 400)
                         hub["backdrop"] = {"fileId": file_id, "blur": int(_num(data.get("blur"), 0, 40)), "dim": round(_num(data.get("dim"), 0, 90))}
+                elif op == "travel":
+                    # a player (or, for the DM, anyone) dragged onto a place on the hub: their token goes to that place's label on the
+                    # shared map. Where it is comes from the map's own copy of the label (hidden ones too), never from the client.
+                    place = next((it for it in hub["items"] if it["id"] == data.get("itemId") and it["type"] == "place"), None)
+                    if not place:
+                        return self._send_json({"error": "that place isn't on the hub any more"}, 404)
+                    who = data.get("who") or nid
+                    if who != nid and not is_dm:
+                        return self._send_json({"error": "you can only move yourself"}, 403)
+                    pm = state.get("partyMap")
+                    pin = next((q for q in (pm or {}).get("pins", []) if place.get("pin") and q["id"] == place["pin"]), None)
+                    if not pm or not pin:
+                        return self._send_json({"error": "that place isn't on the hub's map"}, 409)
+                    tok, err = move_map_token(state, entry, pm, who, pin["x"], pin["y"], data.get("color"), is_dm)
+                    if err:
+                        return self._send_json({"error": err}, 409)
+                    mark_dirty()
+                    return self._send_json({"ok": True, "who": tok["name"], "place": place["name"]})
                 elif op == "activate":
                     if not is_dm:
                         return self._send_json({"error": "DM only"}, 403)

@@ -108,21 +108,29 @@ export function renderSettings(container) {
 
   // ---------------- Appearance & display ----------------
   function appearanceCard() {
+    if (getForcedTheme() === "lava") {
+      const fx = pillGroup([["full", "Full effects"], ["calm", "Calm (no motion)"]], getLavaFx(), (mode) => setLavaFx(mode));
+      return el("div", { class: "card" }, [
+        el("h4", {}, "Appearance"),
+        el("p", { class: "view-sub" }, "D&D campaigns use the Lava theme on every page: glass over a blurred, slowly churning lava sea. Pokémon D&D campaigns use the Cosmic theme."),
+        el("h4", {}, "Lava effects"), fx,
+      ]);
+    }
     if (getForcedTheme() === "cosmic") {
       return el("div", { class: "card" }, [
         el("h4", {}, "Appearance"),
-        el("p", { class: "view-sub" }, "Pokémon D&D campaigns use the Cosmic theme on every page: deep space, glass and white pills. Your theme choice below still applies to D&D campaigns."),
+        el("p", { class: "view-sub" }, "Pokémon D&D campaigns use the Cosmic theme on every page: deep space, glass and white pills. D&D campaigns use the Lava theme."),
       ]);
     }
     const group = pillGroup(
-      [["system", "System"], ["light", "Light"], ["dark", "Dark"], ["lava", "Lava Tower"]],
+      [["system", "System"], ["light", "Light"], ["dark", "Dark"], ["lava", "Lava"]],
       getTheme(),
       (theme) => setTheme(theme),
     );
     const fx = pillGroup([["full", "Full effects"], ["calm", "Calm (no motion)"]], getLavaFx(), (mode) => setLavaFx(mode));
     return el("div", { class: "card" }, [
       el("h4", {}, "Appearance"), group,
-      el("p", { class: "view-sub", style: "margin-top:12px" }, "Lava Tower: a grey-brick tower wall with lava, cracks of light and crumbling stone. The flame button in the top bar toggles it too."),
+      el("p", { class: "view-sub", style: "margin-top:12px" }, "Lava: glass over a blurred, slowly churning lava sea."),
       el("h4", {}, "Lava effects"), fx,
     ]);
   }
@@ -132,7 +140,7 @@ export function renderSettings(container) {
     const group = pillGroup([["low", "Low"], ["medium", "Medium"], ["high", "High"]], getGfx(), (level) => setGfx(level));
     return el("div", { class: "card" }, [
       el("h4", {}, "Graphics"), group,
-      el("p", { class: "view-sub", style: "margin-top:12px" }, "High: the full sky, with stars at full speed, a drifting nebula and frosted glass. Medium (the default): the same sky at a gentler pace, a still nebula and solid glass. Low: a still sky that only moves when you pan or zoom. Pick a lower setting if the hub feels slow on this device."),
+      el("p", { class: "view-sub", style: "margin-top:12px" }, "High: the full sky, with stars at full speed, a drifting nebula and frosted glass. Medium (the default): the same sky at a gentler pace, a still nebula and solid glass. Low: a still sky that only moves when you pan or zoom. On the hub, pages and widgets follow it too: Low has no motion at all, Medium adds pages rising in, widgets gliding into place and resizing smoothly and a pulse when a widget's numbers change, and High adds a slow shine across widgets. Pick a lower setting if the hub feels slow on this device."),
     ]);
   }
 
@@ -140,11 +148,12 @@ export function renderSettings(container) {
   // background ambience (js/ambience.js) and the Pokémon cries. Letting go of a slider plays a sample at the new level.
   function soundCard() {
     const lv = getAudioLevels();
+    const dnd = activeSystem()?.id === "dnd5e";   // a D&D campaign has no Pokémon cries
     const rows = [
       ["master", "Master", "Everything at once"],
-      ["sfx", "Sound effects", "Clicks, drags, drops, items, Whiteboard and battle moves"],
-      ["ambience", "Ambience", "The slow, spatial background in Pokémon campaigns"],
-      ["pokemon", "Pokémon", "Cries when a Pokémon comes out of the Pokédex or your team"],
+      ["sfx", "Sound effects", dnd ? "Clicks, drags, drops, items, the Whiteboard and dice" : "Clicks, drags, drops, items, Whiteboard and battle moves"],
+      ["ambience", "Ambience", dnd ? "The background: a lava river, crackling embers and a low drone" : "The slow, spatial background in Pokémon campaigns"],
+      ...(dnd ? [] : [["pokemon", "Pokémon", "Cries when a Pokémon comes out of the Pokédex or your team"]]),
     ];
     const sample = (key) => {
       if (key === "pokemon") playCry(25, "Pikachu");
@@ -176,7 +185,7 @@ export function renderSettings(container) {
     ]);
   }
 
-  // The colour of your cursor (and the name tag above it) on the Pokémon hub's shared board.
+  // The colour of your cursor (and the name tag above it) on the hub's shared board.
   function cursorCard() {
     const current = cursorColorOf(loadSave());
     const preview = el("span", { class: "cursor-preview", style: `--c:${current}` }, [el("span", { class: "cursor-preview-arrow" }), el("span", { class: "cursor-preview-name" }, loadSave().trainer?.name || "You")]);

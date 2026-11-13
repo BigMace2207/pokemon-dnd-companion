@@ -368,6 +368,115 @@ class Hub(Base):
         self.assertTrue(next(i for i in items if i["id"] == "secret")["dmOnly"])
         self.assertEqual(self.op(self.member, "id-member", op="delete", itemId="secret")[0], 403)
 
+    def test_dnd_monster_and_spell_cards_and_encounter_buttons(self):
+        for card in ({"type": "monster", "id": "m1", "name": "Goblin"}, {"type": "spell", "id": "s1", "name": "Fireball", "open": True}, {"type": "item", "id": "i1", "name": "Longsword"}):
+            self.assertEqual(self.op(self.member, "id-member", op="put", item=card)[0], 200)
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={"type": "monster", "id": "m2", "name": ""})[0], 400)
+        items = {i["id"]: i for i in self.sync(self.owner, "id-owner", since=-1)[1]["items"]}
+        self.assertEqual((items["m1"]["name"], items["s1"]["open"]), ("Goblin", True))
+        enc = {"type": "button", "id": "e1", "label": "Goblin ambush", "source": {"kind": "encounter", "id": "enc1", "mons": [{"name": "Goblin", "level": 1}, {"name": "Hobgoblin", "level": 1}]}}
+        self.assertEqual(self.op(self.member, "id-member", op="put", item=enc)[0], 400, "only the DM places encounters")
+        self.assertEqual(self.op(self.owner, "id-owner", op="put", item=enc, token=self.dm)[0], 200)
+        mon = {"type": "button", "id": "e2", "label": "Owlbear", "source": {"kind": "monster", "id": "owlbear", "mons": [{"name": "Owlbear", "level": 3}]}}
+        self.assertEqual(self.op(self.owner, "id-owner", op="put", item=mon, token=self.dm)[0], 200)
+        btns = {i["id"]: i for i in self.sync(self.owner, "id-owner", since=-1)[1]["items"] if i["type"] == "button"}
+        self.assertEqual((btns["e1"]["source"]["kind"], len(btns["e1"]["source"]["mons"]), btns["e2"]["preview"]["count"]), ("encounter", 2, 1))
+
+    def test_widgets_anyone_can_place_and_the_dm_only_ones(self):
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={"type": "widget", "id": "w1", "widget": "positions", "x": 5, "y": 6})[0], 200)
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={"type": "widget", "id": "w2", "widget": "nonsense"})[0], 400, "only the known widgets")
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={"type": "widget", "id": "w3", "widget": "weather"})[0], 400, "the weather is the DM's")
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={"type": "widget", "id": "w4", "widget": "combatdm"})[0], 400, "combat control is the DM's")
+        weather = {"type": "widget", "id": "w5", "widget": "weather", "data": {"weather": "hail of frogs", "temp": "x" * 40, "time": 99999, "day": 0, "note": "n" * 400}}
+        self.assertEqual(self.op(self.owner, "id-owner", op="put", item=weather, token=self.dm)[0], 200)
+        items = {i["id"]: i for i in self.sync(self.member, "id-member", since=-1)[1]["items"]}
+        self.assertEqual((items["w1"]["widget"], items["w1"]["x"]), ("positions", 5))
+        self.assertNotIn("w", items["w1"], "a widget has no width of its own: the card sizes itself")
+        d = items["w5"]["data"]
+        self.assertEqual((d["weather"], len(d["temp"]), d["time"], d["day"], len(d["note"])), ("clear", 12, 1439, 1, 120), "weather data is cleaned and limited")
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={**weather, "data": {"weather": "storm"}})[0], 400, "a player can't change the weather")
+
+    def test_the_dm_places_places_and_players_travel_to_them(self):
+        place = {"type": "place", "id": "pl1", "name": "The Rusty Anchor", "kind": "Tavern", "known": "Best stew", "note": "A smoky tavern.", "icon": "🍺", "pin": "pin-tav", "dmNotes": "a spy", "x": 1, "y": 2}
+        self.assertEqual(self.op(self.member, "id-member", op="put", item=place)[0], 400, "only the DM places a place")
+        self.assertEqual(self.op(self.owner, "id-owner", op="put", item=place, token=self.dm)[0], 200)
+        shown = {i["id"]: i for i in self.sync(self.member, "id-member", since=-1)[1]["items"]}["pl1"]
+        self.assertEqual((shown["name"], shown["kind"], shown["pin"]), ("The Rusty Anchor", "Tavern", "pin-tav"))
+        self.assertNotIn("dmNotes", shown, "the DM's notes never reach the hub")
+        # no map on the hub yet
+        self.assertEqual(self.op(self.member, "id-member", op="travel", itemId="pl1")[0], 409)
+        fid = upload(self.base, self.owner, PNG, kind="map", campaignId=self.cid, name="world.png")[1]["file"]["id"]
+        pins = [{"id": "pin-tav", "x": .6, "y": .4, "label": "The Rusty Anchor", "revealed": False}]   # still hidden from players
+        call(self.base, "POST", "/api/partymap", {"campaignId": self.cid, "token": self.dm, "map": {"name": "World", "fileId": fid, "w": 1000, "h": 500, "pins": pins, "tokens": []}}, token=self.owner)
+        out = self.op(self.member, "id-member", op="travel", itemId="pl1")
+        self.assertEqual((out[0], out[1]["place"]), (200, "The Rusty Anchor"))
+        view = call(self.base, "GET", f"/api/partymap?campaignId={self.cid}&id=id-member", token=self.member)[1]["map"]
+        tok = next(t for t in view["tokens"] if t["id"] == "id-member")
+        self.assertEqual((tok["x"], tok["y"]), (.6, .4), "the token went to the label, though players can't see that label")
+        self.assertEqual(view["pins"], [], "and the hidden label stayed hidden")
+        # others: only the DM moves them
+        self.assertEqual(self.op(self.member, "id-member", op="travel", itemId="pl1", who="id-owner")[0], 403)
+        self.assertEqual(self.op(self.owner, "id-owner", op="travel", itemId="pl1", who="id-member", token=self.dm)[0], 200)
+        self.assertEqual(self.op(self.member, "id-member", op="travel", itemId="nope")[0], 404)
+        # a place whose label isn't on the hub's map can't be travelled to
+        self.op(self.owner, "id-owner", op="put", item={**place, "id": "pl2", "pin": "gone"}, token=self.dm)
+        self.assertEqual(self.op(self.member, "id-member", op="travel", itemId="pl2")[0], 409)
+
+    def test_a_widgets_size_is_one_of_three(self):
+        put = lambda size: self.op(self.member, "id-member", op="put", item={"type": "widget", "id": "w1", "widget": "order", "size": size, "x": 0, "y": 0})
+        for size in ("1x1", "1x2", "2x2"):
+            self.assertEqual(put(size)[0], 200)
+            self.assertEqual({i["id"]: i for i in self.sync(self.member, "id-member", since=-1)[1]["items"]}["w1"]["size"], size)
+        self.assertEqual(put("3x3")[0], 200)
+        self.assertNotIn("size", {i["id"]: i for i in self.sync(self.member, "id-member", since=-1)[1]["items"]}["w1"], "any other size is dropped")
+
+    def test_pages_hold_what_is_on_them_and_move_it_with_them(self):
+        items = lambda who="id-member", tok=None: {i["id"]: i for i in self.sync(tok or self.member, who, since=-1)[1]["items"]}
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={"type": "page", "id": "pg", "title": "Battle tracker", "pageKind": "battle", "x": 1000, "y": 1000})[0], 200)
+        self.assertEqual((items()["pg"]["title"], items()["pg"]["pageKind"]), ("Battle tracker", "battle"))
+        self.op(self.member, "id-member", op="put", item={"type": "page", "id": "pg2", "pageKind": "nonsense", "x": 5000, "y": 5000})
+        self.assertEqual(items()["pg2"]["pageKind"], "blank")
+        self.op(self.member, "id-member", op="put", item={"type": "note", "id": "n1", "x": 1100, "y": 1200, "text": "on the page"})
+        self.op(self.member, "id-member", op="put", item={"type": "widget", "id": "w1", "widget": "turn", "x": 1300, "y": 1100})
+        self.op(self.member, "id-member", op="put", item={"type": "stroke", "id": "s1", "pts": [[1050, 1050], [1090, 1090], [4000, 4000]], "color": "#ffffff", "width": 3})
+        self.op(self.member, "id-member", op="put", item={"type": "shape", "id": "sh1", "shape": "rect", "x": 1200, "y": 1500, "x2": 1280, "y2": 1560, "color": "#ffffff"})
+        self.op(self.member, "id-member", op="put", item={"type": "note", "id": "n2", "x": 0, "y": 0, "text": "off the page"})
+        got = items()
+        for k in ("n1", "w1", "s1", "sh1"):
+            self.assertEqual(got[k].get("page"), "pg", f"{k} is attached")
+        self.assertNotIn("page", got["n2"])
+        self.assertNotIn("page", got["pg"])
+        # moving the page moves what is attached, by the same amount, and nothing else
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={**got["pg"], "x": 1300, "y": 900})[0], 200)
+        got = items()
+        self.assertEqual((got["n1"]["x"], got["n1"]["y"]), (1400, 1100))
+        self.assertEqual((got["w1"]["x"], got["w1"]["y"]), (1600, 1000))
+        self.assertEqual(got["s1"]["pts"][0], [1350, 950])
+        self.assertEqual((got["s1"]["x"], got["s1"]["y"]), (0, 0), "a drawing is its points: its own x and y do not drift")
+        self.assertEqual((got["sh1"]["x2"], got["sh1"]["y2"]), (1580, 1460))
+        self.assertEqual((got["n2"]["x"], got["n2"]["y"]), (0, 0))
+        # an item put somewhere else comes off the page; one put on the page joins it
+        self.op(self.member, "id-member", op="put", item={**got["n1"], "x": 20, "y": 20})
+        self.op(self.member, "id-member", op="put", item={**got["n2"], "x": 1500, "y": 1000})
+        got = items()
+        self.assertNotIn("page", got["n1"])
+        self.assertEqual(got["n2"]["page"], "pg")
+        # only the page's owner (or the DM) moves it
+        self.assertEqual(self.op(self.owner, "id-owner", op="put", item={**got["pg"], "x": 0, "y": 0})[0], 403)
+        self.assertEqual(self.op(self.owner, "id-owner", op="put", item={**got["pg"], "x": 1400, "y": 900}, token=self.dm)[0], 200)
+        # taking the page off the board leaves what was on it where it was
+        self.op(self.member, "id-member", op="delete", itemId="pg")
+        got = items()
+        self.assertNotIn("pg", got)
+        self.assertNotIn("page", got["w1"])
+        self.assertEqual((got["w1"]["x"], got["w1"]["y"]), (1700, 1000))
+
+    def test_the_hub_holds_a_limited_number_of_pages(self):
+        for i in range(12):
+            self.assertEqual(self.op(self.member, "id-member", op="put", item={"type": "page", "id": f"p{i}", "x": i * 700, "y": 0})[0], 200)
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={"type": "page", "id": "p-extra", "x": 0, "y": 2000})[0], 409)
+        self.assertEqual(self.op(self.member, "id-member", op="put", item={"type": "page", "id": "p3", "title": "Renamed", "x": 3 * 700, "y": 0})[0], 200, "changing one is fine")
+
     def test_team_item_and_trainer_cards(self):
         mon = {"type": "mon", "id": "t1", "name": "Pikachu", "dex": 25, "level": 12, "hp": [20, 31], "moves": ["Thunder Shock", "Growl", "", "x" * 80], "nickname": "Sparky", "held": "Oran Berry"}
         self.assertEqual(self.op(self.member, "id-member", op="put", item=mon)[0], 200)
@@ -415,6 +524,28 @@ class Roster(Base):
         rows = call(self.base, "GET", f"/api/roster?campaignId={self.cid}", token=self.member)[1]["trainers"]
         self.assertTrue(all("dm" not in r for r in rows), "only the DM's view says who the DMs are")
 
+    def test_a_nameless_player_is_a_player_in_d_and_d_and_a_trainer_in_pokemon(self):
+        dnd_cid, dnd = server.new_campaign_entry("Table", "id-owner", "dnd5e")
+        server.CAMPAIGNS[dnd_cid] = dnd
+        dnd["meta"]["memberIds"].append("id-member")
+        call(self.base, "POST", "/api/trainer", {"campaignId": dnd_cid, "id": "id-member", "name": "", "team": {}}, token=self.member)
+        rows = call(self.base, "GET", f"/api/roster?campaignId={dnd_cid}", token=self.owner)[1]["trainers"]
+        self.assertEqual(next(r for r in rows if r["id"] == "id-member")["name"], "Player")
+        call(self.base, "POST", "/api/trainer", {"campaignId": self.cid, "id": "id-member", "name": "", "team": {}}, token=self.member)
+        rows = call(self.base, "GET", f"/api/roster?campaignId={self.cid}", token=self.owner)[1]["trainers"]
+        self.assertEqual(next(r for r in rows if r["id"] == "id-member")["name"], "Trainer")
+
+    def test_the_dm_sees_each_online_d_and_d_character_trimmed(self):
+        pc = {"name": "Brakka", "classes": "Fighter 3", "level": 3, "hp": 28, "maxHp": 28, "ac": 16, "conditions": [], "secret": "x" * 500}
+        call(self.base, "POST", "/api/trainer", {"campaignId": self.cid, "id": "id-member", "name": "Mia", "team": {"party": [], "dnd": pc}}, token=self.member)
+        rows = {r["id"]: r for r in call(self.base, "GET", f"/api/roster?campaignId={self.cid}&token={self.dm}", token=self.owner)[1]["trainers"]}
+        self.assertEqual(rows["id-member"]["dnd"], {"name": "Brakka", "classes": "Fighter 3", "level": 3, "hp": 28, "maxHp": 28, "ac": 16})
+        rows = call(self.base, "GET", f"/api/roster?campaignId={self.cid}", token=self.member)[1]["trainers"]
+        self.assertTrue(all("dnd" not in r for r in rows), "only the DM sees characters")
+        call(self.base, "POST", "/api/trainer", {"campaignId": self.cid, "id": "id-member", "name": "Mia", "team": {"party": [], "dnd": {"level": "99"}}}, token=self.member)
+        rows = {r["id"]: r for r in call(self.base, "GET", f"/api/roster?campaignId={self.cid}&token={self.dm}", token=self.owner)[1]["trainers"]}
+        self.assertNotIn("dnd", rows["id-member"], "a level that isn't a number from 1 to 20 is ignored")
+
     def test_items_and_money_can_be_sent(self):
         send = {"campaignId": self.cid, "fromId": "id-member", "toId": "id-owner", "fromName": "Mia"}
         self.assertEqual(call(self.base, "POST", "/api/send", {**send, "type": "item", "payload": {"name": "Potion", "count": 2}}, token=self.member)[0], 200)
@@ -442,6 +573,25 @@ class MapFog(Base):
 
     def view(self, tok, nid):
         return call(self.base, "GET", f"/api/partymap?campaignId={self.cid}&id={nid}", token=tok)[1]["map"]
+
+    def test_a_place_label_gives_players_its_type_and_description_but_never_the_dms_notes(self):
+        pins = [
+            {"id": "tav", "x": .3, "y": .3, "label": "The Rusty Anchor", "kind": "Tavern", "known": "Best stew in Red Larch", "note": "A smoky dockside tavern.",
+             "icon": "🍺", "revealed": True, "placeId": "n1", "dmNotes": "The owner is a spy.", "area": "Skem"},
+            {"id": "sec", "x": .6, "y": .6, "label": "The Vault", "kind": "Dungeon", "note": "Hidden.", "revealed": False, "dmNotes": "Trapped."},
+        ]
+        self.assertEqual(self.post("/api/partymap/live", {"token": self.dm, "pins": pins}, self.owner)[0], 200)
+        seen = self.view(self.mia, "id-mia")["pins"]
+        self.assertEqual([p["id"] for p in seen], ["tav"], "players only get labels the DM revealed")
+        tav = seen[0]
+        self.assertEqual((tav["label"], tav["kind"], tav["known"], tav["note"]), ("The Rusty Anchor", "Tavern", "Best stew in Red Larch", "A smoky dockside tavern."))
+        self.assertNotIn("dmNotes", tav, "the DM's notes are not part of a label")
+        self.assertNotIn("spy", str(self.view(self.mia, "id-mia")))
+        self.assertNotIn("Trapped", str(self.view(self.mia, "id-mia")))
+        long_kind = [{"id": "x", "x": .1, "y": .1, "label": "A", "kind": "K" * 500, "known": "J" * 500, "revealed": True}]
+        self.post("/api/partymap/live", {"token": self.dm, "pins": long_kind}, self.owner)
+        got = self.view(self.mia, "id-mia")["pins"][0]
+        self.assertEqual((len(got["kind"]), len(got["known"])), (40, 160), "type and known-for are length-limited")
 
     def test_the_dm_sections_the_map_into_areas_that_survive_moves_and_republishing(self):
         areas = [{"id": "a1", "name": "Greenmantle", "x": .1, "y": .1, "w": .3, "h": .2}, {"name": "", "x": 0, "y": 0, "w": .2, "h": .2}, {"name": "Sliver", "x": .9, "y": .9, "w": 0, "h": .1}]

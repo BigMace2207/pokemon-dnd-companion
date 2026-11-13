@@ -185,3 +185,50 @@ export function panZoom(frame, stage, { getSize, minK = 0.05, maxK = 8, onTap = 
   }, { passive: false });
   return { view, apply, fit, zoomAt, centreOn, toMap, zoomBy: (f) => { const r = frame.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, f); } };
 }
+
+/**
+ * The corners of an area being drawn, and its outline on an SVG laid over a map stage (the Map editor's Area tool).
+ * tap(point, map, k) adds a corner; a tap within 14 screen pixels of the first corner (k = the stage's zoom) closes the
+ * shape instead. Corners are in map units (0-1), like everything the server stores for an area.
+ */
+export function areaDraft(svg) {
+  const NS = "http://www.w3.org/2000/svg";
+  const clamp01 = (v) => Math.max(0, Math.min(1, v));
+  let pts = [], hover = null;
+  return {
+    get count() { return pts.length; },
+    /** "closed" (this tap closed the shape), "full" (60 corners already) or "added". */
+    tap(pt, map, k = 1) {
+      const p = [clamp01(pt.x), clamp01(pt.y)];
+      if (pts.length >= 3) {
+        const f = pts[0];
+        if (Math.hypot((p[0] - f[0]) * map.w * k, (p[1] - f[1]) * map.h * k) < 14) return "closed";
+      }
+      if (pts.length >= 60) return "full";
+      pts.push(p);
+      return "added";
+    },
+    hover(pt) { hover = pt ? [clamp01(pt.x), clamp01(pt.y)] : null; },
+    undo() { pts.pop(); },
+    clear() { pts = []; hover = null; },
+    points() { return pts.map(([x, y]) => [Number(x.toFixed(4)), Number(y.toFixed(4))]); },
+    draw(map, k = 1) {
+      svg.setAttribute("viewBox", `0 0 ${map.w} ${map.h}`); svg.setAttribute("width", map.w); svg.setAttribute("height", map.h);
+      if (!pts.length) { svg.replaceChildren(); return; }
+      const px = (p) => `${(p[0] * map.w).toFixed(1)},${(p[1] * map.h).toFixed(1)}`;
+      const shape = document.createElementNS(NS, pts.length >= 3 ? "polygon" : "polyline");
+      const points = [...pts, ...(hover ? [hover] : [])].map(px).join(" ");
+      const halo = document.createElementNS(NS, pts.length >= 3 ? "polygon" : "polyline");
+      halo.setAttribute("points", points); halo.setAttribute("class", "mv-area-halo");
+      shape.setAttribute("points", points);
+      shape.setAttribute("class", "mv-area-draft");
+      const corners = pts.map((p, i) => {
+        const c = document.createElementNS(NS, "circle");
+        c.setAttribute("cx", (p[0] * map.w).toFixed(1)); c.setAttribute("cy", (p[1] * map.h).toFixed(1)); c.setAttribute("r", ((i === 0 ? 8 : 5) / k).toFixed(2));
+        c.setAttribute("class", `mv-area-corner${i === 0 ? " first" : ""}`);
+        return c;
+      });
+      svg.replaceChildren(halo, shape, ...corners);
+    },
+  };
+}

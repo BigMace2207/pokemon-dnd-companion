@@ -7,6 +7,7 @@ export const KINDS = {
   list: { label: "Checklist", icon: "list" },
   text: { label: "Sticky", icon: "sticky" },
   dungeon: { label: "Dungeon", icon: "dungeon" },
+  place: { label: "Place", icon: "pin" },
   npc: { label: "NPC", icon: "person" },
   name: { label: "Names", icon: "tag" },
   hook: { label: "Hook", icon: "quill" },

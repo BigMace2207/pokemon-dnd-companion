@@ -128,11 +128,26 @@
 **Dungeons & Dragons 5e** (pick it when you create a campaign)
 - Character builder and a full sheet: abilities, skills, saves, HP and death saves, spell slots and spellbooks, inventory and encumbrance, features and choices, level-up and rests, multiclassing
 - SRD 5.1 (2014) and SRD 5.2 (2024) compendia: spells, monsters, equipment, magic items, classes, races/species, backgrounds, feats and rules text
-- Dice roller with macros; live party view; initiative and combat tracker the DM can publish to players
-- The DM can share a map with the table, reveal places one by one and place the players on it; whiteboard nodes link to places on maps, and each session can be viewed on its own
+- Dice roller with macros (the DICE pull tab on the right edge, over any page); live party view; initiative and combat tracker the DM can publish to players
+- The DM can share a map with the table, reveal places one by one and place the players on it, and section it into named areas (the Map editor's Area tool, or the hub's full map). The Map editor is the map filling the page with one toolbar along the bottom like the hub's: Move, Label, Area and Mist tools, zoom, and drawers for your maps, labels and areas, players and fog; the top shows whether the map is on the hub; a Place card on the Whiteboard (name, type of location, a line it's known for, a description, and private DM notes) can be dragged onto the map from the Places tab and stays linked, so editing the card updates the label for everyone; players who open a revealed label read its details, and "In <area>" only when it sits inside one; it has the hub's coordinate grid, and pressing the map on the hub sends the DM here (a player gets the full map as players see it: only revealed places, no area tools); whiteboard nodes link to places on maps, and each session can be viewed on its own
 - The D&D rules version (2014 or 2024) is chosen by the campaign owner for the whole table (when creating the campaign, or in Settings > Campaign), so players never end up on different books
 - Rule keywords anywhere (conditions, skills, damage types, racial traits...) link to their Rules entry with a hover card, and are coloured and bold on the Rules page; the character builder saves your progress so you can continue later
 - DM screen, encounter builder with XP budgets, and campaign notes
+- The Hub, in lava: D&D campaigns open on the same shared board as Pokémon ones, over a blurred, slowly churning lava
+  sea with embers rising through it. Your character sits in the bottom-left corner with HP, AC, initiative and
+  conditions (click for the sheet, drag it onto the board for a card); the Inventory drops down with your coins and
+  items by Weapons / Armour / Magic / Gear, each draggable onto the board as an item card; the Compendium (Bestiary,
+  Spells, Items) slides out from the left, and any monster, spell or item can be dragged or + placed as a card (open it
+  for traits, actions or the full description). The DM's Encounters drawer offers saved encounters, the Whiteboard's
+  rolled encounters and the whole Bestiary; placing one makes an encounter button, and starting it fills the combat
+  tracker (the monsters plus every online player's character), rolls initiative, publishes it and opens Combat (for a
+  player, the button opens Combat). The minimap and full map (areas, grid, the ring with your area) come too, in a
+  molten ring. All pages sit behind the hub's menu button (the sidebar stays on every other page), and the phone
+  layout has the wheel, the bottom-left character card and touch dragging. A lava soundscape plays underneath
+  (a low drone, a magma river, crackling embers and the odd bubble).
+- Widgets on the hub (the Widgets button): Where everyone is (grid square and area), Party health, Weather and time (the DM sets the day, hour and weather), Whose turn, Initiative order, My character in the fight (with a way to send your initiative), Combat control (the DM's next and back), Recent battles (the battle log, including how fights ended), Where I am, Who's here, Dice, My purse and a Table clock. They keep themselves up to date, and each shows only what you could see anyway. The DM can also drag Places onto the hub (from the Widgets pull-out's Places tab): drag a player's character card, or a row from Where everyone is, onto a place and their token moves to that place on the map, and the character dissolves into it. In Where everyone is, a player at a named place reads "At <place>" and the name links to it on the map. Widgets are small cards with an accent colour each, resized by dragging the bright corner (1x1, 1x2 or 2x2: the smaller, the less they show). They never cover each other. The Pages tab adds large A4 pages (Blank, Battle tracker, Character sheet, Area log): text typed on one sits on its ruled lines and wraps onto the next line and round widgets, widgets, places and cards snap into its grid, and moving the page moves everything on it. Drag a page onto the Pages tab to save it with its contents, and delete saved pages with the ×. Their motion follows Settings, Graphics.
+- The Whiteboard's Random encounter is sized to the party: the online players' characters, how many and their
+  average level (the DM's roster), or your own character's level for a party of four.
 
 **Everywhere**
 - Whiteboard (both games; once the Campaign Planner): one full-screen board, no tower behind it. A bar at the bottom adds nodes (notes, checklists, stickies, expandable dungeons with per-room notes, and every generator: Pokémon wild encounters, trainers, gym leaders, routes; D&D NPCs, encounters, taverns, loot...). Drag them around an endless board that grows as you near its edge, change or upload the background, and circle groups of nodes (box or freehand) into colour-coded "Session N" regions; a node can be in several sessions. The Notebook drawer holds searchable Markdown notes that can also be NPCs, quests (with status), locations and session recaps, with an export to Markdown (it replaces the old Campaign Notes page and imports its notes once). Maps, scenarios (DM) and party plans (DM) open as drawers. Players share their boards, notes and checklists with the DM automatically. In Pokémon campaigns, trainer, gym leader and wild encounter nodes have Trainer and Team slots like Scratch blocks: bring the DM's NPC trainers and wild Pokémon in with the Libraries button and drag them in (a trainer gives the node its name, sprite and team; Pokémon join the team, up to six, and can be dragged to reorder or back out). The hub battles those exact teams. Trainers and gym leaders can have a portrait, shown on the Whiteboard and on their
@@ -140,7 +155,7 @@
 - Library: add your own PDF, EPUB, Word, text, Markdown and HTML books and read them in a built-in e-reader (they stay on your device; accounts the admin allows keep them on the server, private, on every device they sign in on)
 - Maps are stored on the server, so they follow you to every device: up to 10 per campaign (15 MB each) for everyone, unlimited (100 MB each) for accounts the admin allows
 - Cosmic theme: every Pokémon D&D page uses the hub's look (deep space, glass cards, white pill buttons); D&D campaigns keep the device's theme choice
-- Lava Tower theme for D&D campaigns (flame button in the top bar, or Settings → Appearance): grey brick tower, lava drips, cracks of light and crumbling stone; "Calm" turns the motion off
+- The Lava theme on every D&D page: the hub's glass look in warm colours over a blurred, slowly churning lava sea with rising embers (Settings → Appearance → Lava effects: Calm stops the motion). There's no sidebar: every page opens from the hub (its quick bar, page buttons and the All pages menu), and the top bar's home button goes back. The Compendium page has every rules section as a tab (Spells, Bestiary, Items, Classes, Species, Backgrounds & Feats, Rules, Tables). Your character's card on the board shows class, an HP bar, AC / speed / initiative, ability scores and conditions; the draw tool uses parchment, gold, blood red, brown, dark green and ember
 - Pokémon D&D Rulebook page, rendered from the Obsidian vault. In Pokémon campaigns the Rulebook and the Type Chart are
   also pull tabs (RULES, TYPES) on the right edge beside LOG, so they open over any page
 
@@ -182,9 +197,9 @@ server.py        API, campaigns, accounts, autosave, backups
 auth.py          password hashing, Google/Apple token verification
 index.html       app shell
 js/              router, network client, views, per-game systems
-css/             style.css (base), dnd5e.css, library.css, lava.css + generated lava-bricks.css
+css/             style.css (base), dnd5e.css, library.css, lava.css, cosmic.css + vvd.css (shared by both themes), hub.css
 data/            rules data
-tools/           data and sprite download scripts, export_dnd5e.py (SRD data), export_rulebook.py (vault -> JSON), make_brick_tiles.py
+tools/           data and sprite download scripts, export_dnd5e.py (SRD data), export_rulebook.py (vault -> JSON)
 desktop/         optional desktop-window build (not used by the live site)
 sprites/         Pokémon art (from PokeAPI, see sprites/README.md)
 tests/           server test suite (Python) and rules-engine tests (tests/js)

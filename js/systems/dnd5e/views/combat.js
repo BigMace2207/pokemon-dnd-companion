@@ -22,7 +22,7 @@ import {
   healthStatus, concentrationDc, pcCombatant, customCombatant,
 } from "../engine/encounter.js";
 import { CONDITION_NAMES_2014 } from "../engine/rules.js";
-import { dmAction, listTrainers, getTrainerTeam, sendNoteToDm, getBattleLog } from "../../../network.js";
+import { dmAction, listTrainers, getTrainerTeam, sendNoteToDm, getBattleLog, postBattleLog } from "../../../network.js";
 import { loadSave } from "../../../storage.js";
 
 export function renderCombat(container) {
@@ -112,6 +112,15 @@ function initiativeCard(mine) {
 
 // ------------------------------------------------------------------ DM tracker
 
+// When the DM ends a fight that was underway, how it went goes in the battle log (the hub's Recent battles widget shows it).
+function noteFightEnded(combat) {
+  if (!combat?.started || !combat.combatants?.length) return;
+  const names = (list) => { const n = new Map(); for (const c of list) { const base = c.name.replace(/\s+\d+$/, ""); n.set(base, (n.get(base) || 0) + 1); } return [...n].map(([k, v]) => (v > 1 ? `${v} ${k}` : k)).join(", "); };
+  const pcs = combat.combatants.filter((c) => c.kind === "pc"), foes = combat.combatants.filter((c) => c.kind !== "pc");
+  const rounds = combat.round || 1;
+  postBattleLog("Combat", `Fight over after ${rounds} round${rounds === 1 ? "" : "s"}${foes.length ? `: ${pcs.length ? `${names(pcs)} against ` : ""}${names(foes)}` : ""}.`).catch(() => {});
+}
+
 function renderTracker(panel, token) {
   panel.replaceChildren();
   const edition = getSettings().edition;
@@ -162,6 +171,7 @@ function renderTracker(panel, token) {
         btn("Publish now", () => publish(true), "btn secondary small"),
         btn("End combat", async () => {
           if (!(await confirmDialog("End this fight and clear the tracker?", { ok: "End combat", danger: true }))) return;
+          noteFightEnded(getCombat());
           resetCombat(); await endPublishedCombat(token); redraw();
         }, "btn danger small"),
       ]),

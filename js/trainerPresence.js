@@ -51,5 +51,5 @@ export function startTrainerPresenceWatcher(networkId) {
   }
 
   tick();
-  setInterval(tick, POLL_MS);
+  setInterval(() => { if (!document.hidden) tick(); }, POLL_MS);   // (a hidden tab doesn't need to ask who came online)
 }

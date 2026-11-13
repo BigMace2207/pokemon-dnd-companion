@@ -11,14 +11,17 @@
 
 import { el } from "./components.js";
 import { getPartyMap, moveOnMap, setMapAreas } from "./network.js";
-import { mapStage, panZoom, mapGrid, colName, areaAt, gridRef, areaPoints } from "./mapView.js";
+import { mapStage, panZoom, mapGrid, colName, areaAt, gridRef } from "./mapView.js";
 
 const POLL_MS = 3000;
 const MINI = 252;           // the minimap's diameter
 const MINI_SPAN = 0.32;     // how much of the map (of its longest side) the minimap shows across
 const AREA_COLOURS = ["#9b7be0", "#5aa8f0", "#7bc96f", "#e8a33a", "#f07ab8", "#17a5a5", "#e05a5a", "#e0c05a"];
 
-export function mountHubMap(root, { me, getDmToken, say }) {
+export function mountHubMap(root, { me, getDmToken, say, playerView = false, openEditor = null }) {
+  // playerView (D&D): everyone sees the map as a player does, the DM included: only the places that were revealed, the
+  // fog as players get it, your own token, and no area tools. The DM's way in is the Map editor: pressing the map sends them there.
+  const dmView = () => !playerView && !!getDmToken();
   let map = null, sig = "", offset = { x: 0, y: 0 };
   const miniFrame = el("div", { class: "hub-mini-frame", role: "button", tabindex: "0", "aria-label": "Map: click to open, drag to look around" });
   const miniEmpty = el("span", { class: "hub-mini-empty" }, "No map yet");
@@ -71,20 +74,27 @@ export function mountHubMap(root, { me, getDmToken, say }) {
     offset = { x: drag.ox - dx / k, y: drag.oy - dy / k };
     placeMini();
   });
-  miniFrame.addEventListener("pointerup", (e) => { const d = drag; drag = null; if (d && !d.moved) openFull(); void e; });
-  miniFrame.addEventListener("click", () => { if (!map) say("The DM hasn't shared a map yet. They can pick one in the Whiteboard's Map editor."); });
+  miniFrame.addEventListener("pointerup", (e) => { const d = drag; drag = null; if (d && !d.moved) openMap(); void e; });
+  miniFrame.addEventListener("click", () => { if (!map) openMap(); });
+  // pressing the map (or the hub's Map button): the full map, or for a D&D DM the Map editor
+  function openMap() {
+    if (playerView && openEditor && getDmToken()) { openEditor(); return; }
+    if (map) openFull();
+    else say(getDmToken() ? "No map on the hub yet. Pick one in the Map editor (the map button at the top) and choose Show on the hub." : "The DM hasn't shared a map yet.");
+  }
   miniFrame.addEventListener("keydown", (e) => { if (e.key === "Enter") openFull(); });
   miniFrame.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
 
   async function load() {
     let m = null;
-    try { m = await getPartyMap(getDmToken() || null, me.id); } catch { m = null; }
+    try { m = await getPartyMap(dmView() ? getDmToken() : null, me.id); } catch { m = null; }
     const next = JSON.stringify(m);
     if (next === sig) return;
+    if (full?.busy) return;   // a token is being dragged: the next poll brings the change
     sig = next; map = m;
     wrap.classList.toggle("empty", !map);
     if (!map) { mini = null; miniFrame.replaceChildren(miniEmpty); full?.close(); shownArea = null; areaText.textContent = ""; return; }
-    if (!mini) { mini = mapStage(map, { labels: false, grid: false, meId: me.id, see: !!getDmToken() }); miniFrame.replaceChildren(mini.stage); }
+    if (!mini) { mini = mapStage(map, { labels: false, grid: false, meId: me.id, see: dmView() }); miniFrame.replaceChildren(mini.stage); }
     else mini.update(map);
     placeMini();
     drawArea();
@@ -92,7 +102,7 @@ export function mountHubMap(root, { me, getDmToken, say }) {
   }
 
   async function move(tokenId, x, y) {
-    const res = await moveOnMap({ id: me.id, tokenId, x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)), color: me.color, token: getDmToken() || undefined });
+    const res = await moveOnMap({ id: me.id, tokenId, x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)), color: me.color, token: dmView() ? getDmToken() : undefined });
     if (!res || res.error) { say(res?.error || "Couldn't move there. Check your connection."); return; }
     if (tokenId === me.id) offset = { x: 0, y: 0 };
     sig = ""; await load();
@@ -101,7 +111,7 @@ export function mountHubMap(root, { me, getDmToken, say }) {
   // ------------------------------------------------------------------ the full map
   function openFull() {
     if (!map || full) return;
-    const dm = !!getDmToken();
+    const dm = dmView();
     const st = mapStage(map, { labels: true, meId: me.id, see: dm });
     const frame = el("div", { class: "hub-map-frame" }, st.stage);
     const rulerTop = el("div", { class: "hub-map-ruler top", "aria-hidden": "true" });
@@ -119,11 +129,15 @@ export function mountHubMap(root, { me, getDmToken, say }) {
     }
     const legend = el("aside", { class: "hub-map-legend" });
     const note = el("div", { class: "hub-map-note" });
+    // (D&D) a place's card over the map: its name and type, what it's known for, the area it is in (only if it is in one),
+    // and its description. It follows the live map, so it changes when the DM edits the place and goes if they hide it.
+    const placeCard = el("aside", { class: "hub-place-card", role: "dialog", "aria-label": "About this place", hidden: "" });
+    let openPlace = null;
     let placing = false;
     const btn = (label, aria, fn, cls = "") => { const b = el("button", { type: "button", class: `hub-zoom-btn ${cls}`, "aria-label": aria, title: aria }, label); b.addEventListener("click", fn); return b; };
     const close = el("button", { type: "button", class: "hub-round small", "aria-label": "Close the map", title: "Close (Esc)" }, "×");
     const panel = el("div", { class: "hub-map-full", role: "dialog", "aria-label": `Map: ${map.name}` }, [
-      el("div", { class: "hub-map-main" }, [el("div", { class: "hub-map-corner" }), rulerTop, rulerLeft, frame, el("div", { class: "hub-map-tools" }, [
+      el("div", { class: "hub-map-main" }, [el("div", { class: "hub-map-corner" }), rulerTop, rulerLeft, frame, placeCard, el("div", { class: "hub-map-tools" }, [
         btn("−", "Zoom out", () => pz.zoomBy(1 / 1.3)), btn("+", "Zoom in", () => pz.zoomBy(1.3)), btn("⤢", "Fit the map", () => pz.fit()), btn("◎", "Centre on me", () => centreOnMe()),
       ])]),
       legend,
@@ -142,7 +156,9 @@ export function mountHubMap(root, { me, getDmToken, say }) {
       canDrag: (e) => {
         const t = e.target.closest(".mv-token");
         if (!t || (t.dataset.id !== me.id && !dm)) return false;
-        tokDrag = { node: t, id: t.dataset.id, moved: false };
+        const tok = st.map.tokens?.find((q) => q.id === t.dataset.id);
+        if (!tok) return false;
+        tokDrag = { node: t, id: tok.id, moved: false, sx: e.clientX, sy: e.clientY, x0: tok.x, y0: tok.y };
         try { frame.setPointerCapture(e.pointerId); } catch { /* gone */ }
         return true;
       },
@@ -150,6 +166,7 @@ export function mountHubMap(root, { me, getDmToken, say }) {
         if (areaMode && dm) { addCorner(pt); return; }
         const pin = e.target.closest?.(".mv-pin");
         if (pin) { showPlace(pin.dataset.id); return; }
+        if (playerView && openPlace) closePlaceCard();
         if (placing) { placing = false; panel.classList.remove("placing"); move(me.id, pt.x, pt.y); drawLegend(); }
       },
     });
@@ -197,15 +214,20 @@ export function mountHubMap(root, { me, getDmToken, say }) {
     frame.addEventListener("pointermove", (e) => {
       if (areaMode && draft.length && e.pointerType === "mouse") { const p = pz.toMap(e.clientX, e.clientY); hoverPt = [clamp01(p.x), clamp01(p.y)]; drawDraft(); }
       if (!tokDrag) return;
-      tokDrag.moved = true;
-      const pt = pz.toMap(e.clientX, e.clientY);
-      tokDrag.node.style.left = `${Math.max(0, Math.min(1, pt.x)) * st.map.w}px`;
-      tokDrag.node.style.top = `${Math.max(0, Math.min(1, pt.y)) * st.map.h}px`;
-      tokDrag.pt = pt;
+      // it moves by how far the pointer moved (never jumping to centre on it), by translate alone, once a frame
+      const dx = e.clientX - tokDrag.sx, dy = e.clientY - tokDrag.sy;
+      if (!tokDrag.moved) { if (Math.hypot(dx, dy) < 5) return; tokDrag.moved = true; }
+      const m = st.map, k = pz.view.k;
+      const nx = clamp01(tokDrag.x0 + dx / k / m.w), ny = clamp01(tokDrag.y0 + dy / k / m.h);
+      tokDrag.pt = { x: nx, y: ny };
+      if (!tokDrag.raf) tokDrag.raf = requestAnimationFrame(() => { const d = tokDrag; if (!d) return; d.raf = 0; d.node.style.translate = `${(d.pt.x - d.x0) * m.w}px ${(d.pt.y - d.y0) * m.h}px`; });
     });
     frame.addEventListener("pointerleave", () => { if (hoverPt) { hoverPt = null; drawDraft(); } });
     frame.addEventListener("pointerup", () => {
-      const d = tokDrag; tokDrag = null; if (d?.moved && d.pt) move(d.id, d.pt.x, d.pt.y);
+      const d = tokDrag; tokDrag = null;
+      if (d?.raf) cancelAnimationFrame(d.raf);
+      if (d?.moved && d.pt) { d.node.style.left = `${d.pt.x * st.map.w}px`; d.node.style.top = `${d.pt.y * st.map.h}px`; d.node.style.translate = ""; move(d.id, d.pt.x, d.pt.y); }
+      else if (d) d.node.style.translate = "";
     });
     async function saveAreas(areas) {
       const res = await setMapAreas(getDmToken(), areas.map(({ id, name, x, y, w, h, pts, color }) => (pts ? { id, name, pts, color } : { id, name, x, y, w, h, color })));
@@ -218,12 +240,34 @@ export function mountHubMap(root, { me, getDmToken, say }) {
       if (t) pz.centreOn(t.x * st.map.w, t.y * st.map.h, Math.max(pz.view.k, Math.min(frame.clientWidth / st.map.w, frame.clientHeight / st.map.h) * 2.5));
       else pz.fit();
     }
+    function drawPlaceCard(p) {
+      const m = st.map, area = areaAt(m, p.x, p.y);
+      const close = el("button", { type: "button", class: "hub-round small", "aria-label": "Close", title: "Close" }, "×");
+      close.addEventListener("click", closePlaceCard);
+      const paras = String(p.note || "").split(/\n{2,}/).map((t) => t.trim()).filter(Boolean);
+      placeCard.replaceChildren(...[
+        el("header", { class: "hub-place-head" }, [
+          el("span", { class: "hub-place-icon", style: `--c:${p.color || "#c8402f"}`, "aria-hidden": "true" }, p.icon || "●"),
+          el("div", { class: "hub-place-title" }, [el("h3", {}, p.label || "Place"), el("p", {}, [p.kind, gridRef(m, p.x, p.y)].filter(Boolean).join(" · "))]),
+          close,
+        ]),
+        p.known ? el("p", { class: "hub-place-known" }, p.known) : null,
+        el("div", { class: "hub-place-desc" }, [
+          area ? el("p", { class: "hub-place-area" }, `In ${area.name}.`) : null,
+          ...(paras.length ? paras.map((t) => el("p", {}, t)) : [area || p.known ? null : el("p", { class: "hub-menu-note" }, "No one has written anything about this place yet.")]),
+        ].filter(Boolean)),
+      ].filter(Boolean));   // (an empty slot would be written out as the word "null")
+      placeCard.hidden = false;
+    }
+    function closePlaceCard() { openPlace = null; placeCard.hidden = true; }
     function showPlace(id) {
       const p = st.map.pins.find((x) => x.id === id);
       if (!p) return;
-      pz.centreOn(p.x * st.map.w, p.y * st.map.h);
+      // (a player's view keeps the label in the upper part of the map, clear of its card)
+      pz.centreOn(p.x * st.map.w, p.y * st.map.h + (playerView ? (frame.clientHeight * 0.2) / pz.view.k : 0));
       st.pinEl(id)?.classList.add("flash");
       setTimeout(() => st.pinEl(id)?.classList.remove("flash"), 1500);
+      if (playerView) { openPlace = id; drawPlaceCard(p); return; }
       note.replaceChildren(el("strong", {}, `${p.icon || "●"} ${p.label || "Place"}`), p.note ? el("p", {}, p.note) : el("p", { class: "hub-menu-note" }, "No notes about this place."));
     }
     function drawLegend() {
@@ -257,7 +301,7 @@ export function mountHubMap(root, { me, getDmToken, say }) {
           const b = el("button", { type: "button", class: "hub-map-row" }, [el("span", { class: "mv-pin-dot small", style: `--c:${p.color}` }, p.icon || "●"), el("span", {}, p.label || "(unnamed)"), dm && p.revealed === false ? el("small", {}, "hidden") : null].filter(Boolean));
           b.addEventListener("click", () => showPlace(p.id));
           return b;
-        }) : [el("p", { class: "hub-menu-note" }, dm ? "No places yet. Add them in the Whiteboard's Map editor." : "The DM hasn't revealed any places yet.")]),
+        }) : [el("p", { class: "hub-menu-note" }, dm ? "No places yet. Add them in the Map editor." : "The DM hasn't revealed any places yet.")]),
         el("h4", {}, `Players (${(m.tokens || []).length})`),
         el("div", { class: "hub-map-list" }, (m.tokens || []).length ? m.tokens.map((t) => {
           const b = el("button", { type: "button", class: "hub-map-row" }, [el("span", { class: "mv-token-dot small", style: `--c:${t.color}` }, (t.name || "?").slice(0, 1).toUpperCase()), el("span", {}, `${t.name}${t.id === me.id ? " (you)" : ""}`), el("small", {}, [areaAt(m, t.x, t.y)?.name, gridRef(m, t.x, t.y)].filter(Boolean).join(" · "))]);
@@ -275,15 +319,18 @@ export function mountHubMap(root, { me, getDmToken, say }) {
         if (e.key === "Backspace" && draft.length) { e.preventDefault(); draft.pop(); drawDraft(); drawLegend(); return; }
         if (e.key === "Escape") { stopDrawing(); return; }
       }
-      if (e.key === "Escape") doClose();
+      if (e.key === "Escape") { if (openPlace) closePlaceCard(); else doClose(); }
     };
     document.addEventListener("keydown", onKey);
     function doClose() { document.removeEventListener("keydown", onKey); panel.classList.remove("open"); setTimeout(() => panel.remove(), 220); full = null; }
     close.addEventListener("click", doClose);
-    full = { update: (m) => { st.update(m); drawLegend(); drawRulers(pz.view); drawDraft(); }, close: doClose, centreOnMe };
+    full = { showPlace, update: (m) => {
+      st.update(m); drawLegend(); drawRulers(pz.view); drawDraft();
+      if (openPlace) { const p = st.map.pins.find((x) => x.id === openPlace); if (p) drawPlaceCard(p); else closePlaceCard(); }   // edited, or hidden again
+    }, close: doClose, centreOnMe, get busy() { return !!tokDrag?.moved; } };
   }
 
   load();
   const timer = setInterval(() => { if (!document.body.contains(root)) { clearInterval(timer); return; } if (!document.hidden) load(); }, POLL_MS);
-  return { refresh: () => { sig = ""; return load(); }, open: () => { if (map) openFull(); else say("The DM hasn't shared a map yet."); } };
+  return { refresh: () => { sig = ""; return load(); }, open: () => openMap(), openPlace: async (id) => { await openMap(); setTimeout(() => full?.showPlace?.(id), 350); } };
 }

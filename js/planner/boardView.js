@@ -14,13 +14,16 @@
 
 import { el, btn, chip, field, selectEl, numInput, textInput, toast, confirmDialog, promptDialog, modal } from "../systems/dnd5e/ui.js";
 import { textGenerators, OPTIONS } from "./textGens.js";
-import { getPlan, mutatePlan, batched, flushPending, newBoard, uid } from "./store.js";
-import { getSettings } from "../systems/dnd5e/store.js";
+import { getPlan, mutatePlan, batched, flushPending, newBoard, uid, isDmMode } from "./store.js";
+import { getSettings, activeCharacter } from "../systems/dnd5e/store.js";
 import { growBounds, coverBounds, boxFrom, simplify, addSession, removeSession, syncSessions, nodesInShape, BACKGROUNDS, isPreset, MAX_NODES, addLink, removeLinksOf, edgePoints, RELATIONS, suggestRelation, relationText } from "./board.js";
 import { putImage, getImage, deleteImage, readAsDataUrl, imageSize } from "./mapStore.js";
 import { icon } from "./icons.js";
 import { openMapLink } from "./mapLink.js";
 import { KINDS, kindOf } from "./kinds.js";
+import { PLACE_TYPES, placeOnMaps } from "./places.js";
+import { syncPlacePins } from "./placeSync.js";
+import { gridRef } from "../mapView.js";
 import { cleanMon, TEAM_MAX } from "./board.js";
 import { getNpcs, getNpc, getWildList, getWildMon } from "../network.js";
 import { spriteUrl } from "../sprites.js";
@@ -28,7 +31,7 @@ import { trainerSpriteUrl, openTrainerPortraitPicker } from "../trainerSpritePic
 import { dexPanel, CARD_MIME } from "../hubDex.js";
 import { pokemonState } from "./textGens.js";
 import { generateMon } from "./pokeGenerators.js";
-import { currentEncounterLevel, relevelTeam, partyAverage } from "./partyLevel.js";
+import { currentEncounterLevel, relevelTeam, partyAverage, currentDndParty } from "./partyLevel.js";
 import { askLevel } from "../levelAsk.js";
 import { wheelIntent } from "../wheelIntent.js";
 import { hubSound, nodeSound } from "../hubSound.js";
@@ -45,7 +48,7 @@ function play(e, frames, ms = 220, easing = "cubic-bezier(.2,.9,.3,1.15)") {
 }
 const screenX = (e) => { const r = e?.getBoundingClientRect?.(); return r ? r.left + r.width / 2 : null; };
 
-const SIZE = { note: [300, 240], list: [280, 300], gen: [320, 260], text: [210, 150], dungeon: [380, 320], libmon: [230, 190], libtrainer: [260, 240] };
+const SIZE = { note: [300, 240], list: [280, 300], gen: [320, 260], text: [210, 150], dungeon: [380, 320], libmon: [230, 190], libtrainer: [260, 240], place: [320, 500] };
 const SLOT_KINDS = new Set(["trainer", "gym", "wildmon"]);
 const MON_LINE = /^[A-Z][^()]*\(Lv \d+/;   // a generated "Pidgey (Lv 6, Normal/Flying) — ..." line, shown as a team row instead
 const DUNGEON_OPEN = [820, 640];
@@ -79,7 +82,8 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     board.view = keep.view; board.bounds = union(board.bounds, keep.bounds);
   }
   const union = (a, b) => { const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y); return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y }; };
-  const saveSoon = batched((fns) => edit((b) => fns.forEach((f) => f(b))), 500);
+  // (a place's labels on the maps follow its card: placeSync.js)
+  const saveSoon = batched((fns) => { edit((b) => fns.forEach((f) => f(b))); if (board?.nodes.some((n) => n.type === "place")) syncPlacePins(); }, 500);
   const saveView = batched((fns) => edit((b) => fns.forEach((f) => f(b))), 800);
   const nodeOf = (b, id) => b.nodes.find((n) => n.id === id);
   const grow = (b) => { const r = growBounds(b.bounds, b.nodes); if (r.grew) b.bounds = r.bounds; };
@@ -195,7 +199,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     const head = el("div", { class: "pl-node-head" }, [icon(meta.icon, 16), el("span", { class: "pl-node-kind" }, typeLabel), title]);
     const acts = el("div", { class: "pl-node-acts" });
     if (!readonly) {
-      acts.append(iconBtn("pin", n.mapLink ? "Linked to a place on a map" : "Link to a place on a map", () => openMapLink({ node: n, edit, drawNodes, openMap: (link) => { const x = extras.find((e) => e.id === "maps"); if (x) openDrawer(x, link); else openMapPage(link); }, getPlan, mutatePlan, uid })));
+      acts.append(n.type === "place" ? placeLinkBtn(n) : iconBtn("pin", n.mapLink ? "Linked to a place on a map" : "Link to a place on a map", () => openMapLink({ node: n, edit, drawNodes, openMap: (link) => { const x = extras.find((e) => e.id === "maps"); if (x) openDrawer(x, link); else openMapPage(link); }, getPlan, mutatePlan, uid })));
       if (n.type === "gen") acts.append(iconBtn("refresh", "Roll again", () => reroll(n)));
       if (n.type === "dungeon") acts.append(iconBtn(n.expanded ? "collapse" : "expand", n.expanded ? "Collapse" : "Expand to see every room and add notes", () => toggleDungeon(n)));
       acts.append(iconBtn("close", "Remove from the board", async () => {
@@ -222,6 +226,35 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     return e;
   }
 
+  // ---- a Place: type, what it's known for, the description players read, and the DM's own notes
+  function placeBody(n) {
+    const typeSel = selectEl(PLACE_TYPES.map(([k, l]) => [k, l]), n.placeKind || "other", (v) => { edit((b) => { const x = nodeOf(b, n.id); if (x) x.placeKind = v; }); syncPlacePins(); });
+    if (readonly) typeSel.disabled = true;
+    const known = el("input", { class: "pl-place-known", type: "text", maxlength: "160", value: n.known || "", placeholder: "A line it's known for", "aria-label": "Known for", ...(readonly ? { readonly: "" } : {}) });
+    known.addEventListener("input", () => saveSoon((b) => { const x = nodeOf(b, n.id); if (x) x.known = known.value.slice(0, 160); }));
+    const desc = textArea(n.body, (v) => saveSoon((b) => { const x = nodeOf(b, n.id); if (x) x.body = v.slice(0, 4000); }), { ph: "What players can learn about it", cls: "pl-place-desc" });
+    const out = [field("Type", typeSel), field("Known for", known), field("Description (players read this)", desc)];
+    if (!readonly && isDmMode()) {
+      out.push(field("DM notes (only you see these)", textArea(n.dmNotes, (v) => saveSoon((b) => { const x = nodeOf(b, n.id); if (x) x.dmNotes = v.slice(0, 8000); }), { ph: "Secrets, hooks, who runs it", cls: "pl-dm-notes" })));
+    }
+    out.push(placeStatus(n));
+    return out;
+  }
+  // where the place is on the maps: the map, the grid square, the area it's in (only if it's in one) and who can see it
+  function placeStatus(n) {
+    const hit = placeOnMaps(getPlan(), n.id);
+    if (!hit) return el("p", { class: "pl-place-status" }, "Not on a map yet. Drag it onto one from the Map editor's Places tab.");
+    const { map, pin } = hit;
+    return el("p", { class: "pl-place-status on" }, [`On ${map.name || "a map"}`, gridRef(map, pin.x, pin.y), pin.area ? `in ${pin.area}` : null, pin.revealed ? "players can see it" : "hidden from players"].filter(Boolean).join(" · "));
+  }
+  function placeLinkBtn(n) {
+    const hit = placeOnMaps(getPlan(), n.id);
+    return iconBtn("pin", hit ? `Show it on ${hit.map.name || "the map"}` : "Not on a map yet: drag it onto one from the Map editor's Places tab", () => {
+      if (hit) openMapPage({ mapId: hit.map.id, pinId: hit.pin.id });
+      else toast("Open the Map editor and drag it from the Places tab onto a map.");
+    });
+  }
+
   function textArea(value, onInput, { ph = "", cls = "" } = {}) {
     const t = el("textarea", { class: `pl-node-text ${cls}`, placeholder: ph, "aria-label": ph || "Text", ...(readonly ? { readonly: "" } : {}) });
     t.value = value || "";
@@ -232,6 +265,8 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
   function fillBody(body, n) {
     if (n.type === "note" || n.type === "text") {
       body.append(textArea(n.body, (v) => saveSoon((b) => { const x = nodeOf(b, n.id); if (x) x.body = v.slice(0, 20000); }), { ph: n.type === "text" ? "Quick thought..." : "Write here..." }));
+    } else if (n.type === "place") {
+      body.append(...placeBody(n));
     } else if (n.type === "libmon") {
       body.append(...[monCard(n.mon), readonly ? null : el("p", { class: "pl-plug-hint" }, "Drag me into a trainer's Team slot")].filter(Boolean));
     } else if (n.type === "libtrainer") {
@@ -363,6 +398,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     if (spec.type === "note") return { ...base, title: "Note", body: "" };
     if (spec.type === "text") return { ...base, title: "Sticky", body: "", color: ["#f6e27a", "#9fd8ff", "#b5eab0", "#ffb8c8", "#d9c2ff"][Math.floor(Math.random() * 5)] };
     if (spec.type === "list") return { ...base, title: "Checklist", items: [] };
+    if (spec.type === "place") return { ...base, title: "New place", placeKind: "town", known: "", body: "", dmNotes: "" };
     if (spec.type === "clone") {
       const p = getPlan();
       if (spec.from === "note") { const s = p.notes.find((x) => x.id === spec.id); return s && { ...base, type: "note", title: s.title, body: s.body }; }
@@ -372,7 +408,8 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     if (spec.type === "gen") {
       const g = gens.find((x) => x.id === spec.gen); if (!g) return null;
       const level = await spawnLevel(g.id, true);
-      const res = await g.run({ ...defaults(g.id), ...(level ? { level } : {}), edition: getSettings().edition }, Math.random);
+      const party = await dndParty(g.id, true);
+      const res = await g.run({ ...defaults(g.id), ...(level ? { level } : {}), ...(party || {}), edition: getSettings().edition }, Math.random);
       return { ...base, title: res.title, genLabel: g.label, gen: g.id, kind: system !== "dnd5e" && g.id === "wild" ? "wildmon" : g.id, lines: res.lines, ...(res.mons ? { mons: res.mons } : {}), ...(level ? { level } : {}) };
     }
     if (spec.type === "libmon") {
@@ -458,7 +495,8 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     const g = gens.find((x) => x.id === n.gen); if (!g) return;
     try {
       const level = n.level || await spawnLevel(g.id);   // a re-roll keeps the card's level
-      const res = await g.run({ ...defaults(g.id), ...(level && LEVELLED.has(g.id) ? { level } : {}), edition: getSettings().edition }, Math.random);
+      const party = await dndParty(g.id);
+      const res = await g.run({ ...defaults(g.id), ...(level && LEVELLED.has(g.id) ? { level } : {}), ...(party || {}), edition: getSettings().edition }, Math.random);
       edit((b) => { const x = nodeOf(b, n.id); if (x) { x.title = res.title; x.lines = res.lines; if (res.mons) x.mons = res.mons; delete x.identity; } });
       drawNodes();
       const e2 = nodeEls.get(n.id);
@@ -477,6 +515,14 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     const level = Math.min(100, e.level + (genId === "gym" ? 2 : 0));
     if (announce && e.players) toast(`Level ${level}: ${e.players === 1 ? "the player's Pokémon average" : `${e.players} players, their Pokémon average`} ${e.base}${e.bonus ? `, +${e.bonus} for the party size` : ""}${genId === "gym" ? ", +2 for a gym leader" : ""}.`, "good");
     return level;
+  }
+  // a D&D encounter is sized to the party: the online players' characters, their number and average level
+  async function dndParty(genId, announce = false) {
+    if (system !== "dnd5e" || genId !== "encounter") return null;
+    const own = activeCharacter()?.levelLog?.length || 0;
+    const p = await currentDndParty(own);
+    if (announce && p.players) toast(`Sized for ${p.size} ${p.size === 1 ? "character" : "characters"} at level ${p.level} (the players online).`, "good");
+    return { level: p.level, size: p.size };
   }
   async function setLevel(nodeId, level) {
     if (!level) return;
@@ -533,6 +579,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
       railBtn("note", "Note", "note", { spec: () => ({ type: "note" }) }),
       railBtn("list", "Checklist", "list", { spec: () => ({ type: "list" }) }),
       railBtn("text", "Sticky", "sticky", { spec: () => ({ type: "text" }) }),
+      ...(!pokemon && isDmMode() ? [railBtn("place", "Place", "pin", { spec: () => ({ type: "place" }) })] : []),
       railBtn("dungeon", "Dungeon", "dungeon", { fly: true }),
       railBtn("gens", "Generate", "dice", { fly: true }),
       ...(pokemon ? [railBtn("libs", "Libraries", "paw", { fly: true }), dexRailBtn()] : []),
@@ -1015,7 +1062,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
 
   // ---- background ----------------------------------------------------------------------------
   function drawBgPanel() {
-    bgPanel.replaceChildren(
+    bgPanel.replaceChildren(...[
       el("h5", {}, "Background"),
       el("div", { class: "pl-bg-choices" }, BACKGROUNDS.map(([id, label]) => {
         const on = board.bg.kind === "preset" && board.bg.id === id;
@@ -1025,11 +1072,11 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
       })),
       el("div", { class: "dnd-row" }, [
         btn("Upload your own", uploadBg, "btn secondary small"),
-        bgUrl ? btn("Remove it", async () => { await deleteImage(`bg-${board.id}`).catch(() => {}); bgUrl = null; edit((x) => { x.bg = { ...x.bg, kind: "preset", id: "parchment" }; }); applyBg(); drawBgPanel(); }, "btn secondary small") : null,
-      ]),
+        bgUrl && btn("Remove it", async () => { await deleteImage(`bg-${board.id}`).catch(() => {}); bgUrl = null; edit((x) => { x.bg = { ...x.bg, kind: "preset", id: "parchment" }; }); applyBg(); drawBgPanel(); }, "btn secondary small"),
+      ].filter(Boolean)),
       bgUrl ? field("Picture", selectEl([["tile", "Repeat across the board"], ["fill", "Stretch to fill"]], board.bg.fit, (v) => { edit((x) => { x.bg = { ...x.bg, kind: "image", fit: v }; }); applyBg(); })) : null,
       el("p", { class: "dnd-tiny dnd-muted" }, "An uploaded picture stays on this device. It is not shared with your DM."),
-    );
+    ].filter(Boolean));
   }
   async function uploadBg() {
     const file = await new Promise((resolve) => {
@@ -1078,7 +1125,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
       left.prepend(menuBtn);
     }
     if (!readonly) left.append(el("div", { class: "pl-seg" }, [
-      ibtn("plus", "New board", () => { const nb = newBoard(`Board ${list.length + 1}`); mutatePlan((p) => { p.boards.push(nb); }); openBoard(nb.id); }),
+      ibtn("plus", "New board", () => { const nb = newBoard(`Board ${list.length + 1}`, system === "dnd5e" ? "lava" : undefined); mutatePlan((p) => { p.boards.push(nb); }); openBoard(nb.id); }),
       ibtn("edit", "Rename board", renameBoard),
       ibtn("trash", "Delete board", deleteBoard),
     ]));
@@ -1117,7 +1164,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     if (!readonly) list = getPlan().boards;
     if (!list.length) {
       if (readonly) { panel.replaceChildren(el("div", { class: "card" }, el("p", { class: "view-sub" }, "No whiteboards yet."))); return; }
-      const nb = newBoard("Board 1"); mutatePlan((p) => { p.boards.push(nb); }); list = getPlan().boards; id = nb.id;
+      const nb = newBoard("Board 1", system === "dnd5e" ? "lava" : undefined); mutatePlan((p) => { p.boards.push(nb); }); list = getPlan().boards; id = nb.id;
     }
     board = list.find((b) => b.id === id) || list[0];
     try { localStorage.setItem("pokemon-dnd-planner-board", board.id); } catch { /* storage blocked */ }

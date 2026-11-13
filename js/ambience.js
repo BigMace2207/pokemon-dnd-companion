@@ -1,4 +1,5 @@
-// The background ambience for Pokémon D&D campaigns: a slow, spatial soundscape that sits under everything, so the
+// The background ambience: a cosmic one for Pokémon D&D campaigns and a lava one for D&D (buildLavaAmbience, below).
+// The cosmic one is a slow, spatial soundscape that sits under everything, so the
 // site feels like it's out in the same cosmos as the sky. Generated live with Web Audio (no sound files):
 //  - a soft chord pad that drifts through four chords, gliding a few seconds between them, each note slowly swept
 //    through a low-pass filter and panned left and right on its own slow rhythm, so the sound moves around you;
@@ -110,8 +111,100 @@ export function buildAmbience(c, dry, send, rng = Math.random) {
   };
 }
 
+/**
+ * The lava soundscape, for D&D campaigns (the Lava Tower and the lava hub): a deep, slowly breathing drone a fifth
+ * apart in D minor, the low roar of a magma river (brown noise under a wandering low-pass), the crackle of embers
+ * (tiny high clicks, a few a second, scattered left and right), and now and then a slow magma bubble far below
+ * (a low sine that sinks in pitch). Same shape as buildAmbience: { stop(), schedule(from, to) }.
+ */
+export function buildLavaAmbience(c, dry, send, rng = Math.random) {
+  const nodes = [];
+  const keep = (n) => (nodes.push(n), n);
+  const t0 = c.currentTime;
+  const out = keep(c.createGain());
+  out.gain.setValueAtTime(0.0001, t0);
+  out.gain.exponentialRampToValueAtTime(LEVEL * 1.25, t0 + 6);   // a touch louder: its energy sits low, where it sounds quieter
+  const toDry = keep(c.createGain()); toDry.gain.value = 0.6;
+  const toSend = keep(c.createGain()); toSend.gain.value = 0.6;
+  out.connect(toDry).connect(dry); out.connect(toSend).connect(send);
+  const lfo = (param, rate, depth, phase = 0) => {
+    const o = keep(c.createOscillator()); o.frequency.value = rate;
+    const g = keep(c.createGain()); g.gain.value = depth;
+    o.connect(g).connect(param);
+    o.start(t0 + phase);
+  };
+  const panner = () => (c.createStereoPanner ? keep(c.createStereoPanner()) : null);
+
+  // ---- the drone: D2, A2 and D3, each two detuned saws under a dark low-pass that slowly opens and closes
+  [[73.42, 0.05], [110.0, 0.032], [146.83, 0.018]].forEach(([f, level], i) => {
+    const filt = keep(c.createBiquadFilter()); filt.type = "lowpass"; filt.frequency.value = 220 + i * 60; filt.Q.value = 0.6;
+    lfo(filt.frequency, 0.019 + i * 0.007, 90 + i * 30, i * 2.3);
+    const g = keep(c.createGain()); g.gain.value = level;
+    lfo(g.gain, 0.027 + i * 0.005, level * 0.4, i * 1.9);
+    const p = panner(); if (p) lfo(p.pan, 0.011 + i * 0.008, 0.35, i * 3.1);
+    [-6, 6].forEach((det) => { const o = keep(c.createOscillator()); o.type = "sawtooth"; o.frequency.value = f; o.detune.value = det; o.connect(filt); o.start(t0); });
+    filt.connect(g); (p ? (g.connect(p), p) : g).connect(out);
+  });
+
+  // ---- the magma river: brown noise (integrated white noise) under a low-pass that wanders
+  const len = Math.floor(c.sampleRate * 4);
+  const buf = c.createBuffer(1, len, c.sampleRate);
+  const d = buf.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < len; i++) { last = (last + 0.02 * (rng() * 2 - 1)) / 1.02; d[i] = last * 3.5; }
+  const river = keep(c.createBufferSource()); river.buffer = buf; river.loop = true;
+  const lp = keep(c.createBiquadFilter()); lp.type = "lowpass"; lp.frequency.value = 260; lp.Q.value = 0.3;
+  lfo(lp.frequency, 0.029, 110, 0.8);
+  const rg = keep(c.createGain()); rg.gain.value = 0.06;
+  lfo(rg.gain, 0.041, 0.025, 2.2);
+  river.connect(lp).connect(rg).connect(out);
+  river.start(t0);
+
+  // ---- embers and magma bubbles, planned ahead in time
+  const clickBuf = c.createBuffer(1, Math.floor(c.sampleRate * 0.02), c.sampleRate);
+  const cd = clickBuf.getChannelData(0);
+  for (let i = 0; i < cd.length; i++) cd[i] = (rng() * 2 - 1) * Math.pow(1 - i / cd.length, 3);
+  function crackle(at) {
+    const s2 = c.createBufferSource(); s2.buffer = clickBuf; s2.playbackRate.value = 0.6 + rng() * 0.9;
+    const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 1800 + rng() * 2400;
+    const g = c.createGain(); g.gain.value = 0.006 + rng() * 0.012;
+    const p = c.createStereoPanner ? c.createStereoPanner() : null;
+    if (p) p.pan.value = rng() * 1.8 - 0.9;
+    s2.connect(hp).connect(g); (p ? (g.connect(p), p) : g).connect(out);
+    s2.start(at); s2.stop(at + 0.05);
+  }
+  function bubble(at) {
+    const o = c.createOscillator(); o.type = "sine";
+    const f = 70 + rng() * 50;
+    o.frequency.setValueAtTime(f, at); o.frequency.exponentialRampToValueAtTime(f * 0.55, at + 0.9);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(0.03, at + 0.08); g.gain.exponentialRampToValueAtTime(0.0001, at + 1.1);
+    const p = c.createStereoPanner ? c.createStereoPanner() : null;
+    if (p) p.pan.value = rng() * 1.2 - 0.6;
+    o.connect(g); const o2 = p ? (g.connect(p), p) : g;
+    o2.connect(out); o2.connect(toSend);
+    o.start(at); o.stop(at + 1.2);
+  }
+  let nextCrackle = t0 + 1 + rng(), nextBubble = t0 + 5 + rng() * 6;
+  function schedule(from, to) {
+    while (nextCrackle < to) {
+      if (nextCrackle >= from) { crackle(nextCrackle); if (rng() < 0.3) crackle(nextCrackle + 0.03 + rng() * 0.05); }   // pops come in ones and twos
+      nextCrackle += 0.15 + rng() * 0.9;
+    }
+    while (nextBubble < to) { if (nextBubble >= from) bubble(nextBubble); nextBubble += 6 + rng() * 10; }
+  }
+  return {
+    schedule,
+    stop(fade = 1.5) {
+      const t = c.currentTime;
+      out.gain.cancelScheduledValues(t); out.gain.setValueAtTime(Math.max(0.0001, out.gain.value), t); out.gain.exponentialRampToValueAtTime(0.0001, t + fade);
+      setTimeout(() => nodes.forEach((n) => { try { n.stop?.(); } catch { /* not started */ } try { n.disconnect(); } catch { /* gone */ } }), fade * 1000 + 100);
+    },
+  };
+}
+
 // ---------------------------------------------------------------- the live soundscape
-let live = null, timer = 0, wanted = false;
+let live = null, timer = 0, wanted = false, kind = "cosmic";
 function tick() {
   if (!live) return;
   const t = live.c.currentTime;
@@ -126,7 +219,7 @@ function begin() {
     if (!outNodes.ctx.__ambWait) { outNodes.ctx.__ambWait = true; outNodes.ctx.addEventListener("statechange", () => begin()); }
     return;
   }
-  live = { c: outNodes.ctx, amb: buildAmbience(outNodes.ctx, outNodes.dry, outNodes.send) };
+  live = { c: outNodes.ctx, amb: (kind === "lava" ? buildLavaAmbience : buildAmbience)(outNodes.ctx, outNodes.dry, outNodes.send) };
   tick();
   timer = setInterval(tick, 1000);
 }
@@ -135,8 +228,9 @@ function end() {
   live?.amb.stop(); live = null;
 }
 
-/** Start the background ambience (it waits for the first tap or click, as browsers require). */
-export function startAmbience() {
+/** Start the background ambience, "cosmic" or "lava" (it waits for the first tap or click, as browsers require). */
+export function startAmbience(which = "cosmic") {
+  if (which !== kind) { kind = which; end(); }
   wanted = true;
   begin();   // if sound isn't allowed yet, it starts when hubSound.js resumes the context on the first tap
 }

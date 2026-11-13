@@ -8,7 +8,6 @@
 
 html.planner-full .main { padding: 0; overflow: hidden; }
 html.planner-full .main::after { display: none; }
-html.planner-full #lavaFx, html.planner-full .lava-tower-wrap, html.planner-full .lava-debris { display: none; }
 :root[data-theme="lava"].planner-full body { background: #14100d; }
 .pl-page { position: relative; height: 100%; }
 .pl-host { position: absolute; inset: 0; }

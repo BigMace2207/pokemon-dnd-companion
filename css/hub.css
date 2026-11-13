@@ -4,7 +4,6 @@
 
 html.hub-full .main { padding: 0; overflow: hidden; }
 html.hub-full .main::after { display: none; }
-html.hub-full #lavaFx, html.hub-full .lava-tower-wrap, html.hub-full .lava-debris { display: none; }
 html.hub-full body { background: #09090b; }
 /* the app's top bar gives way to the hub's own buttons */
 html.hub-full { --topbar-h: 0px; }
@@ -411,7 +410,6 @@ html.no-sidebar { --sidenav-w: 0px; }
 html.no-sidebar #app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "main"; }
 html.no-sidebar .sidenav { display: none; }
 html.no-sidebar .nav-toggle { display: inline-grid; place-items: center; }
-html.no-sidebar .lava-tower-wrap { left: 0; }
 
 /* page buttons: the page's own sprite icon */
 .hub-page-icon { display: grid; place-items: center; width: 24px; height: 24px; }
@@ -918,3 +916,395 @@ html.m .hub-constellation.con-entei { width: 78vw; left: 40vw; right: auto; top:
 
 .hub-map-area-tools { display: flex; flex-wrap: wrap; gap: 6px; }
 .hub-map-area-tools .hub-pill[disabled] { opacity: .45; cursor: default; }
+
+/* ===========================================================================================================================
+   The lava hub: a D&D campaign's hub (js/views/hub.js with js/hubKits/dnd.js). The same board and controls, in warm glass
+   over a blurred, slowly churning lava sea with embers rising through it. The sea is a fixed layer (it never re-renders),
+   moves with transform/opacity only, and stands still under prefers-reduced-motion, Low graphics or calm lava effects.
+   =========================================================================================================================== */
+.hub.lava {
+  --h-bg: #120b0a; --h-glass: rgba(30, 18, 16, .74); --h-line: rgba(255, 170, 130, .13); --h-line-2: rgba(255, 170, 130, .24);
+  --h-text: #f6ece4; --h-dim: #c9b3a5; --h-faint: #8f7768; --h-live: #ff6a3a;
+}
+.hub.lava.cosmic { background: radial-gradient(ellipse at 50% 120%, #3a0f06 0%, #170b09 45%, #0c0808 100%); }
+.hub.lava .hub-stars { opacity: 1; }
+.hub.lava .hub-people:empty { display: none; }
+.hub-lava-sky { position: absolute; inset: 0; overflow: hidden; }
+/* the sea: big soft blobs of molten rock under a heavy blur, each drifting on its own slow loop */
+.lava-sea { position: absolute; inset: -12%; filter: blur(calc(56px * var(--s))) saturate(1.2); opacity: .9; }
+.lava-blob { position: absolute; border-radius: 50%; will-change: transform; mix-blend-mode: screen;
+  background: radial-gradient(circle at 50% 50%, var(--c, #ff4a1a) 0%, color-mix(in srgb, var(--c, #ff4a1a) 55%, transparent) 38%, transparent 70%); }
+.lava-blob.b0 { --c: #ff2a00; width: 46vmax; height: 40vmax; left: -6%; bottom: -14%; }
+.lava-blob.b1 { --c: #ff6a1a; width: 38vmax; height: 34vmax; left: 34%; bottom: -18%; }
+.lava-blob.b2 { --c: #e0260e; width: 44vmax; height: 36vmax; right: -10%; bottom: -10%; }
+.lava-blob.b3 { --c: #ff7a1a; width: 22vmax; height: 20vmax; left: 18%; bottom: 8%; opacity: .7; }
+.lava-blob.b4 { --c: #c8280e; width: 34vmax; height: 30vmax; right: 8%; top: -10%; opacity: .6; }
+.lava-blob.b5 { --c: #ff4a22; width: 28vmax; height: 26vmax; left: -8%; top: 10%; opacity: .55; }
+.lava-blob.b6 { --c: #ff8a2a; width: 16vmax; height: 14vmax; left: 58%; bottom: 12%; opacity: .55; }
+/* a crust of dark basalt across the top, so the board stays readable and the glow pools at the foot */
+.lava-crust { position: absolute; inset: 0; background:
+  radial-gradient(ellipse 110% 55% at 50% 0%, rgba(12, 8, 8, .7) 0%, rgba(12, 8, 8, .35) 50%, transparent 80%),
+  radial-gradient(ellipse at 50% 45%, rgba(10, 6, 6, .35) 0%, transparent 60%); }
+.lava-embers { position: absolute; inset: 0; }
+.lava-embers i { position: absolute; left: var(--x); bottom: -10px; width: 4px; height: 4px; border-radius: 50%;
+  background: #ffb36a; box-shadow: 0 0 6px 2px rgba(255, 106, 58, .7); opacity: 0; transform: scale(var(--s, 1)); }
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-gfx="low"]):not([data-lava-fx="calm"]) .lava-blob { animation: lava-churn 26s ease-in-out infinite alternate; }
+  :root:not([data-gfx="low"]):not([data-lava-fx="calm"]) .lava-blob.b1 { animation-duration: 31s; animation-delay: -7s; }
+  :root:not([data-gfx="low"]):not([data-lava-fx="calm"]) .lava-blob.b2 { animation-duration: 23s; animation-delay: -12s; animation-direction: alternate-reverse; }
+  :root:not([data-gfx="low"]):not([data-lava-fx="calm"]) .lava-blob.b3 { animation-duration: 19s; animation-delay: -4s; }
+  :root:not([data-gfx="low"]):not([data-lava-fx="calm"]) .lava-blob.b4 { animation-duration: 37s; animation-delay: -20s; }
+  :root:not([data-gfx="low"]):not([data-lava-fx="calm"]) .lava-blob.b5 { animation-duration: 29s; animation-delay: -9s; animation-direction: alternate-reverse; }
+  :root:not([data-gfx="low"]):not([data-lava-fx="calm"]) .lava-blob.b6 { animation-duration: 17s; animation-delay: -3s; }
+  :root:not([data-gfx="low"]):not([data-lava-fx="calm"]) .lava-embers i { animation: lava-ember var(--d, 9s) linear var(--delay, 0s) infinite; }
+}
+@keyframes lava-churn {
+  0% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+  50% { transform: translate3d(6%, -5%, 0) scale(1.14) rotate(14deg); }
+  100% { transform: translate3d(-5%, 3%, 0) scale(.92) rotate(-10deg); }
+}
+@keyframes lava-ember {
+  0% { opacity: 0; transform: translate3d(0, 0, 0) scale(var(--s, 1)); }
+  10% { opacity: .9; }
+  70% { opacity: .5; }
+  100% { opacity: 0; transform: translate3d(var(--sway, 20px), -92vh, 0) scale(calc(var(--s, 1) * .3)); }
+}
+:root[data-gfx="low"] .lava-sea { filter: none; opacity: .4; }
+:root:is([data-gfx="medium"], [data-gfx="low"]) .hub.lava :is(.hub-toolbar, .hub-quick, .hub-title, .hub-people, .hub-round, .hub-team, .hub-subbar, .hub-zoom, .wheel-item) { background-color: rgba(30, 18, 16, .95); }
+.hub.lava .hub-eyebrow { color: #ff9a6a; white-space: nowrap; }
+.hub-people { white-space: nowrap; }
+.hub.lava .hub-title strong { font-family: "Cinzel", "Fraunces", serif; letter-spacing: .04em; }
+
+/* the minimap's ring is molten rather than cosmic */
+.hub.lava .hub-mini-ring::before { background: conic-gradient(from 200deg, #ff2a00, #ff9a3a, #ffd27a, #ff4a1a, #b3200b, #ff2a00); box-shadow: 0 0 22px rgba(255, 74, 26, .5); }
+.hub.lava .hub-mini-ring::after { background: radial-gradient(circle at 18% 22%, #ffd27a 0 1.2px, transparent 1.7px), radial-gradient(circle at 82% 30%, #ff9a3a 0 1.4px, transparent 1.9px), radial-gradient(circle at 70% 88%, #ffb36a 0 1px, transparent 1.5px), radial-gradient(circle at 12% 70%, #ff6a3a 0 1px, transparent 1.5px); }
+.hub.lava .hub-mini-area text { stroke: rgba(30, 8, 4, .92); }
+
+/* every page, from the hub (the sidebar is hidden there) */
+.hub-pages-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(150px * var(--s)), 1fr)); gap: calc(10px * var(--s)) calc(14px * var(--s)); max-height: min(70vh, calc(520px * var(--s))); overflow-y: auto; overscroll-behavior: contain; }
+.hub-pages-group { display: grid; align-content: start; gap: 2px; }
+.hub-pages-group h4 { margin: 0 0 calc(4px * var(--s)); padding: 0 calc(10px * var(--s)); font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--h-faint); }
+.hub-menu.wide:has(.hub-pages-grid) { width: min(calc(600px * var(--s)), calc(100vw - 24px)); }
+
+/* your character, bottom left: the badge, then HP / AC / Init in one strip */
+.hub-me-face.dnd-portrait { object-fit: cover; image-rendering: auto; border-radius: 50%; }
+.hub-me-initial { display: grid; place-items: center; font-family: "Cinzel", serif; font-weight: 700; font-size: max(14px, calc(18px * var(--s))); color: #fff; background: radial-gradient(circle at 35% 30%, #ff7a45, #8a1a08); border-radius: 50%; }
+.hub-team.dnd-vitals[hidden] { display: none; }
+.hub-team.dnd-vitals { gap: calc(6px * var(--s)); padding: calc(6px * var(--s)) calc(8px * var(--s)); align-items: stretch; cursor: pointer; }
+.dnd-vital { display: grid; justify-items: center; align-content: center; gap: 2px; min-width: calc(48px * var(--s)); padding: calc(4px * var(--s)) calc(8px * var(--s)); border-radius: 12px; background: rgba(255, 255, 255, .04); }
+.dnd-vital strong { font-size: max(14px, calc(16px * var(--s))); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.dnd-vital-label { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--h-faint); }
+.dnd-vital.hp { min-width: calc(96px * var(--s)); }
+.dnd-hpbar { display: block; width: 100%; height: 4px; border-radius: 999px; background: rgba(255, 255, 255, .1); overflow: hidden; }
+.dnd-hpbar > span { display: block; height: 100%; border-radius: inherit; }
+.dnd-hpbar .good { background: #5fd38a; } .dnd-hpbar .warn { background: #ffc24a; } .dnd-hpbar .bad { background: #ff4a3a; }
+.dnd-vital.conds { display: flex; flex-wrap: wrap; gap: 4px; max-width: calc(170px * var(--s)); }
+.dnd-cond { font-size: 12px; padding: 1px 7px; border-radius: 999px; background: rgba(255, 106, 58, .18); color: #ffc7a8; }
+.hub-team-empty { font: inherit; font-size: max(13px, calc(14px * var(--s))); color: var(--h-text); padding: calc(8px * var(--s)) calc(14px * var(--s)); border-radius: 14px; background: rgba(255, 106, 58, .16); border: 1px dashed rgba(255, 140, 90, .5); cursor: pointer; }
+.hub-team-empty:active { transform: scale(.97); }
+@media (hover: hover) and (pointer: fine) { .hub-team.dnd-vitals:hover { border-color: var(--h-line-2); } .hub-team-empty:hover { background: rgba(255, 106, 58, .26); } }
+
+/* the inventory: coins along the top, then weapons / armour / magic / gear */
+.dnd-coins { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: calc(8px * var(--s)); }
+.dnd-coin { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 4px; border-radius: 999px; font-size: 12px; font-variant-numeric: tabular-nums; background: rgba(255, 255, 255, .05); }
+.dnd-coin::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--coin, #d8b25a); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .25); }
+.dnd-coin.pp { --coin: #e6e8ef; } .dnd-coin.gp { --coin: #f2c84b; } .dnd-coin.ep { --coin: #c9d0a8; } .dnd-coin.sp { --coin: #b9bfc8; } .dnd-coin.cp { --coin: #c27b4a; }
+.hub-bag-item.dnd { grid-template-columns: calc(30px * var(--s)) 1fr; }
+.dnd-item-glyph { grid-row: 1 / 3; display: grid; place-items: center; width: calc(30px * var(--s)); height: calc(30px * var(--s)); font-size: max(16px, calc(18px * var(--s))); border-radius: 9px; background: rgba(255, 140, 90, .1); }
+.hub-bag-item.dnd.equipped { border-color: rgba(255, 140, 90, .4); }
+.hub-bag-item.dnd.equipped .dnd-item-glyph { background: rgba(255, 106, 58, .26); }
+.hub-bag-item.dnd .hub-bag-name { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.2; }
+.dnd-bag-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: calc(8px * var(--s)); font-size: 12px; color: var(--h-faint); }
+
+/* the board's D&D cards: monsters, spells, items and your character */
+.hub-card.dnd-card { width: calc(250px * var(--s)); min-width: 220px; }
+.hub-card.dnd-card.open { width: calc(320px * var(--s)); min-width: 260px; }
+.dnd-card-glyph { display: grid; place-items: center; flex: none; width: calc(38px * var(--s)); height: calc(38px * var(--s)); font-size: max(18px, calc(22px * var(--s))); border-radius: 12px; background: color-mix(in srgb, var(--tc, #ff6a3a) 30%, rgba(0, 0, 0, .3)); }
+.dnd-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: calc(8px * var(--s)); }
+.dnd-chip { display: inline-flex; gap: 5px; align-items: baseline; padding: 2px 8px; font-size: 12px; border-radius: 999px; background: rgba(0, 0, 0, .28); }
+.dnd-chip :is(b, small) { color: var(--h-faint); font-weight: 600; font-size: 12px; }
+.dnd-abilities { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; margin-top: calc(8px * var(--s)); }
+.dnd-abilities > span { display: grid; justify-items: center; padding: 3px 0; border-radius: 8px; background: rgba(0, 0, 0, .25); }
+.dnd-abilities small { font-size: 12px; color: var(--h-faint); text-transform: uppercase; }
+.dnd-abilities strong { font-size: 13px; font-variant-numeric: tabular-nums; }
+.dnd-card-body { margin-top: calc(8px * var(--s)); max-height: calc(260px * var(--s)); overflow-y: auto; overscroll-behavior: contain; font-size: max(12px, calc(13px * var(--s))); line-height: 1.45; color: var(--h-dim); user-select: text; -webkit-user-select: text; }
+.dnd-card-body p { margin: 0 0 6px; }
+.dnd-card-body strong { color: var(--h-text); }
+
+/* a player's character card: a gold-trimmed sheet at a glance */
+.hub-card.dnd-pc { background: linear-gradient(160deg, rgba(233, 194, 122, .2), #17100e 62%); border-color: rgba(233, 194, 122, .45); }
+.dnd-pc-face { display: grid; place-items: center; flex: none; width: calc(42px * var(--s)); height: calc(42px * var(--s)); min-width: 36px; min-height: 36px; border-radius: 50%;
+  font-family: "Cinzel", serif; font-weight: 700; font-size: max(16px, calc(19px * var(--s))); color: #fff; background: radial-gradient(circle at 35% 30%, #ff8a4a, #8a1a08);
+  box-shadow: inset 0 0 0 2px rgba(233, 194, 122, .55); }
+.dnd-pc-hp { display: grid; gap: 4px; margin-top: calc(10px * var(--s)); }
+.dnd-pc-hp-row { display: flex; justify-content: space-between; align-items: baseline; }
+.dnd-pc-hp-row small { font-size: 12px; letter-spacing: .1em; color: var(--h-faint); }
+.dnd-pc-hp-row strong { font-size: max(14px, calc(16px * var(--s))); font-variant-numeric: tabular-nums; }
+.dnd-pc .dnd-hpbar { height: 6px; }
+.dnd-pc-conds { display: flex; flex-wrap: wrap; gap: 4px; margin-top: calc(8px * var(--s)); }
+
+/* the Compendium (Bestiary / Spells / Items) slides out where the Pokédex does */
+.dnd-compendium .hub-dex-row.dnd .dnd-item-glyph { grid-row: auto; width: calc(28px * var(--s)); height: calc(28px * var(--s)); }
+
+/* encounter buttons: not the Pokémon battle pill (white, red ring, a wobbling ball) but a dark iron plaque with a gold
+   trim, the name in Cinzel, and a gold-ringed seal of crossed swords; a fight in progress glows like an ember */
+.hub.lava .hub-btn { color: #f6e7d6; background: linear-gradient(180deg, #2c1b16, #150d0b); border: 1px solid rgba(233, 194, 122, .5); border-radius: 12px;
+  font-family: "Cinzel", "Fraunces", serif; font-weight: 700; letter-spacing: .03em;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 222, 170, .12); }
+.hub.lava .hub-btn:hover { box-shadow: 0 18px 44px rgba(0, 0, 0, .6), inset 0 1px 0 rgba(255, 222, 170, .18), 0 0 0 1px rgba(233, 194, 122, .7); }
+.hub.lava .hub-btn-icon { background: radial-gradient(circle at 40% 32%, #7a2412, #2a0c06 75%); box-shadow: inset 0 0 0 2px #e9c27a, 0 0 10px rgba(233, 194, 122, .25); }
+.hub.lava .hub-btn-icon::after { content: "\2694"; width: auto; height: auto; margin: 0; background: none; box-shadow: none; transform: translate(-50%, -52%); font-size: 15px; line-height: 1; color: #f3d58a; }
+.hub.lava .hub-btn.has-portrait .hub-btn-icon::after { display: block; }
+.hub.lava .hub-btn-live { font-family: "Space Grotesk", system-ui, sans-serif; letter-spacing: 0; background: linear-gradient(180deg, #ff7a45, #e0300f); }
+.hub.lava .hub-btn.live { border-color: #ff8a4a; box-shadow: 0 0 0 1px #ff6a3a, 0 0 30px rgba(255, 90, 40, .45), 0 14px 34px rgba(0, 0, 0, .55); }
+.hub.lava .hub-btn.live::before { border-color: #ff6a3a; }
+/* no wobbling ball: the seal stays still on hover, and a live fight's swords glow instead */
+.hub.lava .hub-btn:hover .hub-btn-icon, .hub.lava .hub-btn.live .hub-btn-icon { animation: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .hub.lava .hub-btn.live .hub-btn-icon::before { content: ""; position: absolute; inset: -4px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 120, 60, .55), transparent 70%); animation: lava-seal 1.8s ease-in-out infinite alternate; pointer-events: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hub.lava .hub-btn.live::before { animation: lava-live-ring 1.8s ease-out infinite; }   /* a gentle pulse just outside the plaque */
+}
+@keyframes lava-live-ring { from { opacity: .85; transform: scale(1); } to { opacity: 0; transform: scale(1.12, 1.35); } }
+@keyframes lava-seal { from { opacity: .2; transform: scale(.9); } to { opacity: 1; transform: scale(1.12); } }
+/* the drawer's encounter rows get the same seal */
+.hub.lava .hub-src .hub-btn-icon { width: 28px; height: 28px; }
+
+/* an encounter's hover card shows crossed swords rather than a sprite */
+.hub-hover-glyph { font-size: calc(40px * var(--s)); }
+
+/* the D&D app keeps its sidebar (the Lava Tower) on every other page; on the hub, the board takes the whole screen */
+html.hub-full #app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "main"; }
+html.hub-full .sidenav { display: none; }
+
+/* the bars along the bottom (your character, the tool bar, zoom) share one bottom line */
+html:not(.m) .hub.lava .hub-zoom { bottom: calc(22px * var(--s)) !important; }
+/* All pages, after Party in the quick bar: brighter than its neighbours, so it's easy to spot */
+.hub-quick .hub-tool[data-view="all"]:not(.on) { color: var(--h-text); }
+.hub-quick .hub-tool[data-view="all"] svg { opacity: 1; }
+
+/* a narrow desktop window: the character strip sits above the bottom tool bar rather than under its left end */
+@media (min-width: 701px) and (max-width: 1280px) {
+  html:not(.m) .hub.lava .hub-left-dock { bottom: calc(82px * var(--s)); }
+  html:not(.m) .hub.lava .hub-zoom { bottom: calc(82px * var(--s)) !important; }   /* both side bars step up together, the tool bar keeps the bottom */
+}
+.hub.lava .hub-quick .hub-tool span { white-space: nowrap; }
+/* a narrower window: the quick bar shows icons only (All pages keeps its words), so the top bar fits */
+@media (min-width: 701px) and (max-width: 1150px) { html:not(.m) .hub.lava .hub-quick .hub-tool:not([data-view="all"]) span { display: none; } }
+
+/* the phone */
+html.m .hub.lava .lava-sea { inset: -20%; filter: blur(40px) saturate(1.1); }
+html.m .hub.lava .lava-embers i:nth-child(n + 12) { display: none; }
+/* on the phone the strip is a small card down the left edge, like a Pokémon team: HP on top, AC and Init under it */
+html.m .hub-left-dock .hub-team.dnd-vitals { display: grid; grid-template-columns: repeat(2, 54px); gap: 4px; padding: 5px; border-radius: 16px; }
+html.m .hub-left-dock .dnd-vital { min-width: 0; padding: 4px 2px; }
+html.m .hub-left-dock .dnd-vital.hp { grid-column: 1 / -1; padding: 5px 8px; }
+html.m .hub-left-dock .dnd-vital.conds { grid-column: 1 / -1; max-width: none; justify-content: center; }
+html.m .hub-card.dnd-card.open { width: min(320px, calc(100vw - 32px)); }
+html.m .hub-pages-grid { grid-template-columns: 1fr 1fr; max-height: 60vh; }
+html.m .hub-pages-group .hub-menu-item { min-height: 44px; }
+
+/* ---- a place's card over the hub's full map (js/hubMap.js drawPlaceCard): what a player learns when they open a label ---- */
+.hub-place-card { position: absolute; z-index: 4; left: calc(12px * var(--s)); right: calc(12px * var(--s)); bottom: calc(52px * var(--s)); max-width: 460px; max-height: 52%; overflow-y: auto; overscroll-behavior: contain;
+  padding: calc(14px * var(--s)) calc(16px * var(--s)); background: rgba(16, 16, 18, .94); border: 1px solid var(--h-line-2); border-radius: calc(18px * var(--s)); box-shadow: 0 18px 50px rgba(0, 0, 0, .55); -webkit-user-select: text; user-select: text; }
+.hub-place-card[hidden] { display: none; }
+.hub-place-head { display: flex; align-items: center; gap: calc(12px * var(--s)); }
+.hub-place-icon { display: grid; place-items: center; flex: none; width: calc(42px * var(--s)); height: calc(42px * var(--s)); min-width: 36px; min-height: 36px; border-radius: 50%; font-size: 20px; background: color-mix(in srgb, var(--c) 34%, rgba(0, 0, 0, .4)); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--c) 75%, transparent); }
+.hub-place-title { flex: 1; min-width: 0; }
+.hub-place-title h3 { margin: 0; font-family: var(--font-head); font-weight: 400; font-size: calc(24px * var(--s)); letter-spacing: -.01em; line-height: 1.15; }
+.hub-place-title p { margin: 2px 0 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--h-faint); }
+.hub-place-known { margin: calc(10px * var(--s)) 0 0; font-size: calc(15px * var(--s)); font-style: italic; color: var(--h-dim); }
+.hub-place-desc { margin-top: calc(10px * var(--s)); font-size: calc(15px * var(--s)); line-height: 1.5; }
+.hub-place-desc p { margin: 0 0 8px; }
+.hub-place-desc p:last-child { margin-bottom: 0; }
+.hub-place-desc .hub-place-area { font-weight: 600; color: var(--h-text); }
+html.m .hub-place-card { bottom: calc(10px * var(--s)); max-height: 46%; }
+@media (prefers-reduced-motion: no-preference) { .hub-place-card:not([hidden]) { animation: hub-place-in .22s cubic-bezier(.23, 1, .32, 1); } }
+@keyframes hub-place-in { from { opacity: 0; transform: translateY(8px); } }
+
+/* ---- smart widgets and places on the D&D hub (js/hubKits/widgets.js, js/hubKits/dnd.js) ---- */
+.hub-card.kind-widget { --tc: #d9a032; width: calc(290px * var(--s)); min-width: 240px; padding: calc(12px * var(--s)) calc(14px * var(--s)); cursor: grab; }
+.hub-widget-head { display: flex; align-items: center; gap: calc(8px * var(--s)); margin-bottom: calc(8px * var(--s)); }
+.hub-widget-head strong { font-size: calc(14px * var(--s)); font-weight: 600; letter-spacing: .02em; }
+.hub-widget-icon { display: grid; place-items: center; width: calc(22px * var(--s)); height: calc(22px * var(--s)); min-width: 18px; min-height: 18px; color: var(--tc); }
+.hub-widget-icon svg { width: 100%; height: 100%; }
+.hub-widget-body { display: grid; gap: calc(8px * var(--s)); max-height: calc(340px * var(--s)); overflow-y: auto; overscroll-behavior: contain; cursor: default; }
+.hub-widget-empty { margin: 0; font-size: calc(14px * var(--s)); line-height: 1.4; color: var(--h-dim); }
+.hub-wrow { display: flex; align-items: center; gap: calc(10px * var(--s)); padding: calc(4px * var(--s)) calc(6px * var(--s)); border-radius: calc(12px * var(--s)); }
+.hub-wrow.movable { cursor: grab; touch-action: manipulation; }
+.hub-wrow.movable:hover { background: rgba(255, 255, 255, .06); }
+.hub-wrow-main { display: grid; min-width: 0; }
+.hub-wrow-main strong, .hub-wline strong { font-size: calc(15px * var(--s)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-wrow-main small, .hub-wline small, .hub-wround, .hub-wstatus { font-size: 12px; color: var(--h-faint); }
+.hub-wcard { display: grid; gap: 5px; padding: calc(8px * var(--s)) calc(10px * var(--s)); border-radius: calc(12px * var(--s)); background: rgba(0, 0, 0, .22); border: 1px solid transparent; }
+.hub-wcard.acting { border-color: rgba(233, 194, 122, .6); background: rgba(233, 194, 122, .1); }
+.hub-wcard.dead { opacity: .5; }
+.hub-wline { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.hub-wline .dnd-hpbar { flex: 1; }
+.hub-whp { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--h-dim); }
+.hub-wchips { display: flex; flex-wrap: wrap; gap: 4px; }
+.hub-wchips.big { gap: 6px; }
+.hub-wname { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 999px; background: rgba(255, 255, 255, .07); font-size: calc(14px * var(--s)); }
+.hub-wname .me-avatar { width: 22px; height: 22px; font-size: 12px; font-style: normal; background: rgba(255, 255, 255, .14); }
+.hub-wtext { margin: 0; font-size: calc(14px * var(--s)); line-height: 1.4; color: var(--h-dim); }
+.hub-wacts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.hub-wacts .hub-pill { white-space: nowrap; min-height: 32px; }
+.hub-widget-body .hub-input { min-width: 0; flex: 1; }
+.hub-turn { display: grid; justify-items: center; gap: 2px; padding: calc(8px * var(--s)) 0; text-align: center; border-radius: calc(12px * var(--s)); }
+.hub-turn strong { font-family: var(--font-head); font-weight: 400; font-size: calc(26px * var(--s)); line-height: 1.15; }
+.hub-turn small { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--h-faint); }
+.hub-turn.you { background: rgba(127, 208, 138, .14); }
+.hub-turn-you { font-weight: 700; color: #7fd08a; }
+.hub-sky { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: calc(12px * var(--s)); }
+.hub-sky-icon { font-size: calc(44px * var(--s)); line-height: 1; }
+.hub-sky-time { font-size: calc(28px * var(--s)); font-variant-numeric: tabular-nums; line-height: 1.1; font-family: var(--font-head); font-weight: 400; display: block; }
+.hub-sky small { font-size: 12px; color: var(--h-faint); }
+.hub-sky-now { display: grid; text-align: right; }
+.hub-sky-now strong { font-size: calc(16px * var(--s)); }
+.hub-sky-note { margin: 0; font-size: calc(14px * var(--s)); font-style: italic; color: var(--h-dim); }
+.hub-wpicks { display: flex; flex-wrap: wrap; gap: 4px; }
+.hub-wpick { width: 34px; height: 34px; display: grid; place-items: center; font-size: 17px; padding: 0; border-radius: 50%; background: rgba(255, 255, 255, .06); border: 1px solid transparent; cursor: pointer; touch-action: manipulation; }
+.hub-wpick.on { border-color: #e9c27a; background: rgba(233, 194, 122, .18); }
+.hub-dice-btns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.hub-die { font: inherit; font-size: calc(15px * var(--s)); font-weight: 600; min-height: 38px; color: var(--h-text); background: rgba(255, 255, 255, .07); border: 1px solid var(--h-line-2); border-radius: 12px; cursor: pointer; touch-action: manipulation; transition: background-color .15s, transform .15s; }
+.hub-die:hover { background: rgba(255, 255, 255, .14); }
+.hub-die:active { transform: scale(.95); }
+.hub-dice-out { display: grid; gap: 2px; min-height: 40px; }
+.hub-dice-row { display: flex; align-items: baseline; gap: 8px; color: var(--h-dim); }
+.hub-dice-row strong { font-size: calc(18px * var(--s)); font-variant-numeric: tabular-nums; min-width: 2ch; }
+.hub-dice-row.now { color: var(--h-text); }
+.hub-dice-row.now strong { font-size: calc(30px * var(--s)); }
+.hub-dice-row small { font-size: 12px; }
+.hub-widget-body .me-seg { width: max-content; }
+
+/* a place card on the hub */
+.hub-card.kind-place { width: calc(250px * var(--s)); }
+.hub-place-known { margin: calc(8px * var(--s)) 0 0; font-style: italic; font-size: calc(14px * var(--s)); color: var(--h-dim); }
+.hub-place-here { margin: calc(8px * var(--s)) 0 0; font-size: 12px; font-weight: 600; color: #7fd08a; }
+.hub-place-here:empty { display: none; }
+.hub-place-hint { margin: calc(8px * var(--s)) 0 0; font-size: 12px; line-height: 1.4; color: var(--h-faint); }
+.hub-card.kind-place.drop-hot { box-shadow: 0 0 0 3px #7fd08a, 0 14px 40px rgba(127, 208, 138, .3); transform: scale(1.03); }
+@media (prefers-reduced-motion: reduce) { .hub-card.kind-place.drop-hot { transform: none; } }
+/* the pull-out's widget rows show their whole description */
+.hub-dex-row.widget-row .hub-dex-name span { white-space: normal; line-height: 1.35; }
+
+/* ---- pages and widgets (js/hubKits/paper.js decides sizes, grid and snapping; js/hubKits/widgets.js what a widget shows) ---- */
+/* Clean and sleek, like the rest of the hub: warm glass with hairlines. A page is a large sheet with ruled lines; a widget is a
+   small card in the same style as the hub's other cards, with an accent colour of its own. Motion is grouped by the Graphics
+   setting (html[data-gfx]): Low has none, Medium moves things, High adds a little shine. */
+.hub-pages { position: absolute; left: 0; top: 0; z-index: 0; }   /* its own layer, under the drawings and the items */
+.hub-page { position: absolute; width: 900px; height: 1273px; --pa: #c9b79c; border-radius: 28px;
+  background: linear-gradient(180deg, rgba(48, 32, 27, .94), rgba(24, 16, 14, .96));
+  border: 1px solid rgba(233, 194, 122, .26);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 222, 170, .1), inset 0 2px 0 color-mix(in srgb, var(--pa) 55%, transparent); }
+.hub-page[data-kind="battle"] { --pa: #ff7a45; }
+.hub-page[data-kind="sheet"] { --pa: #e9c27a; }
+.hub-page[data-kind="log"] { --pa: #7fd08a; }
+.hub-page.lifted { box-shadow: 0 46px 110px rgba(0, 0, 0, .6), inset 0 1px 0 rgba(255, 222, 170, .12), inset 0 2px 0 color-mix(in srgb, var(--pa) 70%, transparent); }   /* (never a z-index: a page stays under everything on it, even while it moves) */
+/* the ruled lines (the first is 36px under the header: snapToLine in paper.js) and the gutter */
+.hub-page-sheet { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; }
+.hub-page-sheet::before { content: ""; position: absolute; left: 56px; right: 36px; top: 120px; bottom: 40px;
+  background: repeating-linear-gradient(to bottom, transparent 0 35px, rgba(255, 255, 255, .075) 35px 36px); }
+.hub-page-sheet::after { content: ""; position: absolute; left: 52px; top: 120px; bottom: 0; width: 1px; background: rgba(233, 194, 122, .16); }
+.hub-page-head { position: absolute; left: 0; right: 0; top: 0; height: 120px; display: flex; align-items: center; gap: 14px; padding: 0 30px 0 56px; touch-action: none;
+  border-bottom: 1px solid rgba(255, 255, 255, .07); }
+.hub-page.editable .hub-page-head { cursor: grab; }
+.hub-page.lifted .hub-page-head { cursor: grabbing; }
+.hub-page-grip { flex: none; width: 14px; height: 22px; opacity: .45; background: radial-gradient(circle, #f6e7d6 1.6px, transparent 2px) 0 0 / 7px 7px; }
+.hub .hub-page .hub-page-title { flex: 1; min-width: 0; font: 600 30px/1.15 var(--font-head); letter-spacing: -.01em; color: #f6e7d6; background: transparent; border: 0; border-bottom: 2px solid transparent;
+  border-radius: 0; box-shadow: none; height: auto; padding: 4px 0; margin: 0; -webkit-appearance: none; appearance: none; transition: border-color .2s; }
+.hub .hub-page .hub-page-title:hover { border-bottom-color: rgba(255, 255, 255, .14); }
+.hub .hub-page .hub-page-title:focus { outline: none; border-bottom-color: #e9c27a; }
+.hub .hub-page .hub-page-title:read-only { cursor: inherit; border-bottom-color: transparent; }
+.hub-page-del { flex: none; width: 36px; height: 36px; display: grid; place-items: center; padding: 0; font: inherit; font-size: 22px; line-height: 1; color: #f6e7d6; background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .14); border-radius: 50%; cursor: pointer; transition: background-color .15s, border-color .15s; }
+.hub-page-del:hover { background: rgba(255, 90, 78, .85); border-color: rgba(255, 150, 130, .9); }
+.hub-page-del[hidden] { display: none; }
+.hub-page.hub-leave { opacity: 0; transition: opacity .2s; }
+/* writing on a page */
+.hub-text.on-page { text-shadow: 0 1px 8px rgba(0, 0, 0, .55); font-weight: 500; overflow: hidden; }
+/* text is easy to grab (a bigger target than its letters) and moves exactly with the pointer: no lean, no growing */
+.hub-text { padding: 7px 9px; margin: -7px -9px; touch-action: none; }
+.hub-items > .hub-text.pressed, .hub-items > .hub-text.dragging { scale: 1; rotate: none; transition: none; }
+
+/* a widget: a card like the hub's others, with its own accent */
+.hub-card.kind-widget { --tc: #e9c27a; box-sizing: border-box; display: flex; flex-direction: column; min-width: 0; padding: 12px 14px 14px; border-radius: 18px; overflow: hidden; cursor: grab;
+  background: radial-gradient(130% 100% at 0% 0%, color-mix(in srgb, var(--tc) 22%, transparent), transparent 62%), linear-gradient(160deg, color-mix(in srgb, var(--tc) 12%, #1d1311), #130d0b 74%);
+  border: 1px solid color-mix(in srgb, var(--tc) 40%, transparent);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .07); }
+.hub-card.kind-widget.s-1x1 { width: 160px; height: 160px; }
+.hub-card.kind-widget.s-1x2 { width: 332px; height: 160px; }
+.hub-card.kind-widget.s-2x2 { width: 332px; height: 332px; }
+.hub-card.kind-widget.w-positions { --tc: #ff8f6b; } .hub-card.kind-widget.w-vitals { --tc: #6fd39a; } .hub-card.kind-widget.w-weather { --tc: #6bb8ff; }
+.hub-card.kind-widget.w-turn { --tc: #e9c27a; } .hub-card.kind-widget.w-order { --tc: #ffb347; } .hub-card.kind-widget.w-mine { --tc: #f0a35a; }
+.hub-card.kind-widget.w-combatdm { --tc: #ff6a5a; } .hub-card.kind-widget.w-battles { --tc: #e5584a; } .hub-card.kind-widget.w-here { --tc: #5fd0c0; }
+.hub-card.kind-widget.w-online { --tc: #b79cff; } .hub-card.kind-widget.w-dice { --tc: #8fe08a; } .hub-card.kind-widget.w-purse { --tc: #f3d58a; } .hub-card.kind-widget.w-clock { --tc: #9fb4c8; }
+.hub-widget-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 0; border: 0; flex: none; }
+.hub-widget-icon { flex: none; display: grid; place-items: center; width: 24px; height: 24px; min-width: 24px; min-height: 24px; padding: 4px; border-radius: 8px; color: var(--tc); background: color-mix(in srgb, var(--tc) 20%, rgba(0, 0, 0, .35)); }
+.hub-widget-head strong { min-width: 0; font-size: 12px; font-weight: 600; line-height: 1.2; letter-spacing: .06em; text-transform: uppercase; color: var(--h-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-widget-body { flex: 1; min-height: 0; max-height: none; display: grid; align-content: start; gap: 6px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; cursor: default; }
+.hub-widget-body::-webkit-scrollbar { display: none; }
+.hub-card.kind-widget.s-1x1 .hub-widget-body { align-content: center; justify-items: center; text-align: center; }
+.hub-widget-empty { margin: 0; font-size: 12px; line-height: 1.4; color: var(--h-faint); }
+.hub-big { display: grid; justify-items: center; gap: 2px; min-width: 0; max-width: 100%; }
+.hub-big strong { font: 600 34px/1.05 var(--font-head); letter-spacing: -.01em; color: #fff; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-big small { font-size: 12px; color: var(--h-dim); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-card.kind-widget.s-2x2 .hub-big strong { font-size: 44px; }
+.hub-avatars { display: flex; justify-content: center; gap: 4px; }
+.hub-wav .me-avatar { width: 26px; height: 26px; font-size: 12px; }
+.hub-wav.movable { cursor: grab; }
+.hub-wcard.tight { padding: 5px 8px; }
+.hub-wtext.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.hub-card.kind-widget.s-1x2 .hub-wtext.clamp { -webkit-line-clamp: 1; }
+.hub-wstatus.now { color: #7fd08a; font-weight: 600; }
+.hub-sky.one { display: grid; grid-template-columns: none; justify-items: center; gap: 2px; }
+.hub-sky.one .hub-sky-icon { font-size: 32px; }
+.hub-card.kind-widget.s-1x1 .hub-turn { padding: 0; }
+.hub-card.kind-widget.s-1x1 .hub-turn strong { font-size: 22px; }
+.hub-card.kind-widget.s-1x1 .hub-sky-time, .hub-card.kind-widget.s-1x1 .hub-turn .hub-sky-time { font-size: 28px; }
+.hub-card.kind-widget.s-2x2 .hub-sky-time { font-size: 34px; }
+.hub-die.one { width: 64px; height: 64px; border-radius: 50%; font-size: 20px; }
+.hub-wplace { color: #ffb27a; font-weight: 600; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+.hub-wplace:hover { color: #ffd2a8; text-decoration-style: solid; }
+/* the corner a widget is resized by: a bold, bright outline that follows the card's rounded corner, like the corner of an iPhone widget being dragged */
+.hub-widget-grip { position: absolute; right: 6px; bottom: 6px; width: 26px; height: 26px; z-index: 2; cursor: nwse-resize; touch-action: none; opacity: .75;
+  border: 0 solid rgba(255, 255, 255, .95); border-right-width: 4px; border-bottom-width: 4px; border-radius: 0 0 13px 0; filter: drop-shadow(0 0 5px rgba(255, 255, 255, .35)); transition: opacity .15s, transform .15s, border-color .15s; }
+.hub-widget-grip::after { content: ""; position: absolute; inset: -12px; }   /* a bigger hit area than it looks */
+.hub-card.kind-widget.editable:hover .hub-widget-grip, .hub-card.kind-widget.resizing .hub-widget-grip { opacity: 1; border-color: #fff; transform: scale(1.1); }
+.hub-card.kind-widget:not(.editable) .hub-widget-grip { display: none; }
+@media (hover: none) { .hub-card.kind-widget.editable .hub-widget-grip { opacity: 1; width: 32px; height: 32px; } }
+.hub-card.kind-widget.resizing { z-index: 50; }
+.hub-size-ghost { position: absolute; z-index: 40; pointer-events: none; border: 2px dashed #e9c27a; border-radius: 18px; background: rgba(233, 194, 122, .1); }
+/* a character dissolving into a place */
+.hub-card.kind-place.absorbing { animation: hub-absorb .9s cubic-bezier(.2, .7, .3, 1); }
+@keyframes hub-absorb { 0% { filter: drop-shadow(0 0 0 rgba(233, 194, 122, 0)); } 35% { transform: scale(1.04); filter: drop-shadow(0 0 22px rgba(233, 194, 122, .95)); } 100% { transform: scale(1); } }
+.hub-dissolve { position: absolute; z-index: 60; display: flex; align-items: center; gap: 8px; margin: -16px 0 0 -16px; pointer-events: none; color: #fff; font-weight: 600; text-shadow: 0 2px 8px rgba(0, 0, 0, .7); }
+.hub-dissolve .me-avatar { width: 32px; height: 32px; box-shadow: 0 0 20px var(--c, #e9c27a); }
+/* the Pages tab: a page dragged onto it is put away */
+.hub-dex.drop-hot { outline: 2px dashed #e9c27a; outline-offset: -8px; box-shadow: 0 0 44px rgba(233, 194, 122, .35); }
+.hub-dex-section { margin: 14px 4px 4px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--h-faint); font-weight: 600; }
+.hub-dex-del { flex: none; width: 28px; height: 28px; display: grid; place-items: center; padding: 0; font: inherit; font-size: 18px; line-height: 1; color: var(--h-dim); background: rgba(255, 255, 255, .06); border: 1px solid var(--h-line-2); border-radius: 50%; cursor: pointer; transition: background-color .15s, color .15s; }
+.hub-dex-del:hover { background: rgba(255, 90, 78, .85); color: #fff; border-color: transparent; }
+
+/* ---- motion, by the Graphics setting: Low has none; Medium and High move; High also shines. Never on a redraw, only on change. ---- */
+html[data-gfx="low"] .hub-card.kind-widget, html[data-gfx="low"] .hub-card.kind-widget.hub-enter, html[data-gfx="low"] .hub-page, html[data-gfx="low"] .hub-card.kind-place.absorbing { transition: none; animation: none; }   /* Low: nothing moves on its own */
+html[data-gfx="low"] .hub-card.kind-widget:hover { transform: none; }
+html:not([data-gfx="low"]) .hub-page.hub-enter { animation: hub-page-in .6s cubic-bezier(.2, .9, .3, 1.1) both; }
+@keyframes hub-page-in { from { opacity: 0; transform: translateY(26px) scale(.975); } }
+html:not([data-gfx="low"]) .hub-card.kind-widget { transition: width .34s cubic-bezier(.34, 1.35, .64, 1), height .34s cubic-bezier(.34, 1.35, .64, 1), transform .2s var(--h-ease), box-shadow .2s; }
+html:not([data-gfx="low"]) .hub-card.kind-widget.resizing { transition: none; }
+html:not([data-gfx="low"]) .hub-items > .settling { transition: left .32s cubic-bezier(.2, .9, .3, 1.1), top .32s cubic-bezier(.2, .9, .3, 1.1); }   /* a widget glides to where it snapped */
+html:not([data-gfx="low"]) .hub-widget-body.swap > * { animation: hub-w-in .28s cubic-bezier(.2, .9, .3, 1) both; }
+@keyframes hub-w-in { from { opacity: 0; transform: translateY(5px); } }
+html:not([data-gfx="low"]) .hub-card.kind-widget.pulse { animation: hub-w-pulse .9s ease-out; }   /* its numbers changed */
+@keyframes hub-w-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--tc) 70%, transparent), 0 14px 34px rgba(0, 0, 0, .45); } 100% { box-shadow: 0 0 0 14px transparent, 0 14px 34px rgba(0, 0, 0, .45); } }
+html:not([data-gfx="low"]) .hub-page { transition: box-shadow .25s; }
+html[data-gfx="high"] .hub-card.kind-widget::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, .07) 50%, transparent 65%); transform: translateX(-120%); animation: hub-w-sheen 9s ease-in-out infinite; }
+@keyframes hub-w-sheen { 0%, 70% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
+html[data-gfx="high"] .hub-turn.you strong { animation: hub-w-breathe 2.4s ease-in-out infinite alternate; }
+@keyframes hub-w-breathe { to { text-shadow: 0 0 18px rgba(127, 208, 138, .75); } }
+html[data-gfx="high"] .hub-page-head::after { content: ""; position: absolute; left: 56px; right: 30px; bottom: -1px; height: 1px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--pa) 80%, transparent), transparent); }
+@media (prefers-reduced-motion: reduce) {
+  .hub-page.hub-enter, .hub-widget-body.swap > *, .hub-card.kind-widget.pulse, .hub-card.kind-widget::after, .hub-turn.you strong, .hub-card.kind-place.absorbing { animation: none !important; }
+  .hub-card.kind-widget, .hub-items > .settling, .hub-page { transition: none !important; }
+}

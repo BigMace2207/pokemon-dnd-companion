@@ -48,12 +48,14 @@ const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export const GROUP_CLASS = { Conditions: "cond", "Damage types": "dmg", Skills: "stat", "Ability scores": "stat", "Schools of magic": "magic", "Weapon properties": "item", "Weapon mastery": "item", Rules: "rule", [EXTRA_GROUP]: "race" };
 
+const HAS_RULE_CHAPTERS = new Set(["2014"]);
 // Everything the Rules page lists, in order. 2014 also has the long rules chapters; 2024 does not.
 export async function docItems(edition) {
   const [conditions, skills, ref] = await Promise.all([loadSet(edition, "conditions"), loadSet(edition, "skills"), loadSet(edition, "reference")]);
   const items = [];
   let rulesNote = null;
   try {
+    if (!HAS_RULE_CHAPTERS.has(edition)) throw new Error("no chapters");   // (don't ask the server for a file that isn't there)
     const rules = await loadSet(edition, "rules");
     for (const cat of rules.categories) for (const id of cat.sections) {
       const s = rules.sections[id];

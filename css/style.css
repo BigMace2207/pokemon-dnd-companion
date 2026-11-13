@@ -126,7 +126,6 @@ body {
 @media (min-width: 781px) {
   html.nav-collapsed { --sidenav-w: 0px; }
   html.nav-collapsed .sidenav { display: none; }
-  html.nav-collapsed .lava-tower-wrap, html.nav-collapsed .lava-debris { display: none; }
 }
 
 .topbar {

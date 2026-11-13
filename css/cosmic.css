@@ -2,10 +2,11 @@
    The Cosmic theme: the Pokémon hub's look (css/hub.css) across every Pokémon D&D page. Pokémon campaigns always use
    it (js/systems/pokemon-dnd: theme "cosmic"; deviceSettings.js setForcedTheme). Near-black space with faint stars and
    a dot grid, frosted glass cards with hairline borders, white pill buttons, Space Grotesk text, Fraunces titles.
-   Loaded after style.css, so these tokens and rules win over the light, dark and lava ones.
+   Loaded after style.css, so these tokens and rules win over the light and dark ones. The D&D side's Lava theme shares
+   these rules (:is([data-theme="cosmic"], [data-theme="lava"])) and css/lava.css then warms the colours.
    =========================================================================== */
 
-:root[data-theme="cosmic"] {
+:root:is([data-theme="cosmic"], [data-theme="lava"]) {
   --bg: #09090b;
   --panel: #141416;
   --panel-alt: #1c1c20;
@@ -34,7 +35,7 @@
 }
 
 /* space: faint stars and the hub's dot grid, fixed behind every page */
-:root[data-theme="cosmic"] body {
+:root:is([data-theme="cosmic"], [data-theme="lava"]) body {
   background-color: #09090b;
   background-image: radial-gradient(ellipse at 30% 0%, #17142a 0%, #09090b 65%);
   background-attachment: fixed;
@@ -46,113 +47,112 @@
 :root[data-theme="cosmic"] #cosmicSky { display: block; }
 :root[data-theme="cosmic"]:is(.hub-full, .planner-full) #cosmicSky { display: none; }   /* those pages draw their own sky */
 .sky-layer { position: absolute; left: -60px; right: -60px; top: -520px; bottom: -60px; background-repeat: repeat; will-change: transform; backface-visibility: hidden; }
-:root[data-theme="cosmic"] #lavaFx, :root[data-theme="cosmic"] .lava-tower-wrap, :root[data-theme="cosmic"] .lava-debris, :root[data-theme="cosmic"] #themeToggle { display: none !important; }
 
 /* top bar and menu */
-:root[data-theme="cosmic"] .topbar { background: rgba(12, 12, 14, .72); border-bottom: 1px solid var(--c-line); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
-:root[data-theme="cosmic"] .brand-text { font-weight: 400; font-size: calc(26px * var(--s)); letter-spacing: -.01em; }
-:root[data-theme="cosmic"] .brand-logo { filter: none; }
-:root[data-theme="cosmic"] .nav-toggle { width: 40px; height: 40px; padding: 0; border-radius: 50%; border: 1px solid var(--c-line); background: var(--c-glass); color: var(--text-dim); transition: color .15s, background-color .15s, transform .15s var(--c-ease); }
-:root[data-theme="cosmic"] .nav-toggle:hover { color: var(--text); background: rgba(255, 255, 255, .08); transform: translateY(-1px); }
-:root[data-theme="cosmic"] .account-chip { margin-left: auto !important; }
-:root[data-theme="cosmic"] .account-chip-btn { border-radius: 999px; border-color: var(--c-line); background: var(--c-glass); }
-:root[data-theme="cosmic"] .account-chip-avatar { background: #fff; color: #0b0b0c; }
-:root[data-theme="cosmic"] .account-chip-menu { background: rgba(18, 18, 20, .96); border: 1px solid var(--c-line-2); border-radius: 16px; box-shadow: 0 24px 60px rgba(0, 0, 0, .55); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .topbar { background: rgba(12, 12, 14, .72); border-bottom: 1px solid var(--c-line); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .brand-text { font-weight: 400; font-size: calc(26px * var(--s)); letter-spacing: -.01em; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .brand-logo { filter: none; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .nav-toggle { width: 40px; height: 40px; padding: 0; border-radius: 50%; border: 1px solid var(--c-line); background: var(--c-glass); color: var(--text-dim); transition: color .15s, background-color .15s, transform .15s var(--c-ease); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .nav-toggle:hover { color: var(--text); background: rgba(255, 255, 255, .08); transform: translateY(-1px); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .account-chip { margin-left: auto !important; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .account-chip-btn { border-radius: 999px; border-color: var(--c-line); background: var(--c-glass); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .account-chip-avatar { background: #fff; color: #0b0b0c; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .account-chip-menu { background: rgba(18, 18, 20, .96); border: 1px solid var(--c-line-2); border-radius: 16px; box-shadow: 0 24px 60px rgba(0, 0, 0, .55); }
 
 /* headings */
-:root[data-theme="cosmic"] :is(h1.view-title, .brand-text) { font-family: var(--font-head); }
-:root[data-theme="cosmic"] h1.view-title { font-weight: 400; font-size: calc(52px * var(--s)); letter-spacing: -.02em; line-height: 1.05; margin-bottom: calc(8px * var(--s)); }
-:root[data-theme="cosmic"] .view-sub { font-size: calc(17px * var(--s)); }
-:root[data-theme="cosmic"] :is(h2, h3, h4, h5) { font-family: "Space Grotesk", system-ui, sans-serif; font-weight: 600; letter-spacing: -.01em; font-variant: normal; text-transform: none; }
-:root[data-theme="cosmic"] .detail-header .name { font-family: var(--font-head); font-weight: 400; font-size: calc(40px * var(--s)); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(h1.view-title, .brand-text) { font-family: var(--font-head); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) h1.view-title { font-weight: 400; font-size: calc(52px * var(--s)); letter-spacing: -.02em; line-height: 1.05; margin-bottom: calc(8px * var(--s)); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .view-sub { font-size: calc(17px * var(--s)); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(h2, h3, h4, h5) { font-family: "Space Grotesk", system-ui, sans-serif; font-weight: 600; letter-spacing: -.01em; font-variant: normal; text-transform: none; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .detail-header .name { font-family: var(--font-head); font-weight: 400; font-size: calc(40px * var(--s)); }
 
 /* cards: frosted glass, no gold corners */
-:root[data-theme="cosmic"] .card {
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .card {
   background: var(--c-glass); border: 1px solid var(--c-line); border-radius: 20px; box-shadow: 0 18px 50px rgba(0, 0, 0, .35);
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
 }
-:root[data-theme="cosmic"] .card::before, :root[data-theme="cosmic"] .card::after { display: none; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .card::before, :root:is([data-theme="cosmic"], [data-theme="lava"]) .card::after { display: none; }
 
 /* form fields */
-:root[data-theme="cosmic"] :is(input, select, textarea) { background: #0e0e10; color: var(--text); border: 1px solid var(--c-line-2); border-radius: 12px; font-family: var(--font-body); transition: border-color .15s, box-shadow .15s; }
-:root[data-theme="cosmic"] :is(input, select, textarea):focus { outline: none; border-color: rgba(255, 255, 255, .45); box-shadow: 0 0 0 3px rgba(255, 255, 255, .08); }
-:root[data-theme="cosmic"] :is(input[type="checkbox"], input[type="radio"], input[type="range"]) { accent-color: #fff; }
-:root[data-theme="cosmic"] input[type="color"] { padding: 2px; }
-:root[data-theme="cosmic"] label.field { font-size: calc(16px * var(--s)); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(input, select, textarea) { background: #0e0e10; color: var(--text); border: 1px solid var(--c-line-2); border-radius: 12px; font-family: var(--font-body); transition: border-color .15s, box-shadow .15s; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(input, select, textarea):focus { outline: none; border-color: rgba(255, 255, 255, .45); box-shadow: 0 0 0 3px rgba(255, 255, 255, .08); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(input[type="checkbox"], input[type="radio"], input[type="range"]) { accent-color: #fff; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) input[type="color"] { padding: 2px; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) label.field { font-size: calc(16px * var(--s)); }
 
 /* buttons: white pills; secondary ones are glass */
-:root[data-theme="cosmic"] button.btn {
+:root:is([data-theme="cosmic"], [data-theme="lava"]) button.btn {
   background: #fafafa; color: #0b0b0c; border: 1px solid #fafafa; border-radius: 999px; box-shadow: none;
   font-family: var(--font-body); font-weight: 600; letter-spacing: 0; transition: background-color .15s, color .15s, transform .15s var(--c-ease), opacity .15s;
 }
-:root[data-theme="cosmic"] button.btn:hover { background: #e4e4e7; border-color: #e4e4e7; }
-:root[data-theme="cosmic"] button.btn:active { transform: scale(.97); }
-:root[data-theme="cosmic"] button.btn.secondary { background: var(--c-glass); color: var(--text); border: 1px solid var(--c-line-2); }
-:root[data-theme="cosmic"] button.btn.secondary:hover { background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .3); }
-:root[data-theme="cosmic"] button.btn.danger { background: #dc2626; border-color: #dc2626; color: #fff; }
-:root[data-theme="cosmic"] .pill-btn { font-family: var(--font-body); font-weight: 600; font-size: calc(15px * var(--s)); background: var(--c-glass); border: 1px solid var(--c-line); color: var(--text-dim); transition: color .15s, background-color .15s; }
-:root[data-theme="cosmic"] .pill-btn:hover { color: var(--text); background: rgba(255, 255, 255, .07); }
-:root[data-theme="cosmic"] .pill-btn.active { background: #fff; color: #0b0b0c; border-color: #fff; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) button.btn:hover { background: #e4e4e7; border-color: #e4e4e7; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) button.btn:active { transform: scale(.97); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) button.btn.secondary { background: var(--c-glass); color: var(--text); border: 1px solid var(--c-line-2); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) button.btn.secondary:hover { background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .3); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) button.btn.danger { background: #dc2626; border-color: #dc2626; color: #fff; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .pill-btn { font-family: var(--font-body); font-weight: 600; font-size: calc(15px * var(--s)); background: var(--c-glass); border: 1px solid var(--c-line); color: var(--text-dim); transition: color .15s, background-color .15s; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .pill-btn:hover { color: var(--text); background: rgba(255, 255, 255, .07); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .pill-btn.active { background: #fff; color: #0b0b0c; border-color: #fff; }
 
 /* tables */
-:root[data-theme="cosmic"] .table-wrap { border: 1px solid var(--c-line); border-radius: 16px; background: rgba(10, 10, 12, .5); }
-:root[data-theme="cosmic"] table.data-table th { background: #141416; color: var(--text-dim); font-family: var(--font-body); font-weight: 600; font-size: calc(14px * var(--s)); text-transform: uppercase; letter-spacing: .06em; }
-:root[data-theme="cosmic"] table.data-table :is(th, td) { border-color: var(--c-line); }
-:root[data-theme="cosmic"] table.data-table tr:hover td { background: rgba(255, 255, 255, .04); }
-:root[data-theme="cosmic"] table.data-table tr.hi td { background: rgba(255, 255, 255, .09); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .table-wrap { border: 1px solid var(--c-line); border-radius: 16px; background: rgba(10, 10, 12, .5); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) table.data-table th { background: #141416; color: var(--text-dim); font-family: var(--font-body); font-weight: 600; font-size: calc(14px * var(--s)); text-transform: uppercase; letter-spacing: .06em; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) table.data-table :is(th, td) { border-color: var(--c-line); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) table.data-table tr:hover td { background: rgba(255, 255, 255, .04); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) table.data-table tr.hi td { background: rgba(255, 255, 255, .09); }
 
 /* banners, stat bars, chips */
-:root[data-theme="cosmic"] .result-banner { border-radius: 14px; font-family: var(--font-body); font-variant: normal; }
-:root[data-theme="cosmic"] .stat-bars .bar-bg { background: rgba(255, 255, 255, .06); border: 0; border-radius: 999px; }
-:root[data-theme="cosmic"] .stat-bars .bar-fill { background: linear-gradient(90deg, #8ab4ff, #c4b5fd); border-radius: 999px; }
-:root[data-theme="cosmic"] .type-pill { border-radius: 999px; font-family: var(--font-body); font-weight: 700; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .result-banner { border-radius: 14px; font-family: var(--font-body); font-variant: normal; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .stat-bars .bar-bg { background: rgba(255, 255, 255, .06); border: 0; border-radius: 999px; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .stat-bars .bar-fill { background: linear-gradient(90deg, #8ab4ff, #c4b5fd); border-radius: 999px; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .type-pill { border-radius: 999px; font-family: var(--font-body); font-weight: 700; }
 
 /* the battle screen */
-:root[data-theme="cosmic"] .battle-scene { border-radius: 22px; border: 1px solid var(--c-line); box-shadow: 0 24px 70px rgba(0, 0, 0, .5); }
-:root[data-theme="cosmic"] .battle-hud { background: rgba(14, 14, 16, .82); border: 1px solid var(--c-line-2); border-radius: 14px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
-:root[data-theme="cosmic"] .battle-hpbar-bg { background: rgba(255, 255, 255, .08); border: 0; border-radius: 999px; }
-:root[data-theme="cosmic"] .battle-hpbar-fill { border-radius: 999px; }
-:root[data-theme="cosmic"] .battle-textbox { background: rgba(14, 14, 16, .9); border: 1px solid var(--c-line-2); border-radius: 20px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 18px 50px rgba(0, 0, 0, .45); }
-:root[data-theme="cosmic"] .battle-menu-btn { background: #fafafa; color: #0b0b0c; border: 0; border-radius: 16px; box-shadow: none; font-family: var(--font-body); font-weight: 700; transition: background-color .15s, transform .15s var(--c-ease); }
-:root[data-theme="cosmic"] .battle-menu-btn:hover { background: #e4e4e7; }
-:root[data-theme="cosmic"] .battle-menu-btn.move { background: var(--c-glass); color: var(--text); border: 1px solid var(--c-line-2); }
-:root[data-theme="cosmic"] .battle-menu-btn.move:hover { background: rgba(255, 255, 255, .08); }
-:root[data-theme="cosmic"] .battle-status { background: rgba(248, 113, 113, .15); color: #fca5a5; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .battle-scene { border-radius: 22px; border: 1px solid var(--c-line); box-shadow: 0 24px 70px rgba(0, 0, 0, .5); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .battle-hud { background: rgba(14, 14, 16, .82); border: 1px solid var(--c-line-2); border-radius: 14px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .battle-hpbar-bg { background: rgba(255, 255, 255, .08); border: 0; border-radius: 999px; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .battle-hpbar-fill { border-radius: 999px; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .battle-textbox { background: rgba(14, 14, 16, .9); border: 1px solid var(--c-line-2); border-radius: 20px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 18px 50px rgba(0, 0, 0, .45); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .battle-menu-btn { background: #fafafa; color: #0b0b0c; border: 0; border-radius: 16px; box-shadow: none; font-family: var(--font-body); font-weight: 700; transition: background-color .15s, transform .15s var(--c-ease); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .battle-menu-btn:hover { background: #e4e4e7; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .battle-menu-btn.move { background: var(--c-glass); color: var(--text); border: 1px solid var(--c-line-2); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .battle-menu-btn.move:hover { background: rgba(255, 255, 255, .08); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .battle-status { background: rgba(248, 113, 113, .15); color: #fca5a5; }
 
 /* popups, the settings tabs, the floating dock */
-:root[data-theme="cosmic"] .modal-box { background: rgba(18, 18, 20, .96); border: 1px solid var(--c-line-2); border-radius: 22px; box-shadow: 0 30px 80px rgba(0, 0, 0, .6); }
-:root[data-theme="cosmic"] .modal-overlay { background: rgba(0, 0, 0, .6); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
-:root[data-theme="cosmic"] .settings-tabs .pill-btn { margin-right: 4px; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .modal-box { background: rgba(18, 18, 20, .96); border: 1px solid var(--c-line-2); border-radius: 22px; box-shadow: 0 30px 80px rgba(0, 0, 0, .6); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .modal-overlay { background: rgba(0, 0, 0, .6); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .settings-tabs .pill-btn { margin-right: 4px; }
 
 /* scrollbars */
-:root[data-theme="cosmic"] * { scrollbar-color: rgba(255, 255, 255, .18) transparent; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) * { scrollbar-color: rgba(255, 255, 255, .18) transparent; }
 
 /* the dice and bag buttons: dark glass circles with white line icons; white when their panel is open */
-:root[data-theme="cosmic"] :is(.dice-widget-btn, .quick-console-btn) {
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(.dice-widget-btn, .quick-console-btn) {
   background: rgba(24, 24, 27, .82); color: #e4e4e7; border: 1px solid var(--c-line-2); box-shadow: 0 14px 34px rgba(0, 0, 0, .45);
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); transition: background-color .15s, color .15s, transform .15s var(--c-ease);
 }
-:root[data-theme="cosmic"] :is(.dice-widget-btn, .quick-console-btn):hover { background: rgba(40, 40, 44, .92); color: #fff; transform: translateY(-2px); }
-:root[data-theme="cosmic"] :is(.dice-widget-btn, .quick-console-btn):active { transform: scale(.94); }
-:root[data-theme="cosmic"] :is(.dice-widget-btn.open, .quick-console-btn.open) { background: #fff; color: #0b0b0c; border-color: #fff; }
-:root[data-theme="cosmic"] .dock-text { display: none; }
-:root[data-theme="cosmic"] .dock-icon { display: grid; place-items: center; width: 46%; height: 46%; }
-:root[data-theme="cosmic"] .dock-icon svg { width: 100%; height: 100%; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(.dice-widget-btn, .quick-console-btn):hover { background: rgba(40, 40, 44, .92); color: #fff; transform: translateY(-2px); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(.dice-widget-btn, .quick-console-btn):active { transform: scale(.94); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(.dice-widget-btn.open, .quick-console-btn.open) { background: #fff; color: #0b0b0c; border-color: #fff; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .dock-text { display: none; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .dock-icon { display: grid; place-items: center; width: 46%; height: 46%; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .dock-icon svg { width: 100%; height: 100%; }
 @media (prefers-reduced-motion: no-preference) {
-  :root[data-theme="cosmic"] .dice-widget-btn:hover .dock-icon { animation: cosmic-roll .5s var(--c-ease); }
-  :root[data-theme="cosmic"] .quick-console-btn:hover .dock-icon { animation: cosmic-sway .5s var(--c-ease); }
+  :root:is([data-theme="cosmic"], [data-theme="lava"]) .dice-widget-btn:hover .dock-icon { animation: cosmic-roll .5s var(--c-ease); }
+  :root:is([data-theme="cosmic"], [data-theme="lava"]) .quick-console-btn:hover .dock-icon { animation: cosmic-sway .5s var(--c-ease); }
 }
 @keyframes cosmic-roll { from { transform: rotate(0); } to { transform: rotate(180deg); } }
 @keyframes cosmic-sway { 0%, 100% { transform: rotate(0); } 30% { transform: rotate(-10deg); } 65% { transform: rotate(6deg); } }
 /* and the panels they open */
-:root[data-theme="cosmic"] :is(.dice-widget-panel, .quick-console-panel) {
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(.dice-widget-panel, .quick-console-panel) {
   background: rgba(16, 16, 19, .94); border: 1px solid var(--c-line-2); border-radius: 22px; box-shadow: 0 30px 80px rgba(0, 0, 0, .55);
   backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
 }
-:root[data-theme="cosmic"] .dice-widget-die { background: rgba(255, 255, 255, .05); border: 1px solid var(--c-line-2); border-radius: 14px; font-family: var(--font-body); transition: background-color .15s, color .15s; }
-:root[data-theme="cosmic"] .dice-widget-die:hover { background: #fff; color: #0b0b0c; }
-:root[data-theme="cosmic"] .dice-widget-result { color: #fff; }
-:root[data-theme="cosmic"] .quick-console-header strong { font-family: var(--font-head); font-weight: 400; font-size: calc(24px * var(--s)); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .dice-widget-die { background: rgba(255, 255, 255, .05); border: 1px solid var(--c-line-2); border-radius: 14px; font-family: var(--font-body); transition: background-color .15s, color .15s; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .dice-widget-die:hover { background: #fff; color: #0b0b0c; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .dice-widget-result { color: #fff; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .quick-console-header strong { font-family: var(--font-head); font-weight: 400; font-size: calc(24px * var(--s)); }
 
 /* ---- Rayquaza, a constellation in the cosmic sky (js/constellation.js), drawn like a star chart: a faint glowing
    outline of the figure, gold four-point stars along its body joined by one thin line ---- */
@@ -255,7 +255,7 @@ html.m .neb-shard:nth-child(2n) { display: none; }   /* fewer on a phone */
 :root[data-gfx="low"] :is(.hub-comet, .hub-trail) { display: none; }
 :root[data-gfx="low"] .hub-edge > span > i { animation: none !important; }
 /* without the blur, the see-through cards need a solid dark fill so their text stays readable over the sky */
-:root[data-theme="cosmic"]:is([data-gfx="medium"], [data-gfx="low"]) :is(.card, .table-wrap, .pull-panel, .pl-drawer, .hub-drawer, .hub-dex, .hub-people-drop) { background-color: rgba(20, 20, 24, .93); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]):is([data-gfx="medium"], [data-gfx="low"]) :is(.card, .table-wrap, .pull-panel, .pl-drawer, .hub-drawer, .hub-dex, .hub-people-drop) { background-color: rgba(20, 20, 24, .93); }
 
 /* One constellation at a time (js/constellation.js cycleConstellations): fades in, stays a few seconds, fades out */
 .constellation.cycle { opacity: 0; transition: opacity 1.6s ease-in-out; }

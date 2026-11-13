@@ -890,7 +890,7 @@ export function renderBattleView(container, state, options = {}) {
   }
 
   poll();
-  registerIntervalFn(setInterval(poll, POLL_MS));
+  registerIntervalFn(setInterval(() => { if (!document.hidden) poll(); }, POLL_MS));
   // the embedding page (Battle Control) asks for a fresh look right after it changes the battle itself
   return { refresh: () => { lastSnapshot = null; return poll(); } };
 }

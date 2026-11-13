@@ -13,10 +13,11 @@
       0.15s for colour and opacity, 0.5s for movement; titles arrive with a short blur-in once.
 
    Sizes are nudged 5% larger (vvd's 16.8px root), which reads better for small text on a dark page.
-   Loaded after cosmic.css and hub.css, so these win; nothing here affects the D&D system's themes.
+   Loaded after cosmic.css and hub.css, so these win. The D&D side's Lava theme shares these rules too (css/lava.css
+   warms the colours).
    =========================================================================== */
 
-:root[data-theme="cosmic"] {
+:root:is([data-theme="cosmic"], [data-theme="lava"]) {
   --s: .861;
   /* the text ladder: one white at fixed opacities, so it reads the same over stars, maps or panels */
   --v-1: #ffffff;
@@ -42,11 +43,11 @@
   --c-line-2: var(--v-hair-2);
   --radius: 20px;
 }
-@media (min-width: 2400px) { :root[data-theme="cosmic"] { --s: 1.008; } }
-@media (max-width: 900px) { :root[data-theme="cosmic"] { --s: 1.05; } }
+@media (min-width: 2400px) { :root:is([data-theme="cosmic"], [data-theme="lava"]) { --s: 1.008; } }
+@media (max-width: 900px) { :root:is([data-theme="cosmic"], [data-theme="lava"]) { --s: 1.05; } }
 
 /* the hub uses its own tokens: same ladder, same glass */
-:root[data-theme="cosmic"] .hub, :root[data-theme="cosmic"] .pl-wb {
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .hub, :root:is([data-theme="cosmic"], [data-theme="lava"]) .pl-wb {
   --h-text: var(--v-1); --h-dim: var(--v-4); --h-faint: var(--v-5);
   --h-glass: var(--v-glass); --h-line: var(--v-hair); --h-line-2: var(--v-hair-2);
   --h-ease: var(--v-ease);
@@ -54,55 +55,55 @@
 }
 
 /* ---- 3. type: the serif tells the story, the grotesk runs the tools ---- */
-:root[data-theme="cosmic"] h1.view-title { font-weight: 400; letter-spacing: -.025em; line-height: 1.02; font-size: calc(54px * var(--s)); font-optical-sizing: auto; }
-:root[data-theme="cosmic"] .view-sub { color: var(--v-4); }
-:root[data-theme="cosmic"] :is(h2, h3, h4, h5) { color: var(--v-1); }
-:root[data-theme="cosmic"] :is(.hub-title strong, .pull-head strong, .pl-drawer-head h3, .hub-map-head strong) { font-family: var(--font-head); font-weight: 400; letter-spacing: -.02em; }
-:root[data-theme="cosmic"] :is(label, .field > span, .kv-table td:first-child, .hub-menu-note, .hub-hint) { color: var(--v-4); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) h1.view-title { font-weight: 400; letter-spacing: -.025em; line-height: 1.02; font-size: calc(54px * var(--s)); font-optical-sizing: auto; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .view-sub { color: var(--v-4); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(h2, h3, h4, h5) { color: var(--v-1); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(.hub-title strong, .pull-head strong, .pl-drawer-head h3, .hub-map-head strong) { font-family: var(--font-head); font-weight: 400; letter-spacing: -.02em; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(label, .field > span, .kv-table td:first-child, .hub-menu-note, .hub-hint) { color: var(--v-4); }
 /* small labels get a touch of positive tracking; big type gets negative (size-specific tracking) */
-:root[data-theme="cosmic"] :is(.hub-eyebrow, .bc-side-name, .dmo-side-name, .hub-bag-sec h4, .hub-map-legend h4) { letter-spacing: .08em; color: var(--v-5); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(.hub-eyebrow, .bc-side-name, .dmo-side-name, .hub-bag-sec h4, .hub-map-legend h4) { letter-spacing: .08em; color: var(--v-5); }
 
 /* ---- 2. glass sheets, not drop shadows ---- */
-:root[data-theme="cosmic"] .card,
-:root[data-theme="cosmic"] :is(.dmo-panel, .bc-bar, .cc-option, .hub-dex, .hub-bag-drop, .hub-people-drop, .hub-menu, .hub-hover, .hub-map-full, .modal-box, .account-chip-menu, .bc-drawer, .pull-panel) {
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .card,
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(.dmo-panel, .bc-bar, .cc-option, .hub-dex, .hub-bag-drop, .hub-people-drop, .hub-menu, .hub-hover, .hub-map-full, .modal-box, .account-chip-menu, .bc-drawer, .pull-panel) {
   box-shadow: none;
   border-color: var(--v-hair-2);
 }
-:root[data-theme="cosmic"] .card { background: rgba(255, 255, 255, .05); border: 1px solid var(--v-hair); border-radius: 20px; }
-:root[data-theme="cosmic"] :is(.hub-menu, .hub-hover, .hub-dex, .hub-bag-drop, .hub-people-drop, .account-chip-menu, .modal-box, .bc-drawer, .level-ask) {
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .card { background: rgba(255, 255, 255, .05); border: 1px solid var(--v-hair); border-radius: 20px; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(.hub-menu, .hub-hover, .hub-dex, .hub-bag-drop, .hub-people-drop, .account-chip-menu, .modal-box, .bc-drawer, .level-ask) {
   background: rgba(23, 23, 23, .9);
   backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%);
 }
-:root[data-theme="cosmic"] :is(.hub-toolbar, .hub-subbar, .hub-quick, .hub-zoom, .hub-team, .hub-me, .hub-title, .hub-people, .hub-round, .hub-sendto) { box-shadow: none; }
-:root[data-theme="cosmic"] .battle-scene, :root[data-theme="cosmic"] .battle-textbox { box-shadow: none; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(.hub-toolbar, .hub-subbar, .hub-quick, .hub-zoom, .hub-team, .hub-me, .hub-title, .hub-people, .hub-round, .hub-sendto) { box-shadow: none; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .battle-scene, :root:is([data-theme="cosmic"], [data-theme="lava"]) .battle-textbox { box-shadow: none; }
 /* the hub's cards: glass tinted by the type colour, a hairline, no heavy shadow */
-:root[data-theme="cosmic"] .hub-card { box-shadow: none; border-width: 1px; }
-:root[data-theme="cosmic"] .hub-card:hover { box-shadow: none; }
-:root[data-theme="cosmic"] .hub-note { box-shadow: 0 4px 12px -8px rgba(0, 0, 0, .6); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .hub-card { box-shadow: none; border-width: 1px; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .hub-card:hover { box-shadow: none; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .hub-note { box-shadow: 0 4px 12px -8px rgba(0, 0, 0, .6); }
 
 /* ---- 1. monochrome chrome: white pills for the main action, glass for the rest ---- */
-:root[data-theme="cosmic"] :is(button.btn, .hub-pill.solid, .bc-next) { background: #fff; color: #171717; border-color: #fff; }
-:root[data-theme="cosmic"] :is(button.btn.secondary, .hub-pill:not(.solid)) { background: rgba(255, 255, 255, .05); color: var(--v-1); border: 1px solid var(--v-hair-2); }
-:root[data-theme="cosmic"] .hub-tool.on, :root[data-theme="cosmic"] .hub-quick .hub-tool.on, :root[data-theme="cosmic"] .cc-option.active, :root[data-theme="cosmic"] .bc-phases button.on { background: #fff; color: #171717; }
-:root[data-theme="cosmic"] .pill-btn.active { background: #fff; color: #171717; border-color: #fff; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(button.btn, .hub-pill.solid, .bc-next) { background: #fff; color: #171717; border-color: #fff; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(button.btn.secondary, .hub-pill:not(.solid)) { background: rgba(255, 255, 255, .05); color: var(--v-1); border: 1px solid var(--v-hair-2); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .hub-tool.on, :root:is([data-theme="cosmic"], [data-theme="lava"]) .hub-quick .hub-tool.on, :root:is([data-theme="cosmic"], [data-theme="lava"]) .cc-option.active, :root:is([data-theme="cosmic"], [data-theme="lava"]) .bc-phases button.on { background: #fff; color: #171717; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .pill-btn.active { background: #fff; color: #171717; border-color: #fff; }
 /* the red stays only where something is live or needs attention */
-:root[data-theme="cosmic"] .nav-item.active { color: var(--v-1); }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) .nav-item.active { color: var(--v-1); }
 
 /* ---- 4. one feedback curve; presses respond on the press ---- */
-:root[data-theme="cosmic"] :is(button, .hub-tool, .hub-pill, .cc-option, .bc-rail-btn, .hub-round, .hub-bag-item, .hub-team-mon, .hub-me) {
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(button, .hub-tool, .hub-pill, .cc-option, .bc-rail-btn, .hub-round, .hub-bag-item, .hub-team-mon, .hub-me) {
   transition-timing-function: var(--v-ease);
   transition-duration: .15s;
 }
-:root[data-theme="cosmic"] :is(button.btn, .hub-pill, .hub-tool, .hub-round, .cc-option, .bc-rail-btn, .battle-menu-btn):active { transform: scale(.97); transition-duration: .1s; }
+:root:is([data-theme="cosmic"], [data-theme="lava"]) :is(button.btn, .hub-pill, .hub-tool, .hub-round, .cc-option, .bc-rail-btn, .battle-menu-btn):active { transform: scale(.97); transition-duration: .1s; }
 
 /* titles arrive with a short blur-in, once, when a page opens (never on a refresh: they're only created on open) */
 @media (prefers-reduced-motion: no-preference) {
-  :root[data-theme="cosmic"] .main.v-enter > h1.view-title { animation: v-blur-in .6s var(--v-ease) both; }
-  :root[data-theme="cosmic"] .main.v-enter > .view-sub { animation: v-blur-in .6s var(--v-ease) .08s both; }
+  :root:is([data-theme="cosmic"], [data-theme="lava"]) .main.v-enter > h1.view-title { animation: v-blur-in .6s var(--v-ease) both; }
+  :root:is([data-theme="cosmic"], [data-theme="lava"]) .main.v-enter > .view-sub { animation: v-blur-in .6s var(--v-ease) .08s both; }
 }
 @keyframes v-blur-in { from { opacity: 0; filter: blur(10px); transform: translateY(6px); } to { opacity: 1; filter: none; transform: none; } }
 
 /* reduced transparency: solid surfaces, no blur */
 @media (prefers-reduced-transparency: reduce) {
-  :root[data-theme="cosmic"] :is(.hub-menu, .hub-hover, .hub-dex, .hub-bag-drop, .hub-people-drop, .modal-box, .bc-drawer, .hub-toolbar, .hub-quick, .card) { background: #171717; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  :root:is([data-theme="cosmic"], [data-theme="lava"]) :is(.hub-menu, .hub-hover, .hub-dex, .hub-bag-drop, .hub-people-drop, .modal-box, .bc-drawer, .hub-toolbar, .hub-quick, .card) { background: #171717; backdrop-filter: none; -webkit-backdrop-filter: none; }
 }

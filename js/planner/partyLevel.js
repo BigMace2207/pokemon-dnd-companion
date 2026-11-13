@@ -50,3 +50,25 @@ export async function currentEncounterLevel() {
   if (fromRoster) { cached = out; cachedAt = Date.now(); }   // a failed lookup is tried again next time
   return out;
 }
+
+// ---- a D&D party: how many characters and their average level (the DM's roster carries each player's character)
+let dndCached = null, dndCachedAt = 0;
+/** { level, size, players } for a D&D encounter: the online players' characters (not the DM's), or, when the roster
+ *  can't be read (not the DM), just your own character with a party of four. */
+export async function currentDndParty(ownLevel = 0) {
+  if (dndCached && Date.now() - dndCachedAt < 60000) return dndCached;
+  let levels = [];
+  try {
+    const token = getDmToken() || "";
+    const roster = token ? await getRoster(token) : null;
+    if (Array.isArray(roster)) {
+      const me = loadSave()?.networkId;
+      levels = roster.filter((r) => !r.dm && r.id !== me && r.online && r.dnd?.level).map((r) => r.dnd.level);
+    }
+  } catch { levels = []; }
+  const out = levels.length
+    ? { level: Math.max(1, Math.min(20, Math.round(levels.reduce((a, b) => a + b, 0) / levels.length))), size: Math.min(8, levels.length), players: levels.length }
+    : { level: Math.max(1, Math.min(20, ownLevel || 3)), size: 4, players: 0 };
+  if (levels.length) { dndCached = out; dndCachedAt = Date.now(); }
+  return out;
+}

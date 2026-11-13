@@ -31,8 +31,11 @@ async function mapImageUrl(m) {
   if (m.fileId) return fileUrl(m.fileId);
   return getImage(m.id).catch(() => null);
 }
-import { publishPartyMap, updatePartyMapLive, clearPartyMap, getRoster, getPartyMap, moveOnMap, setMapFog } from "../network.js";
-import { drawFog } from "../mapView.js";
+import { publishPartyMap, updatePartyMapLive, clearPartyMap, getRoster, getPartyMap, moveOnMap, setMapFog, setMapAreas } from "../network.js";
+import { drawFog, areaPoints, areaDraft, mapGrid, colName, areaAt, gridRef } from "../mapView.js";
+import { placeNodes, placeOnMaps, pinFields, nodeForPin } from "./places.js";
+import { syncPlacePins } from "./placeSync.js";
+import { mountMapChrome } from "./mapChrome.js";
 import { wheelIntent, wheelPx } from "../wheelIntent.js";
 
 // Shrink a map image so it is small enough to share with the table (a JPEG up to 1600 px on its longest side).
@@ -51,6 +54,7 @@ async function shrinkImage(dataUrl, max = 1600, limit = 2_300_000) {
 const ICONS = [["●", "Pin"], ["⌂", "Town"], ["♖", "Castle / gym"], ["☠", "Danger"], ["◆", "Treasure"], ["!", "Quest"], ["▲", "Camp / cave"], ["⚔", "Battle"], ["≈", "Water"], ["✚", "Healing / Poké Center"], ["?", "Mystery"], ["★", "Important"]];
 const COLORS = [["#ff4a22", "Red"], ["#f0b45a", "Gold"], ["#6fcf6a", "Green"], ["#5aa8f0", "Blue"], ["#c27aef", "Purple"], ["#f0f0f0", "White"], ["#9a8a7a", "Grey"]];
 const MAX_BYTES = 25 * 1024 * 1024;
+const AREA_COLOURS = ["#d9a032", "#c8402f", "#4f8f4a", "#3d86d6", "#8b5cc4", "#e07a22", "#1d9a99", "#9a5b32"];   // gold, red, green, blue... for new areas (strong enough to read on a pale map)
 
 export function renderMapsTab(panel, shared = {}, arg = null) {
   const dm = !!shared.dm;
@@ -62,6 +66,10 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
   let showLabels = true;
   let imageUrl = null;
   const view = { x: 0, y: 0, k: 1, fit: 1 };
+  // The D&D editor: the map fills the page and a toolbar runs along the bottom (js/planner/mapChrome.js).
+  const dndUi = !!(shared.hubLayout && shared.system === "dnd5e");
+  let chrome = null;
+  const changed = () => chrome?.refresh();
 
   const listHost = el("div", { class: "dnd-list" });
   const viewerHost = el("div", { class: "pl-map-viewer" });
@@ -121,13 +129,63 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
       if (m && t) { try { await updatePartyMapLive(t, m.pins, tokens); } catch { /* offline: it goes next time */ } }
     }, 350);
   };
-  const patchMap = (id, fn) => { mutatePlan((p) => { const m = p.maps.find((x) => x.id === id); if (m) fn(m); }); if (dm) pushLive(); };
+  const patchMap = (id, fn) => { mutatePlan((p) => { const m = p.maps.find((x) => x.id === id); if (m) fn(m); }); if (dndUi) syncPinAreas(); if (dm) pushLive(); };
+
+  // ------------------------------------------------------------ places (D&D): Whiteboard cards dragged onto the map as labels
+  // A label remembers the area it is in (only if it is in one) so the Whiteboard card can say so; players are told the area
+  // from the live map when they open the label (js/hubMap.js).
+  function syncPinAreas() {
+    const m = current();
+    if (!m || !dm) return;
+    const areas = m.shared && live ? live.areas || [] : [];
+    const changes = m.pins.map((p) => [p.id, areaAt({ areas }, p.x, p.y)?.name || ""]).filter(([id, name]) => (m.pins.find((p) => p.id === id).area || "") !== name);
+    if (!changes.length) return;
+    mutatePlan((pl) => {
+      const mm = pl.maps.find((x) => x.id === m.id);
+      for (const [id, name] of changes) { const pin = mm?.pins.find((q) => q.id === id); if (!pin) continue; if (name) pin.area = name; else delete pin.area; }
+    });
+  }
+  // Drop a place on the map: a label linked to it (or move the one already here). Hidden from players until revealed.
+  function placeOnMap(nodeId, pt) {
+    const m = current();
+    const found = placeNodes(getPlan()).find(({ node }) => node.id === nodeId);
+    if (!m || !found) return;
+    const at = { x: clamp01(pt.x), y: clamp01(pt.y) };
+    const here = m.pins.find((p) => p.placeId === nodeId);
+    let pinId = here?.id;
+    if (here) patchMap(m.id, (x) => { const r = x.pins.find((q) => q.id === here.id); if (r) Object.assign(r, at); });
+    else { pinId = uid(); patchMap(m.id, (x) => { x.pins.push({ id: pinId, ...at, ...pinFields(found.node), revealed: false, placeId: nodeId }); }); }
+    // the card remembers where it is, so its pin button opens the map there
+    mutatePlan((p) => { const n = p.boards.find((b) => b.id === found.board.id)?.nodes.find((x) => x.id === nodeId); if (n) n.mapLink = { mapId: m.id, pinId }; });
+    viewerHost.__redraw?.(); drawList(); changed();
+    toast(here ? `Moved ${found.node.title || "the place"}.` : `${found.node.title || "The place"} is on the map, hidden from players until you show it.`);
+  }
+  // Take a place's label off this map (the card on the Whiteboard stays).
+  function removePlacePin(pinId) {
+    const m = current(), pin = m?.pins.find((p) => p.id === pinId);
+    if (!m || !pin) return;
+    patchMap(m.id, (x) => { x.pins = x.pins.filter((q) => q.id !== pinId); });
+    if (pin.placeId) mutatePlan((p) => { for (const b of p.boards) for (const n of b.nodes) if (n.id === pin.placeId && n.mapLink?.pinId === pinId) delete n.mapLink; });
+    viewerHost.__redraw?.(); drawList(); drawShare?.(); changed();
+  }
+  // The place cards, and where each is: on this map, on another one, or nowhere yet.
+  function placesState() {
+    if (!dndUi || !dm) return [];
+    const plan = getPlan(), here = current();
+    return placeNodes(plan).map(({ node, board }) => {
+      const hit = placeOnMaps(plan, node.id, here?.id);
+      const onThis = hit && hit.map.id === here?.id ? hit.pin : null;
+      return { node, board, onThis, elsewhere: hit && !onThis ? hit : null };
+    });
+  }
 
   async function loadLive() {
     const m = current(), t = getDmToken();
     live = m?.shared && dm && t ? await getPartyMap(t).catch(() => null) : null;
     viewerHost.__live?.();
     drawShare?.();
+    if (dndUi) syncPinAreas();
+    changed();
   }
   function startLive() {
     clearInterval(liveTimer2);
@@ -141,13 +199,99 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
       const b = el("button", { type: "button", class: `dnd-list-item${m.id === selected ? " active" : ""}`, role: "option", "aria-selected": String(m.id === selected) }, [
         el("span", { class: "dnd-grow" }, m.name || "Map"), el("span", { class: "meta" }, `${m.pins.length} label${m.pins.length === 1 ? "" : "s"}`),
       ]);
-      b.addEventListener("click", async () => { selected = m.id; imageUrl = null; mode = "pan"; drawList(); await drawViewer(); startLive(); });
+      b.addEventListener("click", () => selectMap(m.id));
       return b;
     }) : [el("p", { class: "view-sub", style: "padding:12px" }, "No maps yet. Import an image to start labelling it.")]));
+    changed();
+  }
+  async function selectMap(id) { selected = id; imageUrl = null; setMode("pan"); drawList(); await drawViewer(); startLive(); }
+
+  // The tool in use: "pan", "add" (a label), "area" (corners of an area on the hub's map) or "reveal" (brush the mist away).
+  function setMode(next) {
+    mode = next;
+    const w = viewerHost.__wrap;
+    if (w) { w.classList.toggle("adding", mode === "add"); w.classList.toggle("brushing", mode === "reveal"); w.classList.toggle("drawing-area", mode === "area"); }
+    if (mode !== "area") viewerHost.__area?.cancel();
+    changed();
+  }
+
+  // ------------------------------------------------------------ map actions (the classic bar and the D&D toolbar both use these)
+  async function renameMap(m) { const n = await promptDialog("Rename map", "Name", m.name); if (n) { patchMap(m.id, (x) => { x.name = n.trim().slice(0, 80) || x.name; }); drawList(); drawViewer(); } }
+  async function replaceImage(m) {
+    const f = await pickFile("image/*"); if (!f) return;
+    try {
+      const url = await readAsDataUrl(f); const sz = await imageSize(url);
+      const old = m.fileId, rec = await uploadMap(f, f.name);
+      patchMap(m.id, (x) => { x.w = sz.w; x.h = sz.h; x.fileId = rec.id; });
+      if (old) deleteFile(old);
+      imageUrl = url; drawViewer();
+    } catch (err) { toast(err.message || "Couldn't upload it.", "bad"); }
+  }
+  async function deleteMap(m) {
+    if (!(await confirmDialog(`Delete the map "${m.name}" and its ${m.pins.length} labels?`, { ok: "Delete", danger: true }))) return;
+    await deleteImage(m.id).catch(() => {}); if (m.fileId) await deleteFile(m.fileId);
+    mutatePlan((p) => { p.maps = p.maps.filter((x) => x.id !== m.id); });
+    drawUsage(); selected = maps()[0]?.id || null; imageUrl = null; drawList(); drawViewer();
+  }
+  async function publishMap() {
+    const mm = current(), token = getDmToken();
+    if (!mm) return;
+    if (!token) { toast("Unlock DM tools first.", "bad"); return; }
+    try {
+      let sharedMap = null;
+      if (mm.fileId) sharedMap = await publishPartyMap(token, { name: mm.name, fileId: mm.fileId, w: mm.w, h: mm.h, pins: mm.pins, tokens: mm.tokens || [] });
+      else {
+        const image = await getImage(mm.id).catch(() => null);
+        if (!image) { toast("This device doesn't have that map's image.", "bad"); return; }
+        sharedMap = await publishPartyMap(token, { name: mm.name, image: await shrinkImage(image), w: mm.w, h: mm.h, pins: mm.pins, tokens: mm.tokens || [] });
+      }
+      if (!sharedMap || sharedMap.error) { toast(sharedMap?.error || "Couldn't put it on the hub. Check that DM tools are unlocked.", "bad"); return; }
+      mutatePlan((p) => { p.maps.forEach((x) => { x.shared = x.id === mm.id; }); });
+      toast("It's the hub's map now. Players see only the places you make visible.", "good");
+      drawList(); await drawViewer(); startLive();
+    } catch (err) { toast(`Couldn't share it: ${err.message || err}`, "bad"); }
+  }
+  async function unpublishMap() {
+    try { await clearPartyMap(getDmToken()); } catch { /* ignore */ }
+    mutatePlan((p) => { p.maps.forEach((x) => { x.shared = false; }); });
+    live = null; drawList(); await drawViewer();
+  }
+  async function setFog(patch, op = null) {
+    const res = await setMapFog(getDmToken(), patch, op);
+    if (!res || res.error) { toast(res?.error || "Couldn't change the fog.", "bad"); return; }
+    await loadLive();
+  }
+  async function saveAreas(list) {
+    const res = await setMapAreas(getDmToken(), list.map(({ id, name, x, y, w, h, pts, color }) => (pts ? { id, name, pts, color } : { id, name, x, y, w, h, color })));
+    if (!res || res.error) { toast(res?.error || "Couldn't save the areas.", "bad"); return false; }
+    await loadLive();
+    return true;
+  }
+  // the campaign's players, fetched at most every 30 seconds (the Hub map panel used to ask for them each time it drew)
+  let rosterCache = null;
+  async function rosterCached(force = false) {
+    if (!force && rosterCache && Date.now() - rosterCache.at < 30000) return rosterCache.list;
+    let list = [];
+    try { list = (await getRoster()) || []; } catch { list = rosterCache?.list || []; }
+    rosterCache = { at: Date.now(), list };
+    return list;
+  }
+  function addToken(id, name, at = null) {
+    const mm = current(); if (!mm) return;
+    patchMap(mm.id, (x) => { x.tokens = (mm.shared && live ? live.tokens : x.tokens || []).map((t) => ({ ...t })); x.tokens.push({ id, name: name.slice(0, 40), x: at ? clamp01(at.x) : 0.5, y: at ? clamp01(at.y) : 0.5, color: ["#5aa8f0", "#6fcf6a", "#c27aef", "#f0b45a", "#ff6a8a", "#43b7ae"][x.tokens.length % 6] }); });
+    setTimeout(loadLive, 600);
+    viewerHost.__redraw?.(); drawShare?.(); changed();
+  }
+  function removeToken(id) {
+    const cur = current(); if (!cur) return;
+    if (live) live.tokens = live.tokens.filter((q) => q.id !== id);
+    patchMap(cur.id, (x) => { x.tokens = (x.tokens || []).filter((q) => q.id !== id); });
+    viewerHost.__redraw?.(); drawShare?.(); changed();
   }
 
   // ------------------------------------------------------------ the viewer
-  async function drawViewer() {
+  async function drawViewer() { await drawViewerInner(); changed(); }
+  async function drawViewerInner() {
     const m = current();
     pinsHost.replaceChildren();
     if (!m) {
@@ -179,7 +323,7 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
         } catch { /* over the limit or offline: it stays on this device for now */ }
       }, 0);
     }
-    rightHost.replaceChildren(...(dm ? [shareBar(m)] : [el("div", { class: "card" }, [el("h4", {}, "Your map"), el("p", { class: "dnd-small dnd-muted" }, "Label places as you find them. The DM's map on the hub is in “Hub map”.")])]));
+    rightHost.replaceChildren(...(dndUi ? [] : dm ? [shareBar(m)] : [el("div", { class: "card" }, [el("h4", {}, "Your map"), el("p", { class: "dnd-small dnd-muted" }, "Label places as you find them. The DM's map on the hub is in “Hub map”.")])]));
     const wrap = el("div", { class: "pl-map-wrap" });
     const stage = el("div", { class: "pl-map-stage", style: `width:${m.w}px;height:${m.h}px` });
     const img = el("img", { src: imageUrl, alt: m.name, draggable: "false" });
@@ -189,6 +333,39 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
     wrap.append(stage);
     const drawLiveFog = () => { if (live && current()?.shared) drawFog(fogCv, { ...live, w: m.w, h: m.h }, { see: true }); else fogCv.hidden = true; };
     drawLiveFog();
+    // (D&D) the hub map's areas and the Area tool's draft sit on the picture, under the labels
+    const NS = "http://www.w3.org/2000/svg";
+    const areaLayer = el("div", { class: "mv-areas" });
+    const areaShapes = document.createElementNS(NS, "svg"); areaShapes.setAttribute("class", "mv-area-shapes");
+    const draftSvg = document.createElementNS(NS, "svg"); draftSvg.setAttribute("class", "mv-area-shapes");
+    const draft = areaDraft(draftSvg);
+    const areaList = () => (dndUi && dm && m.shared && live ? live.areas || [] : []);
+    function drawAreas() {
+      if (!dndUi) return;
+      areaShapes.setAttribute("viewBox", `0 0 ${m.w} ${m.h}`); areaShapes.setAttribute("width", m.w); areaShapes.setAttribute("height", m.h);
+      const list = areaList();
+      // each outline has a light halo under it, so it shows on a dark map and a pale one
+      areaShapes.replaceChildren(...list.flatMap((a) => {
+        const points = areaPoints(a).map(([x, y]) => `${(x * m.w).toFixed(1)},${(y * m.h).toFixed(1)}`).join(" ");
+        const halo = document.createElementNS(NS, "polygon"); halo.setAttribute("points", points); halo.setAttribute("class", "mv-area-halo");
+        const poly = document.createElementNS(NS, "polygon"); poly.setAttribute("points", points);
+        poly.setAttribute("class", "mv-area"); poly.dataset.id = a.id; poly.style.setProperty("--c", a.color || "#d9a032");
+        return [halo, poly];
+      }));
+      areaLayer.replaceChildren(areaShapes, ...list.map((a) => el("span", { class: "mv-area-name", "data-id": a.id, style: `left:${a.x * m.w}px;top:${a.y * m.h}px;--c:${a.color || "#e9c27a"}` }, a.name)));
+    }
+    if (dndUi) { stage.insertBefore(areaLayer, fogCv); stage.append(draftSvg); drawAreas(); }
+    // the same coordinate grid as the hub's full map: columns A, B, C... along the top, rows 1, 2, 3... down the left
+    if (dndUi) {
+      const g = mapGrid(m);
+      const grid = el("div", { class: "mv-grid", "aria-hidden": "true" });
+      grid.style.backgroundSize = `${g.cell}px ${g.cell}px`;
+      stage.insertBefore(grid, areaLayer);
+      stage.append(el("div", { class: "mv-coords", "aria-hidden": "true" }, [
+        ...Array.from({ length: g.cols }, (_, i) => el("span", { class: "mv-col", style: `left:${((i + 0.5) * g.cell).toFixed(1)}px` }, colName(i))),
+        ...Array.from({ length: g.rows }, (_, j) => el("span", { class: "mv-row", style: `top:${((j + 0.5) * g.cell).toFixed(1)}px` }, String(j + 1))),
+      ]));
+    }
     const tools = el("div", { class: "pl-map-tools" }, [
       btn("+", () => zoomBy(1.3), "btn secondary tiny", { "aria-label": "Zoom in", title: "Zoom in" }),
       btn("−", () => zoomBy(1 / 1.3), "btn secondary tiny", { "aria-label": "Zoom out", title: "Zoom out" }),
@@ -205,31 +382,35 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
       el("div", { class: "dnd-row between pl-map-head", style: "margin-bottom:8px" }, [
         el("strong", { class: "pl-map-name" }, `${m.name}`),
         el("div", { class: "dnd-row tight pl-map-actions" }, [
-          btn("Rename", async () => { const n = await promptDialog("Rename map", "Name", m.name); if (n) { patchMap(m.id, (x) => { x.name = n.trim().slice(0, 80) || x.name; }); drawList(); drawViewer(); } }, "btn secondary tiny"),
-          btn("Replace image", async () => {
-            const f = await pickFile("image/*"); if (!f) return;
-            try {
-              const url = await readAsDataUrl(f); const sz = await imageSize(url);
-              const old = m.fileId, rec = await uploadMap(f, f.name);
-              patchMap(m.id, (x) => { x.w = sz.w; x.h = sz.h; x.fileId = rec.id; });
-              if (old) deleteFile(old);
-              imageUrl = url; drawViewer();
-            } catch (err) { toast(err.message || "Couldn't upload it.", "bad"); }
-          }, "btn secondary tiny"),
+          btn("Rename", () => renameMap(m), "btn secondary tiny"),
+          btn("Replace image", () => replaceImage(m), "btn secondary tiny"),
           btn("Export pack", () => exportPack(m), "btn secondary tiny"),
-          btn("Delete", async () => { if (await confirmDialog(`Delete the map "${m.name}" and its ${m.pins.length} labels?`, { ok: "Delete", danger: true })) { await deleteImage(m.id).catch(() => {}); if (m.fileId) await deleteFile(m.fileId); mutatePlan((p) => { p.maps = p.maps.filter((x) => x.id !== m.id); }); drawUsage(); selected = maps()[0]?.id || null; imageUrl = null; drawList(); drawViewer(); } }, "btn danger tiny"),
+          btn("Delete", () => deleteMap(m), "btn danger tiny"),
         ]),
       ]),
       el("div", { class: "pl-map-frame" }, [wrap, tools]),
       el("p", { class: "dnd-small dnd-muted pl-map-hint" }, "Drag to pan, scroll or pinch to zoom, double-click to add a label, drag a label to move it."),
     ].filter(Boolean));
+    if (dndUi) viewerHost.replaceChildren(el("div", { class: "pl-map-frame" }, wrap));
+    viewerHost.__wrap = wrap;
 
     // transform handling
     // (the hub layout fits the map a little smaller, so there's sky round it)
-    function fit() { const r = wrap.getBoundingClientRect(); view.fit = Math.min(r.width / m.w, r.height / m.h) * (shared.hubLayout ? 0.84 : 1); view.k = view.fit; view.x = (r.width - m.w * view.k) / 2; view.y = (r.height - m.h * view.k) / 2; }
+    function fit() {
+      const r = wrap.getBoundingClientRect();
+      if (dndUi) {   // the clear space between the top bar and the toolbar
+        const top = 84, bottom = 104, availH = Math.max(120, r.height - top - bottom);
+        view.fit = Math.min((r.width - 32) / m.w, availH / m.h); view.k = view.fit;
+        view.x = (r.width - m.w * view.k) / 2; view.y = top + (availH - m.h * view.k) / 2;
+        return;
+      }
+      view.fit = Math.min(r.width / m.w, r.height / m.h) * (shared.hubLayout ? 0.84 : 1); view.k = view.fit; view.x = (r.width - m.w * view.k) / 2; view.y = (r.height - m.h * view.k) / 2;
+    }
     function apply() {
       stage.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`;
       wrap.style.setProperty("--inv", String(1 / view.k));
+      viewerHost.__onView?.(view.k / view.fit);
+      if (dndUi) draft.draw(m, view.k);
     }
     function zoomAt(px, py, factor) {
       const k2 = Math.max(view.fit * 0.4, Math.min(10, view.k * factor));
@@ -245,58 +426,120 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
     if (!fitNow()) requestAnimationFrame(function again() { if (document.body.contains(wrap) && !fitNow()) requestAnimationFrame(again); });
 
     // pins and (for the DM) the players' tokens on the stage
-    function drawStagePins() {
-      stage.querySelectorAll(".pl-pin, .pl-token").forEach((n) => n.remove());
+    // The labels and tokens are rebuilt only when what they show changes (the hub's copy is polled every few seconds), and not
+    // while one is being dragged: rebuilding the element under your hand is what made labels lag and drop.
+    let openPin = null, pinsSig = "", pendingDraw = false;
+    function drawStagePins(force = false) {
       const cur = current();
+      const tokens = dm ? ((cur.shared && live ? live.tokens : cur.tokens) || []) : [];
+      const sig = JSON.stringify([cur.id, cur.w, cur.h, dm, openPin, openPin ? areaList() : 0, cur.pins, tokens]);
+      if (!force && sig === pinsSig) return;
+      if (viewerHost.__dragging) { pendingDraw = true; return; }
+      pinsSig = sig; pendingDraw = false;
+      stage.querySelectorAll(".pl-pin, .pl-token").forEach((n) => n.remove());
       for (const p of cur.pins) stage.append(pinEl(cur, p));
-      if (dm) for (const t of (cur.shared && live ? live.tokens : cur.tokens) || []) stage.append(tokenEl(cur, t));
+      for (const t of tokens) stage.append(tokenEl(cur, t));
     }
-    viewerHost.__live = () => { if (document.body.contains(stage)) { drawLiveFog(); drawStagePins(); } };
-    function tokenEl(cur, t) {
-      const n = el("div", { class: "pl-token", style: `left:${t.x * cur.w}px;top:${t.y * cur.h}px;--c:${t.color || "#5aa8f0"}`, "data-tip": `${t.name} (drag to move)`, "data-tip-title": "Player" }, [el("span", { class: "pl-token-dot" }, (t.name || "?").trim().slice(0, 2).toUpperCase()), el("span", { class: "pl-pin-text" }, t.name)]);
-      let drag = null;
-      n.addEventListener("pointerdown", (e) => { e.stopPropagation(); n.setPointerCapture(e.pointerId); drag = { sx: e.clientX, sy: e.clientY, moved: false }; });
+    viewerHost.__openPin = openPinCard; viewerHost.__closePin = closePinCard; viewerHost.__hasPin = () => !!openPin;
+    viewerHost.__live = () => { if (document.body.contains(stage)) { drawLiveFog(); drawStagePins(); drawAreas(); } };
+    // Drag a label or a token: it moves by how far the pointer moves (so it never jumps to centre on the pointer), by `translate`
+    // alone (no layout), once a frame, and stays on the map. A press that doesn't move is a tap.
+    function draggable(n, cur, pos, { onDrop, onTap }) {
+      let drag = null, raf = 0;
+      const paint = () => { raf = 0; if (drag?.moved) n.style.translate = `${drag.tx}px ${drag.ty}px`; };
+      n.addEventListener("pointerdown", (e) => {
+        if (e.button > 0) return;
+        e.stopPropagation();
+        try { n.setPointerCapture(e.pointerId); } catch { /* that pointer is already gone */ }
+        drag = { sx: e.clientX, sy: e.clientY, moved: false, x: pos().x, y: pos().y, tx: 0, ty: 0 };
+      });
       n.addEventListener("pointermove", (e) => {
         if (!drag) return;
-        if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 5) return;
-        drag.moved = true; const pt = toMap(e.clientX, e.clientY);
-        n.style.left = `${clamp01(pt.x) * cur.w}px`; n.style.top = `${clamp01(pt.y) * cur.h}px`; drag.pt = pt;
+        const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+        if (!drag.moved) { if (Math.hypot(dx, dy) < 5) return; drag.moved = true; n.classList.add("dragging"); viewerHost.__dragging = true; }
+        drag.nx = clamp01(drag.x + dx / view.k / cur.w); drag.ny = clamp01(drag.y + dy / view.k / cur.h);
+        drag.tx = (drag.nx - drag.x) * cur.w; drag.ty = (drag.ny - drag.y) * cur.h;
+        if (!raf) raf = requestAnimationFrame(paint);
       });
-      n.addEventListener("pointerup", async () => {
-        if (!drag) return;
-        if (drag.moved && drag.pt && cur.shared && live) {
-          // the hub's map: move it there (the mist clears round a player where they land)
-          const res = await moveOnMap({ id: t.id, tokenId: t.id, x: clamp01(drag.pt.x), y: clamp01(drag.pt.y), token: getDmToken() });
-          if (!res || res.error) toast(res?.error || "Couldn't move it.", "bad");
-          patchMap(cur.id, (x) => { const r = (x.tokens || []).find((q) => q.id === t.id); if (r) { r.x = clamp01(drag.pt.x); r.y = clamp01(drag.pt.y); } });
-          loadLive();
-        } else if (drag.moved && drag.pt) patchMap(cur.id, (x) => { const r = (x.tokens || []).find((q) => q.id === t.id); if (r) { r.x = clamp01(drag.pt.x); r.y = clamp01(drag.pt.y); } });
-        else if (await confirmDialog(`Take ${t.name} off the map?`, { ok: "Remove" })) { if (live) live.tokens = live.tokens.filter((q) => q.id !== t.id); patchMap(cur.id, (x) => { x.tokens = (x.tokens || []).filter((q) => q.id !== t.id); }); drawStagePins(); drawShare?.(); }
-        drag = null;
+      const finish = async (cancelled) => {
+        const d = drag; drag = null;
+        if (raf) { cancelAnimationFrame(raf); raf = 0; }
+        if (!d) return;
+        n.classList.remove("dragging");
+        if (d.moved && !cancelled && d.nx !== undefined) {
+          n.style.left = `${d.nx * cur.w}px`; n.style.top = `${d.ny * cur.h}px`; n.style.translate = "";
+          viewerHost.__dragging = false;
+          await onDrop(d.nx, d.ny);
+        } else {
+          n.style.translate = "";
+          viewerHost.__dragging = false;
+          if (!d.moved && !cancelled) await onTap?.();
+        }
+        if (pendingDraw) drawStagePins();
+      };
+      n.addEventListener("pointerup", () => finish(false));
+      n.addEventListener("pointercancel", () => finish(true));
+    }
+    function tokenEl(cur, t) {
+      const n = el("div", { class: "pl-token", style: `left:${t.x * cur.w}px;top:${t.y * cur.h}px;--c:${t.color || "#5aa8f0"}`, "data-tip": `${t.name} (drag to move)`, "data-tip-title": "Player" }, [el("span", { class: "pl-token-dot" }, (t.name || "?").trim().slice(0, 2).toUpperCase()), el("span", { class: "pl-pin-text" }, t.name)]);
+      draggable(n, cur, () => t, {
+        async onDrop(x, y) {
+          if (cur.shared && live) {
+            // the hub's map: move it there (the mist clears round a player where they land)
+            const res = await moveOnMap({ id: t.id, tokenId: t.id, x, y, token: getDmToken() });
+            if (!res || res.error) toast(res?.error || "Couldn't move it.", "bad");
+            patchMap(cur.id, (m2) => { const r = (m2.tokens || []).find((q) => q.id === t.id); if (r) { r.x = x; r.y = y; } });
+            loadLive();
+          } else patchMap(cur.id, (m2) => { const r = (m2.tokens || []).find((q) => q.id === t.id); if (r) { r.x = x; r.y = y; } });
+        },
+        async onTap() { if (await confirmDialog(`Take ${t.name} off the map?`, { ok: "Remove" })) removeToken(t.id); },
       });
       return n;
     }
+    // (D&D) a label's card: press a label and its description opens beside it, press again, or the map, to close it
+    function pinCard(cur, p) {
+      const area = areaAt({ areas: areaList() }, p.x, p.y)?.name || "";   // only if it is in one
+      const secret = dm && p.placeId ? nodeForPin(getPlan(), p)?.dmNotes : "";
+      const paras = String(p.note || "").split(/\n{2,}/).map((x) => x.trim()).filter(Boolean);
+      const sy = view.y + p.y * cur.h * view.k;
+      const x = el("button", { type: "button", class: "pl-pin-card-x", "aria-label": "Close", title: "Close" }, "×");
+      x.addEventListener("click", closePinCard);
+      const acts = [btn("Edit", () => { closePinCard(); editPin(cur.id, p.id); }, "btn secondary tiny")];
+      if (dm) acts.push(btn(p.revealed ? "Hide from players" : "Show to players", () => { patchMap(cur.id, (m2) => { const r = m2.pins.find((q) => q.id === p.id); if (r) r.revealed = !r.revealed; }); drawShare?.(); changed(); }, "btn secondary tiny"));
+      const card = el("div", { class: `pl-pin-card${sy > wrap.clientHeight * 0.55 ? " up" : ""}`, role: "dialog", "aria-label": p.label || "Place" }, [
+        el("div", { class: "pl-pin-card-head" }, [el("strong", {}, p.label || "(no name)"), x]),
+        el("p", { class: "pl-pin-meta" }, [p.kind, gridRef(cur, p.x, p.y)].filter(Boolean).join(" · ")),
+        p.known ? el("p", { class: "pl-pin-known" }, p.known) : null,
+        el("div", { class: "pl-pin-desc" }, [
+          area ? el("p", { class: "pl-pin-area" }, `In ${area}.`) : null,
+          ...(paras.length ? paras.map((t) => el("p", {}, t)) : [area ? null : el("p", { class: "pl-pin-none" }, "No description yet.")]),
+        ].filter(Boolean)),
+        secret ? el("div", { class: "me-secret" }, [el("strong", {}, "Your notes (only you see these)"), el("p", {}, secret)]) : null,
+        dm ? el("p", { class: "pl-pin-vis" }, p.revealed ? "Visible to players" : "Hidden from players") : null,
+        el("div", { class: "pl-pin-card-acts" }, acts),
+      ].filter(Boolean));
+      // presses and the wheel inside the card are the card's own: they don't drag the label or zoom the map
+      card.addEventListener("pointerdown", (e) => e.stopPropagation());
+      card.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
+      return card;
+    }
+    function openPinCard(id) { openPin = id; drawStagePins(true); }
+    function closePinCard() { if (openPin) { openPin = null; drawStagePins(true); changed(); } }
     function pinEl(cur, p) {
-      const n = el("div", { class: `pl-pin${dm && !p.revealed ? " secret" : ""}`, style: `left:${p.x * cur.w}px;top:${p.y * cur.h}px;--c:${p.color}`, "data-id": p.id, title: p.note || p.label }, [el("span", { class: "pl-pin-dot" }, p.icon || "●"), el("span", { class: "pl-pin-text" }, p.label || "")]);
-      let drag = null;
-      n.addEventListener("pointerdown", (e) => { e.stopPropagation(); n.setPointerCapture(e.pointerId); drag = { sx: e.clientX, sy: e.clientY, moved: false }; });
-      n.addEventListener("pointermove", (e) => {
-        if (!drag) return;
-        if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 5) return;
-        drag.moved = true;
-        const pt = toMap(e.clientX, e.clientY);
-        n.style.left = `${clamp01(pt.x) * cur.w}px`; n.style.top = `${clamp01(pt.y) * cur.h}px`; drag.pt = pt;
-      });
-      n.addEventListener("pointerup", () => {
-        if (!drag) return;
-        if (drag.moved && drag.pt) patchMap(cur.id, (x) => { const r = x.pins.find((q) => q.id === p.id); if (r) { r.x = clamp01(drag.pt.x); r.y = clamp01(drag.pt.y); } });
-        else editPin(cur.id, p.id);
-        drag = null;
+      const open = dndUi && openPin === p.id;
+      const n = el("div", {
+        class: `pl-pin${dm && !p.revealed ? " secret" : ""}${open ? " open" : ""}`, style: `left:${p.x * cur.w}px;top:${p.y * cur.h}px;--c:${p.color}`, "data-id": p.id,
+        ...(dndUi ? { role: "button", "aria-expanded": String(open), "aria-label": p.label || "Place" } : { title: p.note || p.label }),
+      }, [el("span", { class: "pl-pin-dot" }, p.icon || "●"), el("span", { class: "pl-pin-text" }, p.label || "")]);
+      if (open) n.append(pinCard(cur, p));
+      draggable(n, cur, () => p, {
+        onDrop(x, y) { patchMap(cur.id, (m2) => { const r = m2.pins.find((q) => q.id === p.id); if (r) { r.x = x; r.y = y; } }); },
+        onTap() { if (dndUi) { if (openPin === p.id) closePinCard(); else openPinCard(p.id); } else editPin(cur.id, p.id); },
       });
       return n;
     }
     drawStagePins();
-    drawPins(m, (id) => focusPin(id));
+    drawPins(m, (id) => { focusPin(id); if (dndUi) openPinCard(id); });
 
     function focusPin(id) {
       const p = current().pins.find((q) => q.id === id); if (!p) return;
@@ -351,11 +594,38 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
       pts.delete(e.pointerId);
       if (pts.size < 2) pinch = null;
       if (was && !was.moved && mode === "add" && pts.size === 0) { addPinAt(e.clientX, e.clientY); }
+      if (was && !was.moved && mode === "area" && pts.size === 0 && e.type === "pointerup") areaCorner(e.clientX, e.clientY);
+      if (was && !was.moved && openPin && pts.size === 0 && e.type === "pointerup") closePinCard();
       if (pts.size === 0) panning = null;
     };
     wrap.addEventListener("pointerup", end);
     wrap.addEventListener("pointercancel", end);
+    wrap.addEventListener("pointermove", (e) => {
+      if (mode !== "area" || !draft.count || e.pointerType !== "mouse" || pts.size) return;
+      draft.hover(toMap(e.clientX, e.clientY)); draft.draw(m, view.k);
+    });
+    wrap.addEventListener("pointerleave", () => { viewerHost.__onCursor?.(null); if (dndUi && draft.count) { draft.hover(null); draft.draw(m, view.k); } });
+    // where the pointer is, as a grid square (the chrome shows it)
+    wrap.addEventListener("pointermove", (e) => {
+      if (!dndUi || !viewerHost.__onCursor || e.pointerType !== "mouse") return;
+      const pt = toMap(e.clientX, e.clientY);
+      viewerHost.__onCursor(pt.x < 0 || pt.x > 1 || pt.y < 0 || pt.y > 1 ? null : { ...pt, map: m });
+    });
     wrap.addEventListener("dblclick", (e) => { if (!e.target.closest(".pl-pin")) addPinAt(e.clientX, e.clientY); });
+    if (dndUi) {   // a place dragged in from the Places drawer
+      const isPlace = (e) => [...(e.dataTransfer?.types || [])].includes("application/x-map-place");
+      wrap.addEventListener("dragover", (e) => { if (isPlace(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; wrap.classList.add("drop-place"); } });
+      wrap.addEventListener("dragleave", () => wrap.classList.remove("drop-place"));
+      wrap.addEventListener("drop", (e) => {
+        wrap.classList.remove("drop-place");
+        const id = e.dataTransfer?.getData("application/x-map-place");
+        if (!id) return;
+        e.preventDefault();
+        const pt = toMap(e.clientX, e.clientY);
+        if (pt.x < 0 || pt.x > 1 || pt.y < 0 || pt.y > 1) { toast("Drop it on the map."); return; }
+        placeOnMap(id, pt);
+      });
+    }
     wrap.addEventListener("wheel", (e) => {
       e.preventDefault();
       if (wheelIntent(e) === "pan") { view.x -= e.deltaX; view.y -= e.deltaY; apply(); return; }   // a touchpad scroll pans
@@ -363,12 +633,45 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
     }, { passive: false });
     window.addEventListener("resize", () => { if (document.body.contains(wrap)) { fit(); apply(); } }, { once: true });
 
+    // ---- the Area tool: each click adds a corner; the first corner (or Finish, or Enter) closes the shape and names it
+    function areaCorner(cx, cy) {
+      const pt = toMap(cx, cy);
+      if (pt.x < 0 || pt.x > 1 || pt.y < 0 || pt.y > 1) return;
+      const r = draft.tap(pt, m, view.k);
+      if (r === "closed") { areaFinish(); return; }
+      if (r === "full") toast("An area can have up to 60 corners. Finish it, or undo a corner.");
+      draft.draw(m, view.k); changed();
+    }
+    async function areaFinish() {
+      if (draft.count < 3) { toast("Place at least three corners."); return; }
+      const pts = draft.points();
+      const name = await promptDialog("Name this area", "Name (a forest, a town, a road)", "");
+      if (!name || !name.trim()) return;   // the corners stay, so you can try again
+      draft.clear(); draft.hover(null); draft.draw(m, view.k);
+      const list = areaList();
+      await saveAreas([...list, { id: `a${Date.now().toString(36)}`, name: name.trim().slice(0, 60), pts, color: AREA_COLOURS[list.length % AREA_COLOURS.length] }]);
+      changed();
+    }
+    viewerHost.__area = {
+      get corners() { return draft.count; },
+      finish: areaFinish,
+      undo() { draft.undo(); draft.draw(m, view.k); changed(); },
+      cancel() { if (draft.count) { draft.clear(); draft.hover(null); draft.draw(m, view.k); } },
+    };
+    viewerHost.__ctl = {
+      zoomBy, fit() { fit(); apply(); }, focusPin,
+      toggleText() { showLabels = !showLabels; wrap.classList.toggle("no-text", !showLabels); return showLabels; },
+      middle() { const r = wrap.getBoundingClientRect(); return toMap(r.left + r.width / 2, r.top + r.height / 2); },
+      centreOn(pt) { const r = wrap.getBoundingClientRect(); view.x = r.width / 2 - pt.x * m.w * view.k; view.y = r.height / 2 - pt.y * m.h * view.k; apply(); },
+    };
+    apply();
+
     function addPinAt(cx, cy) {
       const pt = toMap(cx, cy);
       if (pt.x < 0 || pt.x > 1 || pt.y < 0 || pt.y > 1) return;
       const p = { id: uid(), x: pt.x, y: pt.y, label: "", note: "", icon: "●", color: "#ff4a22", revealed: false };
       patchMap(m.id, (x) => { x.pins.push(p); });
-      mode = "pan"; wrap.classList.remove("adding"); addBtn.textContent = "+ Label"; addBtn.classList.add("secondary");
+      setMode("pan"); wrap.classList.remove("adding"); addBtn.textContent = "+ Label"; addBtn.classList.add("secondary");
       drawStagePins(); drawList();
       editPin(m.id, p.id, true);
     }
@@ -377,36 +680,24 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
   }
 
   // ------------------------------------------------------------ the map on the hub (DM)
-  let drawShare = null;
+  let drawShare = null, lastShareSig = "";
   function shareBar(m) {
     const host = el("div", { class: "card pl-share" });
     const token = getDmToken();
     drawShare = async () => {
       const mm = current(); if (!mm || !document.body.contains(host)) return;
       const shown = mm.pins.filter((p) => p.revealed).length;
+      const sig = JSON.stringify([mm.id, mm.shared, shown, mm.pins.length, live?.fog, ((mm.shared && live ? live.tokens : mm.tokens) || []).map((t) => t.id), rosterCache?.at]);
+      if (sig === lastShareSig && host.childElementCount) return;   // polled every few seconds: nothing changed, nothing to redraw
+      lastShareSig = sig;
       const status = mm.shared ? chip(`On the hub · ${shown} of ${mm.pins.length} places visible`, "good") : chip("Not on the hub", "");
-      const publish = async () => {
-        if (!token) { toast("Unlock DM tools first.", "bad"); return; }
-        try {
-          let shared = null;
-          if (mm.fileId) shared = await publishPartyMap(token, { name: mm.name, fileId: mm.fileId, w: mm.w, h: mm.h, pins: mm.pins, tokens: mm.tokens || [] });
-          else {
-            const image = await getImage(mm.id).catch(() => null);
-            if (!image) { toast("This device doesn't have that map's image.", "bad"); return; }
-            shared = await publishPartyMap(token, { name: mm.name, image: await shrinkImage(image), w: mm.w, h: mm.h, pins: mm.pins, tokens: mm.tokens || [] });
-          }
-          if (!shared || shared.error) { toast(shared?.error || "Couldn't put it on the hub. Check that DM tools are unlocked.", "bad"); return; }
-          mutatePlan((p) => { p.maps.forEach((x) => { x.shared = x.id === mm.id; }); });
-          toast("It's the hub's map now. Players see only the places you make visible.", "good");
-          drawList(); await drawViewer(); startLive();
-        } catch (err) { toast(`Couldn't share it: ${err.message || err}`, "bad"); }
-      };
+      const publish = () => publishMap();
       const rows = [
         el("div", { class: "dnd-row between" }, [
           el("div", { class: "dnd-row tight" }, [el("strong", {}, "Hub map"), status]),
           el("div", { class: "dnd-row tight" }, [
             btn(mm.shared ? "Update the hub's copy" : "Show on the hub", publish, "btn small"),
-            mm.shared ? btn("Take it off the hub", async () => { try { await clearPartyMap(token); } catch { /* ignore */ } mutatePlan((p) => { p.maps.forEach((x) => { x.shared = false; }); }); live = null; drawList(); await drawViewer(); }, "btn secondary small") : null,
+            mm.shared ? btn("Take it off the hub", () => unpublishMap(), "btn secondary small") : null,
           ].filter(Boolean)),
         ]),
         el("p", { class: "dnd-small dnd-muted" }, "Players see this as the minimap on the hub and the full map behind it. Places start hidden: make one visible with its eye button in the label list."),
@@ -414,11 +705,6 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
       if (mm.shared && live) {
         // ---- fog of war
         const fog = live.fog || {};
-        const setFog = async (patch, op = null) => {
-          const res = await setMapFog(token, patch, op);
-          if (!res || res.error) { toast(res?.error || "Couldn't change the fog.", "bad"); return; }
-          await loadLive();
-        };
         const explain = el("p", { class: "dnd-small dnd-muted" }, fog.shared === false ? "Each player sees only the areas they've explored themselves, and only their own token." : "Everyone sees every area anyone has explored, and where every player is.");
         const onOff = checkbox("Fog of war: the map starts hidden in mist, which clears where players go", !!fog.enabled, (v) => setFog({ enabled: v }));
         const sharedSel = selectEl([["shared", "Shared: everyone sees it all"], ["private", "Private: each sees their own"]], fog.shared === false ? "private" : "shared", (v) => setFog({ shared: v === "shared" }));
@@ -438,14 +724,10 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
       // ---- players and markers on the map
       const pick = el("select", { "aria-label": "Player to place on the map" });
       let people = [];
-      try { people = (await getRoster()) || []; } catch { people = []; }
+      people = rosterCache?.list || [];
+      if (!rosterCache || Date.now() - rosterCache.at > 30000) rosterCached().then(() => { lastShareSig = ""; drawShare?.(); });   // the player picker fills in a moment later
       const placed = new Set(((mm.shared && live ? live.tokens : mm.tokens) || []).map((t) => t.id));
       pick.append(...people.filter((p) => !placed.has(p.id)).map((p) => el("option", { value: p.id }, p.name || "Player")));
-      const addToken = (id, name) => {
-        patchMap(mm.id, (x) => { x.tokens = (mm.shared && live ? live.tokens : x.tokens || []).map((t) => ({ ...t })); x.tokens.push({ id, name: name.slice(0, 40), x: 0.5, y: 0.5, color: ["#5aa8f0", "#6fcf6a", "#c27aef", "#f0b45a", "#ff6a8a", "#43b7ae"][x.tokens.length % 6] }); });
-        setTimeout(loadLive, 600);
-        viewerHost.__redraw?.(); drawShare();
-      };
       rows.push(el("div", { class: "dnd-row tight" }, [
         pick.options.length ? pick : null,
         pick.options.length ? btn("Place player", () => { const o = pick.selectedOptions[0]; if (o) addToken(o.value, o.textContent); }, "btn secondary small") : null,
@@ -466,7 +748,7 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
       const needle = q.value.toLowerCase();
       const hits = m.pins.filter((p) => !needle || `${p.label} ${p.note}`.toLowerCase().includes(needle));
       rows.replaceChildren(...(hits.length ? hits.map((p) => {
-        const b = el("button", { type: "button", class: "pl-pin-row" }, [el("span", { class: "pl-pin-dot", style: `--c:${p.color}` }, p.icon || "●"), el("span", { class: "dnd-grow" }, [el("strong", {}, p.label || "(no name)"), p.note ? el("div", { class: "dnd-small dnd-muted" }, p.note.slice(0, 80)) : null].filter(Boolean))]);
+        const b = el("button", { type: "button", class: "pl-pin-row" }, [el("span", { class: "pl-pin-dot", style: `--c:${p.color}` }, p.icon || "●"), el("span", { class: "dnd-grow" }, [el("strong", {}, p.label || "(no name)"), (p.kind || p.area || p.note) ? el("div", { class: "dnd-small dnd-muted" }, [p.kind, p.area ? `in ${p.area}` : null].filter(Boolean).join(" · ") || p.note.slice(0, 80)) : null].filter(Boolean))]);
         b.addEventListener("click", () => onPick?.(p.id));
         b.addEventListener("dblclick", () => editPin(m.id, p.id));
         if (!dm) return b;
@@ -480,9 +762,33 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
     draw();
   }
 
+  // a label made from a Whiteboard place: its details live on the card, so here you only choose who sees it
+  function editLinkedPin(m, p) {
+    const reveal = checkbox("Show it to players", !!p.revealed, () => {});
+    const secret = nodeForPin(getPlan(), p)?.dmNotes;   // only the DM is ever in this editor, and their notes never reach a label
+    modal({
+      title: p.label || "Place",
+      body: [
+        [p.kind, p.known].filter(Boolean).length ? el("p", { class: "dnd-muted" }, [p.kind, p.known].filter(Boolean).join(" · ")) : null,
+        p.note ? el("p", {}, p.note) : null,
+        p.area ? el("p", { class: "dnd-small dnd-muted" }, `In ${p.area}`) : null,
+        secret ? el("div", { class: "me-secret" }, [el("strong", {}, "Your notes (only you see these)"), el("p", {}, secret)]) : null,
+        el("p", { class: "dnd-small dnd-muted" }, "Change its name, type, description and your private notes on its card on the Whiteboard. This label follows it."),
+        reveal,
+      ].filter(Boolean),
+      actions: [
+        { label: "Take off the map", cls: "btn danger", onClick: () => removePlacePin(p.id) },
+        { label: "Cancel" },
+        { label: "Open the Whiteboard", onClick: () => { location.hash = "planner"; } },
+        { label: "Save", cls: "btn", onClick: () => { patchMap(m.id, (x) => { const r = x.pins.find((q) => q.id === p.id); if (r) r.revealed = reveal.querySelector("input").checked; }); viewerHost.__redraw?.(); drawShare?.(); changed(); } },
+      ],
+    });
+  }
+
   function editPin(mapId, pinId, isNew = false) {
     const m = maps().find((x) => x.id === mapId); const p = m?.pins.find((x) => x.id === pinId);
     if (!p) return;
+    if (p.placeId && dndUi && nodeForPin(getPlan(), p)) return editLinkedPin(m, p);
     const label = textInput(p.label, () => {}, { placeholder: "e.g. Pewter City, The Rusty Anchor, Trap!", ariaLabel: "Label" });
     const note = textInput(p.note, () => {}, { multiline: true, rows: 4, placeholder: "Notes about this place (optional)", ariaLabel: "Note" });
     const icon = selectEl(ICONS.map(([v, l]) => [v, `${v}  ${l}`]), p.icon || "●", () => {});
@@ -518,7 +824,9 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
   for (const ev of ["dragleave", "drop"]) drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); });
   drop.addEventListener("drop", (e) => importFile(e.dataTransfer.files[0]));
 
-  if (shared.hubLayout) {
+  if (dndUi) {
+    chrome = mountMapChrome(panel, chromeApi());
+  } else if (shared.hubLayout) {
     mountHubLayout(panel, { dm, viewerHost, rightHost, pinsHost, mapsCard: el("div", { class: "card me-maps" }, [el("div", { class: "dnd-row between" }, [el("h4", {}, "Your maps"), importBtn]), listHost, drop, usageHost]), onBack: shared.onBack, startOpen: maps().length ? null : "maps" });
   } else {
     panel.append(
@@ -532,7 +840,39 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
   }
   drawList();
   drawViewer().then(startLive);
+  if (dndUi) syncPlacePins().then((any) => { if (any) { drawList(); viewerHost.__redraw?.(); changed(); } });
   void chip;
+
+  // What the D&D editor's chrome reads and does (it never touches this file's variables directly)
+  function chromeApi() {
+    return {
+      dm, viewerHost, pinsHost, usageHost, dropEl: drop, onBack: shared.onBack,
+      state: () => {
+        const m = current();
+        return {
+          map: m, maps: maps(), selected, live, mode, text: showLabels,
+          areas: m?.shared && dm && live ? live.areas || [] : [],
+          tokens: (m?.shared && live ? live.tokens : m?.tokens) || [],
+          corners: viewerHost.__area?.corners || 0,
+          places: placesState(),
+        };
+      },
+      refresh: () => chrome?.refresh(),
+      ctl: () => viewerHost.__ctl,
+      setMode, selectMap, importFile, exportPack, renameMap, replaceImage, deleteMap,
+      publish: publishMap, unpublish: unpublishMap, setFog, saveAreas,
+      areaFinish: () => viewerHost.__area?.finish(), areaUndo: () => viewerHost.__area?.undo(),
+      roster: () => rosterCached(), rosterNow: () => rosterCache?.list || [], rosterLoaded: () => !!rosterCache,
+      addToken, removeToken, removePlacePin,
+      placeOnMap: (nodeId, pt) => placeOnMap(nodeId, pt || viewerHost.__ctl?.middle() || { x: 0.5, y: 0.5 }),
+      centreOnPin: (pin) => { viewerHost.__ctl?.centreOn({ x: pin.x, y: pin.y }); viewerHost.__openPin?.(pin.id); },
+      closePinCard: () => viewerHost.__closePin?.(),
+      hasOpenPin: () => !!viewerHost.__hasPin?.(),
+      openWhiteboard: () => { location.hash = "planner"; },
+      centreOnArea: (a) => viewerHost.__ctl?.centreOn({ x: a.x + a.w / 2, y: a.y + a.h / 2 }),
+      centreOnToken: (t) => viewerHost.__ctl?.centreOn({ x: t.x, y: t.y }),
+    };
+  }
 }
 
 // ------------------------------------------------------------ the hub layout (the Map editor's own page)

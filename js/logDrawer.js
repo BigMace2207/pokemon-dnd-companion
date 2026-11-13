@@ -17,6 +17,9 @@ const WIDTH_KEY = (id) => `pokemon-dnd-pull-width-${id}`;
 let recheckDm = () => {};
 // Rechecks whether this device is the DM (shows or hides the DM's pull tabs).
 export function refreshPullTabs() { recheckDm(); }
+let openTab = () => {};
+/** Slides a pull tab's panel out (no-op if this system has no such tab, or it's already out). */
+export function openPullTab(id) { openTab(id); }
 
 // tabs: [{ id, label (short, on the tab), title (panel heading), render(container, state, dmToken), wide, dm }]
 export function mountLogDrawer(container, { tabs = [], state = null } = {}) {
@@ -100,6 +103,7 @@ export function mountLogDrawer(container, { tabs = [], state = null } = {}) {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && open && !e.target.closest?.("input, textarea, [contenteditable='true']")) toggle(open);
   });
+  openTab = (id) => { if (open !== id && all.some((t) => t.id === id && !t.dm)) toggle(id); };
 
   // ---- the log panel ---------------------------------------------------------------------------------------------------
   function logTabs() {

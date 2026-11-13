@@ -129,13 +129,13 @@ export function edgePoints(a, b) {
 // Backgrounds drawn with CSS only (see planner.css, .pl-bg-<id>), so they cost nothing to store or share.
 export const BACKGROUNDS = [
   ["cosmic", "Cosmic"], ["parchment", "Parchment"], ["grid", "Grid paper"], ["dots", "Dot grid"], ["slate", "Dark slate"],
-  ["blueprint", "Blueprint"], ["stone", "Dungeon stone"], ["forest", "Forest floor"], ["ocean", "Sea chart"], ["lava", "Ember"], ["plain", "Plain"],
+  ["blueprint", "Blueprint"], ["stone", "Dungeon stone"], ["forest", "Forest floor"], ["ocean", "Sea chart"], ["lava", "Lava"], ["plain", "Plain"],
 ];
 export const isPreset = (id) => BACKGROUNDS.some(([k]) => k === id);
 
 // libmon / libtrainer: a Pokémon or an NPC trainer brought in from the DM's Wild and NPC Libraries. They snap into the
 // Trainer and Team slots of a Pokémon trainer, gym leader or wild encounter node (boardView.js "Slots").
-const NODE_TYPES = ["note", "list", "gen", "text", "dungeon", "libmon", "libtrainer"];
+const NODE_TYPES = ["note", "list", "gen", "text", "dungeon", "libmon", "libtrainer", "place"];
 export const TEAM_MAX = 6;
 const str = (v, n) => String(v ?? "").slice(0, n);
 const fin = (v, f = 0) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : f);
@@ -164,6 +164,8 @@ function cleanNode(n) {
   if (ss.length) out.sessions = [...new Set(ss.map((x) => str(x, 40)).filter(Boolean))].slice(0, 12);
   if (n.mapLink && typeof n.mapLink === "object") out.mapLink = { mapId: str(n.mapLink.mapId, 40), pinId: str(n.mapLink.pinId, 40) };
   if (n.type === "note" || n.type === "text") out.body = str(n.body, 20000);
+  // a place (js/planner/places.js): its type, what it's known for, the description players read, and the DM's own notes
+  if (n.type === "place") { out.placeKind = str(n.placeKind, 30); out.known = str(n.known, 160); out.body = str(n.body, 4000); out.dmNotes = str(n.dmNotes, 8000); }
   if (n.type === "text") out.color = hex(n.color, "#f6e27a");
   if (n.type === "list") out.items = (Array.isArray(n.items) ? n.items : []).slice(0, 200).map((i) => ({ id: str(i?.id, 40) || Math.random().toString(36).slice(2), text: str(i?.text, 300), done: !!i?.done }));
   if (n.type === "gen") { out.kind = str(n.kind || n.gen, 20); out.genLabel = str(n.genLabel, 60); out.gen = str(n.gen, 40); out.lines = (Array.isArray(n.lines) ? n.lines : []).slice(0, 200).map((l) => str(l, 2000));

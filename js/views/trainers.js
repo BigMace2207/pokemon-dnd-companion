@@ -237,5 +237,5 @@ export function renderTrainersOnline(container, state) {
   }
 
   tick();
-  registerInterval(setInterval(tick, POLL_MS));
+  registerInterval(setInterval(() => { if (!document.hidden) tick(); }, POLL_MS));
 }

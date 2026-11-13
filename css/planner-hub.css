@@ -182,7 +182,7 @@ html.mapeditor-full .main::after { display: none; }
 .me-panel[hidden] { display: none; }
 .me-panel.left { left: calc(16px * var(--s)); }
 .me-panel.right { right: calc(64px * var(--s)); }
-.me-panel > .card { margin: 0; background: transparent; border: 0; padding: 0; box-shadow: none; }
+:root .me-panel > .card.card { margin: 0; background: transparent; border: 0; padding: 0; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }   /* the panel is the card (beats the themes' glass .card) */
 .me-panel .pl-banner { margin-top: 10px; }
 @media (prefers-reduced-motion: no-preference) {
   .me-panel:not([hidden]) { animation: me-panel-in .26s cubic-bezier(.23, 1, .32, 1); }
@@ -206,3 +206,186 @@ html.m .me-panel { position: fixed; left: 0 !important; right: 0 !important; top
 /* the Map editor is a full-screen page like the hub: no page entrance (a slide on its wrapper would lay the editor out
    in a different box for its first frames, and it would visibly resize when the slide ended) */
 html.mapeditor-full .main.view-enter > * { animation: none; }
+/* the area editor (the hub's full map, opened from Hub map → Draw areas) covers the Map editor: its side panels step aside */
+.me-hub:has(> .hub-map-full) .me-panel { visibility: hidden; }
+
+/* ===========================================================================================================================
+   The D&D Map editor (js/planner/mapChrome.js): the map fills the page; the maps button and the hub's status sit along the
+   top; one toolbar like the hub's runs along the bottom, with a short bar above it for the tool in use; maps open as a drawer
+   on the left, labels / players / fog as a drawer on the right.
+   =========================================================================================================================== */
+.me-dnd .pl-map-viewer { position: absolute; inset: 0; }
+.me-ico { display: inline-grid; flex: none; width: calc(18px * var(--s)); height: calc(18px * var(--s)); min-width: 16px; min-height: 16px; }
+.me-ico svg { width: 100%; height: 100%; }
+.me-chev { opacity: .55; width: calc(14px * var(--s)); height: calc(14px * var(--s)); min-width: 12px; min-height: 12px; }
+.me-mapbtn { display: flex; align-items: center; gap: calc(8px * var(--s)); max-width: min(280px, 38vw); min-height: 40px; font: inherit; font-size: calc(15px * var(--s)); font-weight: 600; color: var(--h-text); background: var(--h-glass); border: 1px solid var(--h-line);
+  border-radius: 999px; padding: calc(8px * var(--s)) calc(14px * var(--s)); cursor: pointer; touch-action: manipulation; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); transition: border-color .15s, transform .15s var(--h-ease); }
+.me-mapbtn[aria-expanded="true"] { border-color: var(--h-line-2); }
+.me-mapbtn:active { transform: scale(.97); }
+.me-mapbtn:focus-visible { outline: 2px solid var(--h-text); outline-offset: 2px; }
+.me-mapbtn-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* top right: is the map on the hub */
+.me-share { position: absolute; z-index: 5; top: calc(16px * var(--s)); right: calc(64px * var(--s)); display: flex; align-items: center; gap: calc(10px * var(--s)); padding: 4px 4px 4px calc(16px * var(--s));
+  background: var(--h-glass); border: 1px solid var(--h-line); border-radius: 999px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.me-share[hidden] { display: none; }
+.me-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--h-faint); flex: none; }
+.me-dot.on { background: #6fdc8a; box-shadow: 0 0 0 3px rgba(111, 220, 138, .18); }
+.me-share-text { font-size: calc(14px * var(--s)); color: var(--h-dim); white-space: nowrap; }
+.me-dnd .hub-pill { white-space: nowrap; min-height: 32px; touch-action: manipulation; }
+.me-dnd .hub-pill:active { transform: scale(.97); }
+.me-dnd .hub-pill[disabled] { opacity: .4; pointer-events: none; }
+.me-dnd .hub-pill.danger { color: #fca5a5; }
+@media (hover: hover) and (pointer: fine) { .me-dnd .hub-pill.danger:hover { color: #fff; background: #d6453a; border-color: #d6453a; } }
+
+/* the toolbar: the hub's, with a sliding pill under the tool in use */
+.me-toolbar { z-index: 6; width: max-content; max-width: calc(100% - 32px); }
+.me-toolbar .hub-tool.me-icon { padding: calc(9px * var(--s)); }
+.me-toolbar .hub-tool:disabled { opacity: .35; pointer-events: none; }
+.me-toolbar .hub-tool.me-soft-off { opacity: .5; }
+.me-toolbar .hub-tool.me-off { color: var(--h-faint); }
+.me-toolbar .me-toggle.on { color: #0b0b0c; background: #fff; }
+.me-zoom { min-width: 3.6em; text-align: center; font-size: calc(13px * var(--s)); color: var(--h-dim); font-variant-numeric: tabular-nums; user-select: none; -webkit-user-select: none; }
+.me-toolbar .hub-tool { touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+
+/* the bar above it: only while a tool has something to say */
+.me-subbar { z-index: 6; width: max-content; max-width: calc(100% - 32px); flex-wrap: wrap; justify-content: center; }
+.me-subbar:not(.show) { visibility: hidden; }
+.me-note { font-size: calc(14px * var(--s)); color: var(--h-dim); padding: 0 calc(10px * var(--s)); }
+
+/* drawers */
+.me-drawer { position: absolute; z-index: 6; top: calc(76px * var(--s)); max-height: calc(100% - 76px * var(--s) - 92px * var(--s)); width: min(420px, calc(100% - 32px)); display: flex; flex-direction: column; overflow: hidden;
+  background: var(--h-glass); border: 1px solid var(--h-line-2); border-radius: calc(22px * var(--s)); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); box-shadow: 0 24px 60px rgba(0, 0, 0, .5); }
+.me-drawer[hidden] { display: none; }
+.me-drawer.left { left: calc(16px * var(--s)); }
+.me-drawer.right { right: calc(64px * var(--s)); }
+.me-dnd.sub-on .me-drawer { max-height: calc(100% - 76px * var(--s) - 150px * var(--s)); }
+.me-drawer-head { display: flex; align-items: center; justify-content: space-between; padding: calc(14px * var(--s)) calc(14px * var(--s)) calc(8px * var(--s)) calc(20px * var(--s)); }
+.me-drawer-head h2 { margin: 0; font-family: var(--font-head); font-weight: 400; font-size: calc(26px * var(--s)); letter-spacing: -.01em; line-height: 1.1; }
+.me-drawer-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: calc(10px * var(--s)); padding: 0 calc(14px * var(--s)) calc(16px * var(--s)); }
+@media (prefers-reduced-motion: no-preference) {
+  .me-drawer:not([hidden]) { animation: me-drawer-in .24s cubic-bezier(.23, 1, .32, 1); }
+  .me-drawer.left:not([hidden]) { transform-origin: top left; }
+  .me-drawer.right:not([hidden]) { transform-origin: top right; }
+}
+@keyframes me-drawer-in { from { opacity: 0; transform: translateY(8px) scale(.985); } }
+.me-rows { display: flex; flex-direction: column; gap: 2px; }
+.me-row { display: flex; align-items: center; gap: calc(10px * var(--s)); width: 100%; min-height: 40px; text-align: left; font: inherit; font-size: calc(15px * var(--s)); color: var(--h-text); background: transparent; border: 0;
+  border-radius: calc(12px * var(--s)); padding: calc(8px * var(--s)) calc(12px * var(--s)); cursor: pointer; touch-action: manipulation; transition: background-color .15s; }
+.me-row.on { background: rgba(255, 255, 255, .09); }
+.me-row.static { cursor: default; }
+.me-row small { margin-left: auto; color: var(--h-faint); font-size: 12px; white-space: nowrap; }
+.me-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (hover: hover) and (pointer: fine) { .me-row:not(.static):not(.on):hover { background: rgba(255, 255, 255, .06); } }
+.me-row:focus-visible, .me-mini:focus-visible, .me-seg button:focus-visible { outline: 2px solid var(--h-text); outline-offset: -2px; }
+.me-line { display: flex; align-items: center; gap: 4px; }
+.me-line > .me-row { flex: 1; min-width: 0; }
+.me-mini { display: grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; color: var(--h-dim); background: transparent; cursor: pointer; touch-action: manipulation; transition: background-color .15s, color .15s; }
+.me-mini svg { width: 16px; height: 16px; }
+.me-mini:active { transform: scale(.94); }
+@media (hover: hover) and (pointer: fine) { .me-mini:hover { color: var(--h-text); background: rgba(255, 255, 255, .08); } .me-mini.danger:hover { color: #ffb4ab; background: rgba(255, 90, 78, .18); } }
+.me-swatch { width: 12px; height: 12px; border-radius: 4px; background: var(--c); flex: none; }
+.me-avatar { display: grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--c, #555); color: #fff; font-size: 12px; font-weight: 700; }
+.me-avatar.off { background: rgba(255, 255, 255, .1); color: var(--h-dim); }
+.me-avatar.online { box-shadow: 0 0 0 2px #6fdc8a; }
+.me-sub { margin: calc(8px * var(--s)) 0 0; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--h-faint); }
+.me-empty { margin: 0; padding: calc(6px * var(--s)) calc(4px * var(--s)); font-size: calc(14px * var(--s)); color: var(--h-dim); }
+.me-empty-block { display: grid; gap: calc(12px * var(--s)); justify-items: start; }
+.me-fine { margin: 0; font-size: max(12px, calc(13px * var(--s))); line-height: 1.4; color: var(--h-faint); }
+.me-actions { display: flex; flex-wrap: wrap; gap: calc(8px * var(--s)); }
+.me-seg { display: flex; gap: 2px; width: max-content; max-width: 100%; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, .06); }
+.me-seg button { font: inherit; font-size: calc(14px * var(--s)); font-weight: 600; color: var(--h-dim); background: transparent; border: 0; border-radius: 999px; min-height: 32px; padding: calc(6px * var(--s)) calc(14px * var(--s)); cursor: pointer; white-space: nowrap; touch-action: manipulation; transition: color .15s, background-color .15s; }
+.me-seg button.on { color: #0b0b0c; background: #fff; }
+.me-drawer-body .dnd-check { font-size: calc(15px * var(--s)); }
+.me-drawer-body input[type="range"] { width: 100%; }
+/* the existing pieces, quiet inside a drawer: the label list's card, the drop zone and the storage note */
+.me-dnd .me-drawer .pl-map-pins { background: transparent; border: 0; padding: 0; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.me-dnd .me-drawer .pl-map-pins .dnd-section-head { display: none; }
+.me-dnd .me-drawer .pl-drop { padding: calc(16px * var(--s)); text-align: center; background: transparent; border: 1px dashed var(--h-line-2); border-radius: 14px; }
+.me-dnd .me-drawer .pl-banner { margin: 0; padding: 0; background: transparent; border: 0; box-shadow: none; font-size: max(12px, calc(13px * var(--s))); color: var(--h-faint); line-height: 1.4; }
+
+/* the Area and Label tools: a crosshair over the map, outlines that never catch the pointer */
+.me-dnd .pl-map-wrap.drawing-area, .me-dnd .pl-map-wrap.adding { cursor: crosshair; }
+.me-dnd .mv-areas, .me-dnd .mv-area-shapes { pointer-events: none; }
+.me-dnd .mv-area-name { z-index: 1; }
+
+/* Medium and Low graphics switch the glass blur off (css/cosmic.css), so these panels get a solid fill instead */
+:root:is([data-gfx="medium"], [data-gfx="low"]) .me-dnd :is(.me-drawer, .me-share, .me-mapbtn, .me-subbar) { background-color: rgba(24, 24, 27, .95); }
+
+/* the coordinate grid, the same squares the hub's full map uses: a dark line with a light one beside it, so it reads on a
+   pale map and a dark one; letters sit above the map's top edge and numbers left of its left edge, and keep their size as you zoom */
+.me-dnd .mv-grid { background-image: linear-gradient(to right, rgba(20, 10, 5, .3) 1px, transparent 1px), linear-gradient(to bottom, rgba(20, 10, 5, .3) 1px, transparent 1px),
+  linear-gradient(to right, rgba(255, 255, 255, .3) 1px, transparent 1px), linear-gradient(to bottom, rgba(255, 255, 255, .3) 1px, transparent 1px); background-position: 0 0, 0 0, 1px 0, 0 1px; }
+.mv-coords { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; }
+.mv-col, .mv-row { position: absolute; padding: 2px 7px; border-radius: 7px; font: 700 12px/1.2 "Space Grotesk", system-ui, sans-serif; color: #fff; background: rgba(12, 10, 10, .78); white-space: nowrap; }
+.mv-col { top: 0; transform-origin: 50% 100%; transform: translate(-50%, calc(-100% - 6px)) scale(var(--inv, 1)); }
+.mv-row { left: 0; transform-origin: 100% 50%; transform: translate(calc(-100% - 6px), -50%) scale(var(--inv, 1)); }
+/* the grid square under the pointer */
+.me-coord { position: absolute; z-index: 5; left: calc(16px * var(--s)); bottom: calc(22px * var(--s)); padding: calc(9px * var(--s)) calc(14px * var(--s)); font-size: calc(14px * var(--s)); font-weight: 600; font-variant-numeric: tabular-nums;
+  color: var(--h-text); background: var(--h-glass); border: 1px solid var(--h-line); border-radius: 999px; pointer-events: none; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.me-coord[hidden] { display: none; }
+:root:is([data-gfx="medium"], [data-gfx="low"]) .me-coord { background-color: rgba(24, 24, 27, .95); }
+html.m .me-coord { display: none; }
+
+/* narrower windows: the status keeps its dot and buttons but drops its words */
+@media (max-width: 1000px) { html:not(.m) .me-share-text { display: none; } }
+/* a phone: the bars sit clear of the wheel dot, the drawers are sheets from the bottom */
+html.m .me-dnd .me-share { top: calc(env(safe-area-inset-top, 0px) + 64px); left: 10px; right: 10px; overflow-x: auto; scrollbar-width: none; }
+html.m .me-dnd .me-share-text { display: inline; }
+html.m .me-dnd .me-toolbar { position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); max-width: calc(100% - 20px); overflow-x: auto; scrollbar-width: none; }
+html.m .me-dnd .me-subbar { position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 156px) !important; overflow: visible; flex-wrap: wrap; justify-content: center; }   /* above the toolbar (the phone's own rule for a hub bar puts it on top of it) */
+html.m .me-dnd .me-drawer { position: fixed; left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 62dvh !important; border-radius: 22px 22px 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* ---- Places (js/planner/places.js): the Whiteboard card, the Map editor's Places drawer, and dropping one on the map ---- */
+.pl-node.type-place .pl-node-body { display: grid; gap: 8px; align-content: start; overflow: auto; }
+.pl-node.type-place label.field { display: grid; gap: 4px; margin: 0; }
+.pl-node.type-place label.field > span { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--p-dim, #a1a1aa); }
+.pl-node.type-place :is(select, .pl-place-known) { width: 100%; font: inherit; font-size: 14px; color: var(--p-text, #fafafa); background: rgba(0, 0, 0, .25); border: 1px solid var(--p-line, rgba(255, 255, 255, .12)); border-radius: 10px; padding: 7px 10px; }
+.pl-node.type-place .pl-node-text { height: auto; min-height: 84px; resize: vertical; }
+.pl-node.type-place .pl-dm-notes { min-height: 72px; border-left: 3px solid #d4a537; }
+.pl-place-status { margin: 0; font-size: 12px; line-height: 1.4; color: var(--p-faint, #71717a); }
+.pl-place-status.on { color: var(--p-dim, #a1a1aa); }
+
+/* the drawer's rows: a place you can pick up and drop on the map */
+.me-place { display: flex; align-items: center; gap: calc(10px * var(--s)); padding: calc(8px * var(--s)) calc(10px * var(--s)); border-radius: calc(14px * var(--s)); border: 1px solid transparent; cursor: grab; touch-action: manipulation; transition: background-color .15s, border-color .15s; }
+.me-place.on { cursor: pointer; background: rgba(255, 255, 255, .05); }
+.me-place.lifted { opacity: .55; }
+.me-place:active { cursor: grabbing; }
+.me-place-icon { display: grid; place-items: center; flex: none; width: calc(36px * var(--s)); height: calc(36px * var(--s)); min-width: 32px; min-height: 32px; border-radius: 50%; font-size: 17px; background: color-mix(in srgb, var(--c) 34%, rgba(0, 0, 0, .35)); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--c) 70%, transparent); }
+.me-place-text { display: grid; gap: 1px; flex: 1; min-width: 0; }
+.me-place-text strong { font-size: calc(15px * var(--s)); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.me-place-text small { font-size: 12px; line-height: 1.35; color: var(--h-faint); }
+.me-secret { padding: 10px 12px; border-left: 3px solid #d4a537; border-radius: 4px 10px 10px 4px; background: rgba(212, 165, 55, .1); }
+.me-secret strong { display: block; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: #d4a537; }
+.me-secret p { margin: 4px 0 0; white-space: pre-wrap; }
+@media (hover: hover) and (pointer: fine) { .me-place:hover { background: rgba(255, 255, 255, .06); border-color: var(--h-line); } }
+/* the map takes the drop: a soft ring round the page while a place is over it */
+.me-dnd .pl-map-wrap.drop-place { box-shadow: inset 0 0 0 3px rgba(255, 190, 120, .55); }
+
+/* ---- labels on the map (D&D editor): dragged like the hub's tiles, and a press opens the label's card ---- */
+.me-dnd .pl-pin, .me-dnd .pl-token { cursor: grab; -webkit-user-select: none; user-select: none; }
+.pl-pin.dragging, .pl-token.dragging { cursor: grabbing; z-index: 8; will-change: translate; }
+.pl-pin.dragging .pl-pin-dot, .pl-token.dragging .pl-token-dot { box-shadow: 0 8px 22px rgba(0, 0, 0, .55); }
+.pl-pin.open { z-index: 7; }
+.pl-pin:focus-visible { outline: 2px solid #fff; outline-offset: 3px; border-radius: 8px; }
+.pl-pin-card { position: absolute; z-index: 1; left: 0; top: calc(100% + 8px); width: 280px; max-height: 280px; overflow-y: auto; overscroll-behavior: contain; cursor: default; touch-action: pan-y; -webkit-user-select: text; user-select: text;
+  padding: 12px 14px; border-radius: 14px; font-size: 14px; line-height: 1.45; color: #f8eee6; background: rgba(18, 14, 13, .97); border: 1px solid rgba(255, 170, 130, .26); box-shadow: 0 16px 40px rgba(0, 0, 0, .55); }
+.pl-pin-card.up { top: auto; bottom: calc(100% + 8px); }
+.pl-pin-card p { margin: 0; }
+.pl-pin-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.pl-pin-card-head strong { font-size: 16px; line-height: 1.25; }
+.pl-pin-card-x { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin: -4px -6px 0 0; padding: 0; font-size: 20px; line-height: 1; color: rgba(248, 238, 230, .65); background: transparent; border: 0; border-radius: 50%; cursor: pointer; touch-action: manipulation; }
+.pl-pin-card-x:hover { color: #fff; background: rgba(255, 255, 255, .1); }
+.pl-pin-meta { margin-top: 2px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: rgba(248, 238, 230, .5); }
+.pl-pin-meta:empty { display: none; }
+.pl-pin-known { margin-top: 8px; font-style: italic; color: rgba(248, 238, 230, .78); }
+.pl-pin-desc { margin-top: 8px; }
+.pl-pin-desc p + p { margin-top: 6px; }
+.pl-pin-area { font-weight: 600; }
+.pl-pin-none { color: rgba(248, 238, 230, .5); }
+.pl-pin-vis { margin-top: 8px; font-size: 12px; color: rgba(248, 238, 230, .5); }
+.pl-pin-card .me-secret { margin-top: 8px; }
+.pl-pin-card-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.pl-pin-card-acts .btn { font-size: 13px; min-height: 32px; padding: 5px 12px; border-radius: 999px; touch-action: manipulation; }
+@media (prefers-reduced-motion: no-preference) { .pl-pin-card { animation: pl-card-in .18s cubic-bezier(.23, 1, .32, 1); } }
+@keyframes pl-card-in { from { opacity: 0; transform: translateY(-4px); } }

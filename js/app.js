@@ -20,7 +20,6 @@ import { installTooltips } from "./tooltip.js";
 import { mountCosmicParallax } from "./cosmicParallax.js";
 import { watchLayout } from "./mobileMode.js";
 import { NAV_ICONS } from "./navIcons.js";
-import { mountLavaToggle, goToFloor } from "./lavaTheme.js";
 import { enableTouchDrag } from "./mobile/touchDrag.js";
 enableTouchDrag();   // press-and-hold dragging for fingers on the phone layout (team, trainer, bag, Dex, Whiteboard)
 import {
@@ -107,13 +106,10 @@ function setViewNow(name, { initial = false } = {}) {
   gatePass = null;
   clearAllIntervals();
   current = name;
-  document.documentElement.classList.toggle("planner-full", name === "planner");   // the whiteboard is a full-screen page, no tower behind it
+  document.documentElement.classList.toggle("planner-full", name === "planner");   // the whiteboard is a full-screen page with its own background
   document.documentElement.classList.toggle("hub-full", name === "hub");
   document.documentElement.classList.toggle("mapeditor-full", name === "mapeditor");   // full screen, like the hub
   document.documentElement.classList.toggle("admin-full", name === "admin");
-  // every page is a floor of the Lava Tower, in menu order: the first page is the roof
-  const floorBtn = sideNav.querySelector(`.nav-item[data-view="${name}"]`);
-  if (floorBtn) goToFloor(Number(floorBtn.dataset.floor) || 0, sideNav.querySelectorAll(".nav-item").length, initial);
   document.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
   sideNav.classList.remove("open");
   mainView.dataset.view = name; // lets the stylesheet lay each page out for wide screens
@@ -249,7 +245,6 @@ function updateNavVisibility() {
 }
 onHiddenViewsChanged(updateNavVisibility);
 applyTheme();
-mountLavaToggle({ get: getTheme, set: setTheme });
 installTooltips();
 // No browser right-click menu anywhere in the app (it reads as a web page, and the board has its own menus). Text
 // boxes keep it, so copy and paste still work there.
@@ -374,7 +369,8 @@ async function startApp() {
   // Log/Battle Log), and the dice tray all live outside the router —
   // mounted once, present no matter which view is open.
   system.mount?.(state);
-  if (system?.id === "pokemon-dnd") import("./ambience.js").then((m) => m.startAmbience()).catch(() => {});   // the background soundscape
+  // the background soundscape: cosmic for Pokémon D&D, a lava river and embers for D&D
+  if (system?.id === "pokemon-dnd" || system?.id === "dnd5e") import("./ambience.js").then((m) => m.startAmbience(system.id === "dnd5e" ? "lava" : "cosmic")).catch(() => {});
   mountLogDrawer(document.body, { tabs: system.pullTabs || [], state });   // LOG plus the system's own pull tabs
   mountDiceWidget();
   mountShortcuts();
@@ -387,6 +383,7 @@ async function startApp() {
   // cleared by clearAllIntervals) — a DM action should land even if you're
   // looking at the Pokédex when it happens.
   setInterval(async () => {
+    if (document.hidden) return;   // (a hidden tab catches up when it is shown again: no point asking every 3 seconds meanwhile)
     const changed = await system.applyDirectives?.(state);
     if (changed && DIRECTIVE_SENSITIVE_VIEWS.has(current)) {
       VIEWS[current].render(mainView, state);
@@ -402,7 +399,10 @@ async function startApp() {
   // seeing a stale name (e.g. still "Trainer") or an outdated roster.
   setInterval(() => {
     const save = loadSave();
-    pingTrainer(save.networkId, save.trainer.name || "Trainer", system.presence ? system.presence(save) : {}, save.trainer.sprite);
+    const team = system.presence ? system.presence(save) : {};
+    // a D&D player goes by their character's name (they have no trainer)
+    const name = system.id === "dnd5e" ? (team.dnd?.name || save.trainer.name || "Adventurer") : (save.trainer.name || "Trainer");
+    pingTrainer(save.networkId, name, team, save.trainer.sprite);
   }, 5000);
 }
 

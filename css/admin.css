@@ -14,7 +14,6 @@
 }
 html.admin-full .main { padding: 0; }
 html.admin-full .main::after { display: none; }
-html.admin-full #lavaFx, html.admin-full .lava-tower-wrap, html.admin-full .lava-debris { display: none; }
 html.admin-full body { background: #0b0b0c; }
 
 .adm-eyebrow { margin: 0; font-size: calc(13px * var(--s)); letter-spacing: .14em; text-transform: uppercase; color: var(--a-faint); }

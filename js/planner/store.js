@@ -46,7 +46,8 @@ function scheduleShare() {
 
 // What a player shares: notes, checklists and whiteboards (a board's uploaded background stays on the device).
 export function sharedPart(plan) {
-  return { notes: plan.notes, lists: plan.lists, boards: plan.boards, updated: plan.updated };
+  const noSecrets = (b) => ({ ...b, nodes: b.nodes.map((n) => (n.type === "place" && n.dmNotes ? { ...n, dmNotes: "" } : n)) });   // a place's DM notes are the DM's alone
+  return { notes: plan.notes, lists: plan.lists, boards: plan.boards?.map(noSecrets), updated: plan.updated };
 }
 
 export function displayName(save = loadSave()) {
@@ -110,4 +111,4 @@ export function listProgress(list) {
   return { total, done, pct: total ? Math.round((done / total) * 100) : 0 };
 }
 
-export const newBoard = (name = "Whiteboard") => normalizeBoard({ id: uid(), name, bounds: defaultBounds(), created: Date.now() });
+export const newBoard = (name = "Whiteboard", bg = "") => normalizeBoard({ id: uid(), name, bounds: defaultBounds(), created: Date.now(), ...(bg ? { bg: { kind: "preset", id: bg } } : {}) });

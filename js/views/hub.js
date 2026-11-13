@@ -1,4 +1,8 @@
-// The Hub: the Pokémon campaign's shared whiteboard, the page every player lands on. Everyone can pan around, leave
+// The Hub: a campaign's shared whiteboard, the page every player lands on. A Pokémon campaign's hub is described
+// below; a D&D campaign's hub is the same board with its own pieces (js/hubKits/dnd.js): a lava sky, your character
+// and inventory, the Compendium, monster / spell / item cards, and encounters that start a fight in the combat tracker.
+//
+// The Pokémon hub: Everyone can pan around, leave
 // sticky notes, write and draw, and sees everyone else's cursor (in that player's colour from Settings, with their
 // name above it, faded so it doesn't get in the way). The DM drags encounter buttons onto it: an NPC trainer or a wild
 // Pokémon from the DM's libraries, or an encounter generated in the Campaign Planner. Hovering one shows its first
@@ -24,7 +28,7 @@ import { el, makeCombo } from "../components.js";
 import { loadSave, writeSave, addBagItem, useBagItem, bagEntries, newMon } from "../storage.js";
 import {
   hubSync, hubOp, getNpcs, getNpc, getWildList, getWildMon, listTrainers, getTrainerTeam, getFullTurn, dmAction,
-  dmLogin, checkDmToken, getActiveCampaign, getRoster, sendToTrainer, getInbox, ackInbox,
+  getActiveCampaign, getRoster, sendToTrainer, getInbox, ackInbox,
 } from "../network.js";
 import { categorizeItem, SECTION_LABELS, SECTION_ORDER, tmMoveNames, tmName } from "../bagItems.js";
 import { BALL_TYPES } from "../calc.js";
@@ -49,8 +53,10 @@ import { refreshPullTabs } from "../logDrawer.js";
 import { calcAllStats } from "../calc.js";
 import { askLevel, askNumber } from "../levelAsk.js";
 import { mountHubMap } from "../hubMap.js";
+import { openPullTab } from "../logDrawer.js";
 import { mountWheel, sheetDrag, spring } from "../mobile/wheel.js";
 import { trainerSpriteUrl } from "../trainerSpritePicker.js";
+import { PAGE_W, PAGE_H, PAGE, UNIT, GAP, sizePx, nearestSize, pageAt, snapToCell, snapToLine, cellXY, flowText, TEXT_SIZE_ON_PAGE, resolveOverlap, packPage, unpackPage, PAGE_TEMPLATES } from "../hubKits/paper.js";
 
 // Buttons for the rest of the app. Beside the "Hub" title (a bar like the tool bar at the bottom): your trainer's
 // pages, the Pokédex and Move Dex (one pull-out with both) and the stat calculator. Down the right-hand side: the
@@ -77,13 +83,18 @@ export const PROPS = [
   ["boat", "⛵", "Boat"], ["sign", "🪧", "Sign"], ["flag", "🚩", "Flag"], ["chest", "🧰", "Chest"], ["gem", "💎", "Gem"],
   ["key", "🗝️", "Key"], ["egg", "🥚", "Egg"], ["berry", "🍒", "Berries"], ["swords", "⚔️", "Fight"], ["shield", "🛡️", "Guard"],
   ["skull", "💀", "Danger"], ["ghost", "👻", "Haunted"], ["star", "⭐", "Star"], ["question", "❓", "Mystery"], ["exclaim", "❗", "Alert"],
+  ["tavern", "🍺", "Tavern"], ["dragon", "🐉", "Dragon"], ["potion", "🧪", "Potion"], ["scroll", "📜", "Scroll"], ["crown", "👑", "Crown"],
+  ["torch", "🔥", "Torch"], ["door", "🚪", "Door"], ["trap", "🪤", "Trap"], ["coins", "🪙", "Treasure"], ["volcano", "🌋", "Volcano"],
 ];
 const PROP_BY_ID = new Map(PROPS.map(([id, glyph, label]) => [id, { glyph, label }]));
+const POKEMON_PROPS = new Set(["center", "egg", "berry"]);   // left out of a D&D campaign's prop library
 const SHAPES = [["rect", "Box", "M4 6h16v12H4z"], ["ellipse", "Circle", "M12 5a8 6.5 0 1 0 .01 0z"], ["line", "Line", "M5 19L19 5"], ["arrow", "Arrow", "M5 19L19 5M10 5h9v9"]];
 import { getPlan } from "../planner/store.js";
 import { spriteUrl } from "../sprites.js";
 import { setViewState } from "../viewState.js";
 import { ensureDmToken, clearDmToken } from "../systems/dnd5e/dmAccess.js";
+import * as dndKit from "../hubKits/dnd.js";
+import { activeSystem } from "../systems/registry.js";
 
 const SYNC_MS = 60;           // how often the page reports its cursor (and any stroke being drawn) while the mouse is moving
 const IDLE_SYNC_MS = 500;     // and how often it checks in when nothing is moving (other people's cursors, board changes)
@@ -98,7 +109,10 @@ const SHORTCUTS = { v: "move", n: "note", d: "pen", t: "text", e: "erase", s: "s
 const BASE_AREA = { x0: -2600, y0: -1700, x1: 2600, y1: 1700 };
 const EDGE_PAD = 1300;   // board units of open space kept round the content
 const typing = (t) => t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
-const CARD_TYPES = new Set(["mon", "move", "item", "trainer"]);
+const CARD_TYPES = new Set(["mon", "move", "item", "trainer", "monster", "spell", "place", "widget"]);
+const WIDGET_KINDS = new Set(["widget", "page", "place"]);   // the tabs of the Widgets pull-out
+const MAX_PAGES = 12;   // (the server holds the same limit)
+const DND_CARDS = new Set(["item", "monster", "spell"]);   // in a D&D campaign these are drawn from the SRD (js/hubKits/dnd.js)
 
 // Opens a page the router only allows from here (the Battle screen). js/app.js listens for this.
 export function openFromHub(view) {
@@ -113,8 +127,10 @@ function cursorCss(color) {
 
 export function renderHub(container, state) {
   container.replaceChildren();
+  const DND = state?.system === "dnd5e";   // a D&D campaign: its own pieces come from js/hubKits/dnd.js
+  const QUICK_LIST = DND ? dndKit.QUICK : QUICK, PAGE_LIST = DND ? dndKit.PAGES : RIGHT_PAGES, ICONS = DND ? { ...PAGE_ICONS, ...dndKit.PAGE_ICONS } : PAGE_ICONS;
   const save = loadSave();
-  const me = { id: save.networkId, name: save.trainer?.name?.trim() || "Trainer", color: cursorColorOf(save) };
+  const me = { id: save.networkId, name: (state?.system === "dnd5e" ? dndKit.characterName() : save.trainer?.name?.trim()) || (state?.system === "dnd5e" ? "Adventurer" : "Trainer"), color: cursorColorOf(save) };
   let dmToken = null;
   let items = [];                 // the board, as the server last sent it
   let rev = -1, activeButton = null;
@@ -138,17 +154,18 @@ export function renderHub(container, state) {
   const dots = el("div", { class: "hub-dots", "aria-hidden": "true" });
   // The starfield belongs to the board, like the dots: four repeating star patterns drawn on one screen-sized canvas
   // (js/starCanvas.js) that follow the pan (with parallax) and the zoom, each star twinkling on its own rhythm.
-  const starCv = createStarCanvas(HUB_STAR_LAYERS, "hub-star-canvas");
-  const stars = el("div", { class: "hub-stars", "aria-hidden": "true" }, [starCv.canvas]);
+  // (a D&D hub has a blurred, churning lava sea instead: no stars, nebula or constellations)
+  const starCv = DND ? { canvas: null, setOffsets() {}, setScale() {}, start() {}, setActive() {} } : createStarCanvas(HUB_STAR_LAYERS, "hub-star-canvas");
+  const stars = el("div", { class: "hub-stars", "aria-hidden": "true" }, DND ? [dndKit.lavaSky()] : [starCv.canvas]);
   // how much of a pan each layer follows (parallax: the faintest slowest)
   const starLayers = [0.72, 0.58, 0.85, 0.44];
   let shownK = null;
   // Rayquaza's constellation, far off: it follows a fifth of the pan, from wherever the board opened
-  stars.prepend(nebulaLayer("hub-nebula"));   // violet smoke, light flares and drifting shards, behind the stars
+  if (!DND) stars.prepend(nebulaLayer("hub-nebula"));   // violet smoke, light flares and drifting shards, behind the stars
   // Rayquaza, Charizard and Entei: far-off figures that drift and zoom together (applyView)
-  const constellations = ["rayquaza", "charizard", "entei"].map((n) => makeConstellation(n, "hub-constellation"));
+  const constellations = DND ? [] : ["rayquaza", "charizard", "entei"].map((n) => makeConstellation(n, "hub-constellation"));
   stars.append(...constellations);
-  cycleConstellations(constellations);   // one at a time, at random, fading in and out
+  if (constellations.length) cycleConstellations(constellations);   // one at a time, at random, fading in and out
   // where each star layer (and the constellation) sits on screen: set from the board's pan and zoom in applyView
   const skyPos = starLayers.map(() => null);
   let conPos = null, lastView = null;
@@ -171,6 +188,7 @@ export function renderHub(container, state) {
   const world = el("div", { class: "hub-world" });
   const ink = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   ink.setAttribute("class", "hub-ink");
+  const pageLayer = el("div", { class: "hub-pages" });   // sheets of paper, under the drawings
   const itemLayer = el("div", { class: "hub-items" });
   // Other players' cursors sit on the board itself (world coordinates), like everything else people put there, so they
   // stay exactly over the same spot while you zoom or pan; only their arrow and name are kept at screen size.
@@ -178,7 +196,7 @@ export function renderHub(container, state) {
   const draftInk = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   draftInk.setAttribute("class", "hub-ink hub-drafts");
   draftInk.setAttribute("aria-hidden", "true");
-  world.append(ink, draftInk, itemLayer, cursorLayer);
+  world.append(pageLayer, ink, draftInk, itemLayer, cursorLayer);
   const myTag = el("div", { class: "hub-mytag", "aria-hidden": "true" }, me.name);
   stage.append(world, myTag);
   stage.style.cursor = cursorCss(me.color);
@@ -203,22 +221,23 @@ export function renderHub(container, state) {
   // the Campaign Planner and the Library: buttons down the right-hand side, under the account button
   // a page button: the page's own icon (the same sprites the sidebar used), its name sliding out on hover
   const pageBtn = (view, label) => {
-    const b = el("button", { type: "button", class: `hub-round hub-page-btn${view === "controlcentre" ? " hub-dm-page" : ""}`, "aria-label": label, title: label, "data-view": view });
-    b.innerHTML = `<span class="hub-page-icon">${PAGE_ICONS[view] || NAV_ICONS[view] || ""}</span>`;
+    const dmPage = view === "controlcentre" || dndKit.DM_PAGES.has(view);
+    const b = el("button", { type: "button", class: `hub-round hub-page-btn${dmPage ? " hub-dm-page" : ""}`, "aria-label": label, title: label, "data-view": view });
+    b.innerHTML = `<span class="hub-page-icon">${ICONS[view] || NAV_ICONS[view] || ""}</span>`;
     b.append(el("span", { class: "hub-page-label" }, label));
     b.addEventListener("click", () => openFromHub(view));
     return b;
   };
-  const appBtns = el("div", { class: "hub-apps" }, RIGHT_PAGES.map(([v, l]) => pageBtn(v, l)));
-  appBtns.querySelector('[data-view="controlcentre"]')?.setAttribute("hidden", "");   // shown once the server says you're a DM
-  const quick = el("div", { class: "hub-quick", role: "toolbar", "aria-label": "Your trainer" }, QUICK.map(([view, label, d]) => {
+  const appBtns = el("div", { class: "hub-apps" }, PAGE_LIST.map(([v, l]) => pageBtn(v, l)));
+  appBtns.querySelectorAll(".hub-dm-page").forEach((b) => b.setAttribute("hidden", ""));   // shown once the server says you're a DM
+  const quick = el("div", { class: "hub-quick", role: "toolbar", "aria-label": DND ? "Your character" : "Your trainer" }, QUICK_LIST.map(([view, label, d]) => {
     const b = el("button", { type: "button", class: "hub-tool", title: label, "data-view": view });
     b.innerHTML = glyph(d) + `<span>${label}</span>`;
-    b.addEventListener("click", () => (view === "dex" ? toggleDex(dexOpen ? null : "pokemon") : view === "bag" ? toggleBag() : openFromHub(view)));
+    b.addEventListener("click", () => (view === "all" ? openPagesMenu(b) : view === "widgets" ? toggleDex(WIDGET_KINDS.has(dexOpen) ? null : "widget") : view === "dex" ? toggleDex(dexOpen ? null : DND ? "monster" : "pokemon") : view === "bag" ? toggleBag() : openFromHub(view)));
     return b;
   }));
   const topbar = el("div", { class: "hub-top" }, [
-    el("div", { class: "hub-top-left" }, [el("div", { class: "hub-title" }, [el("span", { class: "hub-eyebrow" }, "Pokémon D&D"), el("strong", {}, "Hub")]), quick]),
+    el("div", { class: "hub-top-left" }, [el("div", { class: "hub-title" }, [el("span", { class: "hub-eyebrow" }, DND ? dndKit.TITLE : "Pokémon D&D"), el("strong", {}, "Hub")]), quick]),
     el("div", { class: "hub-top-right" }, [appBtns, people, ...(getForcedTheme() ? [] : [themeBtn]), settingsBtn, accountBtn]),   // a campaign's own theme has no toggle
   ]);
   const toolbar = el("div", { class: "hub-toolbar", role: "toolbar", "aria-label": "Board tools" });
@@ -229,7 +248,7 @@ export function renderHub(container, state) {
   const toast = el("div", { class: "hub-toast", role: "status", "aria-live": "polite" });
   const empty = el("div", { class: "hub-empty" }, [
     el("h2", {}, "Welcome to the hub"),
-    el("p", {}, "Everyone in the campaign is here. Leave notes, draw, and watch for the DM's encounter buttons: they're your way into battle."),
+    el("p", {}, DND ? dndKit.WELCOME : "Everyone in the campaign is here. Leave notes, draw, and watch for the DM's encounter buttons: they're your way into battle."),
   ]);
   const zoomLabel = el("span", { class: "hub-zoom-label", "aria-live": "polite" }, "100%");
   const zoomBtn = (label, aria, fn) => { const b = el("button", { type: "button", class: "hub-zoom-btn", "aria-label": aria, title: aria }, label); b.addEventListener("click", fn); return b; };
@@ -244,7 +263,13 @@ export function renderHub(container, state) {
     if (!kind) { closeDex(); return; }
     const already = dexOpen;
     dexOpen = kind;
-    const panel = dexPanel(state, kind, {
+    const onPlaceCard = (card) => { const r = stage.getBoundingClientRect(); hubSound("place"); placeCard(card, toWorld(r.left + r.width / 2, r.top + r.height / 2)); };
+    const panel = DND && WIDGET_KINDS.has(kind) ? dndKit.widgetsPanel(kind, { CARD_MIME, onSwitch: (k) => toggleDex(k), onClose: closeDex, onPlace: onPlaceCard, dm: !!dmToken,
+      saved: kind === "page" ? loadSavedPages().map((s) => ({ id: s.id, title: String(s.title || "Page"), count: (s.items || []).length })) : [],
+      onDeleteSaved: (id) => { storeSavedPages(loadSavedPages().filter((s) => s.id !== id)); toggleDex("page"); } }) : DND ? dndKit.compendiumPanel(kind, {
+      CARD_MIME, onSwitch: (k) => toggleDex(k), onClose: closeDex, openFull: (view) => { setViewState("dnd:compendium:tab", view); openFromHub("dndCompendium"); },
+      onPlace: (card) => { const r = stage.getBoundingClientRect(); hubSound("place"); placeCard(card, toWorld(r.left + r.width / 2, r.top + r.height / 2)); },
+    }) : dexPanel(state, kind, {
       onSwitch: (k) => toggleDex(k),
       onClose: closeDex,
       openFull: () => openFromHub(kind === "pokemon" ? "pokedex" : "moves"),
@@ -256,14 +281,14 @@ export function renderHub(container, state) {
     if (already) panel.classList.add("open");   // switching tabs: no slide
     else { void panel.offsetWidth; panel.classList.add("open"); }   // lay it out closed first, so it slides in
     panel.focusSearch();
-    quick.querySelector('[data-view="dex"]').classList.add("on");
+    quick.querySelectorAll('[data-view="dex"], [data-view="widgets"]').forEach((b) => b.classList.toggle("on", b.dataset.view === (WIDGET_KINDS.has(kind) ? "widgets" : "dex")));
   }
   function closeDex() {
     dexOpen = null;
     const old = dexEl; dexEl = null;
     old?.classList.remove("open");
     setTimeout(() => { if (old && !old.classList.contains("open")) old.remove(); }, 300);
-    quick.querySelector('[data-view="dex"]').classList.remove("on");
+    quick.querySelectorAll('[data-view="dex"], [data-view="widgets"]').forEach((b) => b.classList.remove("on"));
   }
 
   // ---- your team, bottom left: up to six sprites in party order, each with its health; drag one onto the board.
@@ -297,6 +322,7 @@ export function renderHub(container, state) {
     party: (s.party || []).filter((m) => m && m.name).slice(0, 6).map((m) => ({ name: m.name, dex: m.dex || state?.pokemonByName?.get(m.name)?.dex || 0, level: Number(m.level) || null })),
   });
   function drawMe() {
+    if (DND) { const sig = dndKit.meSig(); if (sig !== meSig) { meSig = sig; dndKit.drawMe(meBadge); dndKit.drawVitals(teamStrip, openFromHub); } return; }
     const s = loadSave(), t = s.trainer || {};
     const sig = JSON.stringify([t.name, t.sprite, t.cash]);
     if (sig === meSig) return;
@@ -306,11 +332,15 @@ export function renderHub(container, state) {
       el("span", { class: "hub-me-text" }, [el("strong", {}, t.name?.trim() || "Your trainer"), el("span", {}, money(t.cash))]),
     );
   }
-  meBadge.addEventListener("click", () => openFromHub("trainer"));
+  meBadge.addEventListener("click", () => openFromHub(DND ? (dndKit.hasCharacter() ? "dndSheet" : "dndCharacters") : "trainer"));
   meBadge.addEventListener("dragstart", (e) => {
-    e.dataTransfer.setData(CARD_MIME, JSON.stringify(trainerCard(loadSave())));
+    const card = DND ? dndKit.characterCard() : trainerCard(loadSave());
+    if (!card) { e.preventDefault(); return; }
+    e.dataTransfer.setData(CARD_MIME, JSON.stringify(card));
     e.dataTransfer.effectAllowed = "copy";
+    if (DND) characterDrag = true;
   });
+  meBadge.addEventListener("dragend", () => { characterDrag = false; hotPlace(null); });
   function monCard(m) {
     const species = state?.pokemonByName?.get(m.name);
     const level = Math.min(100, Math.max(1, Number(m.level) || 1));
@@ -323,7 +353,7 @@ export function renderHub(container, state) {
   const SHEET_KEYS = ["name", "sprite", "fields", "backstory", "party", "dex", "level", "hp", "moves", "nickname", "held", "ability", "status"];
   const sheetOf = (c) => JSON.stringify(SHEET_KEYS.map((k) => [k, c[k] ?? ""]));
   const freshCardFor = (item, s) => {
-    if (item.link === "trainer") return trainerCard(s);
+    if (item.link === "trainer") return DND ? dndKit.characterCard() : trainerCard(s);
     const id = item.link?.startsWith("mon:") ? item.link.slice(4) : null;
     const m = id && [...(s.party || []), ...(s.pc || [])].find((x) => x && String(x.id) === id && x.name);
     return m ? monCard(m) : null;   // not in your team or PC any more: the card keeps its last details
@@ -344,6 +374,7 @@ export function renderHub(container, state) {
   }
   function drawTeam() {
     drawMe();
+    if (DND) return;   // a D&D character's vitals are drawn with it (drawMe)
     const party = (loadSave().party || []).filter((m) => m && m.name).slice(0, 6);
     const rows = party.map((m) => {
       const species = state?.pokemonByName?.get(m.name);
@@ -376,6 +407,7 @@ export function renderHub(container, state) {
     }) : [el("button", { type: "button", class: "hub-team-empty" }, "Add Pokémon in My Team")]));
     teamStrip.querySelector(".hub-team-empty")?.addEventListener("click", () => openFromHub("team"));
   }
+  if (DND) window.addEventListener("dnd5e-changed", function onDnd() { if (!document.body.contains(root)) { window.removeEventListener("dnd5e-changed", onDnd); return; } drawTeam(); if (bagDrop.classList.contains("open")) drawBag(); syncLinkedCards(); });
   window.addEventListener("pokemon-dnd-save-changed", function onSave() { if (!document.body.contains(root)) { window.removeEventListener("pokemon-dnd-save-changed", onSave); return; } drawTeam(); if (bagDrop.classList.contains("open")) drawBag(); syncLinkedCards(); });
 
   // ---- the Bag: a drop-down under its button. Every item (and your money, as a Key Item) can be dragged onto the board
@@ -391,6 +423,7 @@ export function renderHub(container, state) {
     itemNames = [...new Set(names)];
   }
   async function drawBag() {
+    if (DND) { dndKit.drawBag(bagDrop, { CARD_MIME, itemSound, openFromHub }); return; }
     fillItemOptions();
     const s = loadSave();
     const bySection = { ball: [], medicine: [], tm: [], held: [], key: [] };
@@ -594,6 +627,7 @@ export function renderHub(container, state) {
   // ---- gifts: what other players (or the DM) sent you lands in your save while the hub is open
   const APPLIED_KEY = "pkdnd-applied-gifts";
   async function checkGifts() {
+    if (DND) return;   // gifts between players are a Pokémon campaign's (items and Pokémon sent with Send To)
     const msgs = await getInbox(me.id);
     if (!msgs?.length) return;
     let applied = [];
@@ -630,10 +664,10 @@ export function renderHub(container, state) {
   }
 
   // ---- who's here: the "N here" pill opens a small list of the trainers online and their teams
-  const peopleDrop = el("div", { class: "hub-people-drop", role: "dialog", "aria-label": "Trainers online" });
+  const peopleDrop = el("div", { class: "hub-people-drop", role: "dialog", "aria-label": DND ? "Players online" : "Trainers online" });
   async function togglePeople() {
     if (peopleDrop.classList.contains("open")) { peopleDrop.classList.remove("open"); return; }
-    peopleDrop.replaceChildren(el("p", { class: "hub-menu-note" }, "Finding trainers…"));
+    peopleDrop.replaceChildren(el("p", { class: "hub-menu-note" }, DND ? "Finding players…" : "Finding trainers…"));
     if (innerWidth > 640) {   // hang it under the "N here" pill, wherever the top row puts it
       const pr = people.getBoundingClientRect(), rr = root.getBoundingClientRect();
       peopleDrop.style.right = `${Math.max(8, rr.right - pr.right)}px`;
@@ -641,13 +675,13 @@ export function renderHub(container, state) {
     peopleDrop.classList.add("open");
     const trainers = await listTrainers("");
     const rows = await Promise.all(trainers.map(async (t) => ({ t, team: (await getTrainerTeam(t.id))?.team || {} })));
-    peopleDrop.replaceChildren(el("p", { class: "hub-menu-title" }, `Trainers online (${rows.length})`), ...(rows.length ? rows.map(({ t, team }) => {
+    peopleDrop.replaceChildren(el("p", { class: "hub-menu-title" }, `${DND ? "Players" : "Trainers"} online (${rows.length})`), ...(rows.length ? rows.map(({ t, team }) => {
       const party = (team.party || []).filter((m) => m && m.name).slice(0, 6);
       return el("div", { class: "hub-people-row" }, [
         t.sprite ? el("img", { class: "hub-people-sprite", src: trainerSpriteUrl(t.sprite), alt: "" }) : el("span", { class: "hub-avatar small" }, (t.name || "?")[0].toUpperCase()),
         el("div", { class: "hub-people-info" }, [
-          el("strong", {}, `${t.name || "Trainer"}${t.id === me.id ? " (you)" : ""}`),
-          el("div", { class: "hub-people-team" }, party.length ? party.map((m) => {
+          el("strong", {}, `${t.name || (DND ? "Player" : "Trainer")}${t.id === me.id ? " (you)" : ""}`),
+          DND ? dndKit.personInfo(team) : el("div", { class: "hub-people-team" }, party.length ? party.map((m) => {
             const dex = m.dex || state?.pokemonByName?.get(m.name)?.dex;
             return dex ? el("img", { src: spriteUrl(dex), alt: m.name, title: `${m.nickname || m.name} · Lv ${m.level ?? "?"}` }) : el("span", { title: m.name }, "?");
           }) : [el("span", { class: "hub-menu-note" }, "No team yet")]),
@@ -665,6 +699,7 @@ export function renderHub(container, state) {
 
   root.append(backdropLayer, stars, dots, stage, edgeGlow, empty, topbar, peopleDrop, bagDrop, dexHost, leftDock, sendZone, subbar, toolbar, zoomBar, drawer, hover, menu, toast);
   root.classList.add("cosmic");
+  if (DND) root.classList.add("lava");   // the D&D hub: warm glass and a lava sea (css/hub.css "the lava hub")
   window.addEventListener("layout-changed", function onLayout() { if (!document.body.contains(root)) { window.removeEventListener("layout-changed", onLayout); return; } drawSubbar(); });
   syncTheme();
   sheetDrag(bagDrop, () => { bagDrop.classList.remove("open"); quick.querySelector('[data-view="bag"]')?.classList.remove("on"); });
@@ -715,6 +750,12 @@ export function renderHub(container, state) {
     clearTimeout(glowTimer);
     glowTimer = setTimeout(() => edgeGlow.querySelectorAll("span").forEach((x) => x.classList.remove("on")), 450);
   }
+  // how big an item is on the board: a page is A4, a widget is one of three sizes, everything else carries its own width and height
+  function itemSize(it, fw, fh) {
+    if (it.type === "page") return [PAGE_W, PAGE_H];
+    if (it.type === "widget") return sizePx(it.size || dndKit.defaultSize(it.widget));
+    return [it.w || fw, it.h || fh];
+  }
   // the edge follows the content: a margin round everything on the board, at least the base area
   function updateBounds() {
     const b = { ...BASE_AREA };
@@ -722,7 +763,7 @@ export function renderHub(container, state) {
       const pts = it.type === "stroke" ? it.pts : it.type === "shape" ? [[it.x, it.y], [it.x2, it.y2]] : null;
       if (pts) for (const [x, y] of pts) { b.x0 = Math.min(b.x0, x - EDGE_PAD); b.x1 = Math.max(b.x1, x + EDGE_PAD); b.y0 = Math.min(b.y0, y - EDGE_PAD); b.y1 = Math.max(b.y1, y + EDGE_PAD); }
       else {
-        const w = it.w || 260, h = it.h || 120;
+        const [w, h] = itemSize(it, 260, 120);
         b.x0 = Math.min(b.x0, it.x - EDGE_PAD); b.x1 = Math.max(b.x1, it.x + w + EDGE_PAD);
         b.y0 = Math.min(b.y0, it.y - EDGE_PAD); b.y1 = Math.max(b.y1, it.y + h + EDGE_PAD);
       }
@@ -810,7 +851,8 @@ export function renderHub(container, state) {
   function fitAll() {
     const boxes = items.map((it) => it.type === "stroke"
       ? it.pts.reduce((b, [x, y]) => [Math.min(b[0], x), Math.min(b[1], y), Math.max(b[2], x), Math.max(b[3], y)], [Infinity, Infinity, -Infinity, -Infinity])
-      : [it.x, it.y, it.x + (it.w || 200), it.y + (it.h || 60)]);
+      : it.type === "shape" ? [Math.min(it.x, it.x2), Math.min(it.y, it.y2), Math.max(it.x, it.x2), Math.max(it.y, it.y2)]
+      : [it.x, it.y, it.x + itemSize(it, 200, 60)[0], it.y + itemSize(it, 200, 60)[1]]);
     if (!boxes.length) { lookAt(0, 0, 1); return; }
     const [x0, y0, x1, y1] = boxes.reduce((a, b) => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])]);
     const r = stage.getBoundingClientRect();
@@ -887,7 +929,7 @@ export function renderHub(container, state) {
   function dmButton() {
     if (dmToken) {
       const b = el("button", { type: "button", class: `hub-tool hub-dm${drawer.classList.contains("open") ? " on" : ""}`, title: "Encounters" });
-      b.innerHTML = icon("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h6m6 0h6M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z") + "<span>Encounters</span>";
+      b.innerHTML = icon(DND ? dndKit.SWORDS : "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h6m6 0h6M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z") + "<span>Encounters</span>";
       b.addEventListener("click", () => { drawer.classList.toggle("open"); if (drawer.classList.contains("open")) drawDrawer(); drawToolbar(); });
       // a note only the DM can see (the server never sends it to players)
       const dn = el("button", { type: "button", class: `hub-tool hub-dmnote${noteDm ? " on" : ""}`, title: "DM note: a note only you can see" });
@@ -903,7 +945,8 @@ export function renderHub(container, state) {
   // The pen's colours and sizes. On a phone they sit on a semicircle round the white dot (drawPenArc); on a computer in
   // the bar above the tools. Either way the brush size is one button showing the size you have, which opens out into
   // the three sizes when you press it.
-  const PEN_COLORS = () => [me.color, "#f4f4f5", "#ff5a4e", "#ffd23f", "#6fdc6a", "#4ea8ff", "#e36bff"];
+  // a D&D campaign draws in parchment, gold, blood red, brown, dark green and ember
+  const PEN_COLORS = () => (DND ? [me.color, "#f3e6c8", "#d4a537", "#b3261e", "#7b4a2a", "#2e6b3c", "#e8652a"] : [me.color, "#f4f4f5", "#ff5a4e", "#ffd23f", "#6fdc6a", "#4ea8ff", "#e36bff"]);
   let sizesOpen = false;
   const penArc = el("div", { class: "pen-arc", role: "toolbar", "aria-label": "Pen colour and size" });
   const phone = () => document.documentElement.classList.contains("m");
@@ -971,7 +1014,7 @@ export function renderHub(container, state) {
     } else if (tool === "prop") {
       const size = el("input", { type: "range", min: "32", max: "200", value: String(propSize), "aria-label": "Prop size", class: "hub-prop-size" });
       size.addEventListener("input", () => { propSize = Number(size.value); });
-      subbar.append(el("div", { class: "hub-prop-list" }, PROPS.map(([id, glyphChar, label]) => {
+      subbar.append(el("div", { class: "hub-prop-list" }, PROPS.filter(([id]) => !DND || !POKEMON_PROPS.has(id)).map(([id, glyphChar, label]) => {
         const b = el("button", { type: "button", class: `hub-prop-pick${propId === id ? " on" : ""}`, title: label, "aria-label": label, draggable: "true" }, glyphChar);
         b.addEventListener("click", () => { propId = id; subbar.querySelectorAll(".hub-prop-pick").forEach((x) => x.classList.toggle("on", x === b)); });
         b.addEventListener("dragstart", (e) => { e.dataTransfer.setData(CARD_MIME, JSON.stringify({ type: "prop", prop: id, size: propSize })); });
@@ -1017,7 +1060,7 @@ export function renderHub(container, state) {
   }
   function applyDmUi() {
     drawToolbar(); drawSubbar(); rev = -1;
-    appBtns.querySelector('[data-view="controlcentre"]')?.toggleAttribute("hidden", !dmToken);
+    appBtns.querySelectorAll(".hub-dm-page").forEach((b) => b.toggleAttribute("hidden", !dmToken));
     refreshPullTabs();   // the DM's SOUND and PARTY tabs
     hubMap?.refresh();   // the DM sees the whole map
     wheel?.refresh();    // and the wheel's DM options
@@ -1034,6 +1077,24 @@ export function renderHub(container, state) {
     rev = -1;   // pull the board again on the next sync
     sync(true);
     return res;
+  }
+
+  // Several changes at once (a page and its widgets, a wrapped paragraph, widgets pushed aside): they go out together and the
+  // board is pulled once, where op() pulls after every one. Returns the answers, or null if any failed.
+  async function opMany(bodies) {
+    const out = [];
+    for (let i = 0; i < bodies.length; i += 6) {
+      const res = await Promise.all(bodies.slice(i, i + 6).map((b) => hubOp(me.id, b, dmToken)));
+      for (const [j, r] of res.entries()) {
+        if (!r || r.error) { say(r?.error || "Couldn't save that. Check your connection."); rev = -1; sync(true); return null; }
+        const b = bodies[i + j];
+        if (b.op === "put" && b.item && !items.some((it) => it.id === b.item.id)) { undoStack.push(b.item.id); if (undoStack.length > 40) undoStack.shift(); }
+        out.push(r);
+      }
+    }
+    rev = -1;
+    sync(true);
+    return out;
   }
 
   async function sync(force = false) {
@@ -1125,6 +1186,22 @@ export function renderHub(container, state) {
 
   // ------------------------------------------------------------------ items
   const itemEls = new Map();
+  let lastInkSig = "";
+  // what a widget on the board can ask of the hub (js/hubKits/widgets.js)
+  const widgetCtx = {
+    me, dm: () => !!dmToken, dmToken: () => dmToken || "", say: (t) => say(t),
+    open: (v) => (v === "map" ? hubMap?.open() : openFromHub(v)),
+    update: (it, patch) => op({ op: "put", item: { ...it, ...patch } }),
+    mine: () => dndKit.mySummary(),
+    // a place's name in a widget is a link: players get the map on it, the DM gets the Map editor there
+    openPlace: (pinId) => {
+      if (dmToken) {
+        const pm = getPlan().maps.find((m) => (m.pins || []).some((p) => p.id === pinId));
+        try { sessionStorage.setItem("mapeditor-open", JSON.stringify({ mapId: pm?.id || null, pinId })); } catch { /* storage blocked: it opens on the first map */ }
+        openFromHub("mapeditor");
+      } else hubMap?.openPlace(pinId);
+    },
+  };
   const mine = (it) => it.owner === me.id;
   const canEdit = (it) => !!dmToken || (mine(it) && it.type !== "button");
 
@@ -1135,7 +1212,8 @@ export function renderHub(container, state) {
     // drawings and shapes go in the SVG
     const strokes = items.filter((it) => it.type === "stroke");
     const shapes = items.filter((it) => it.type === "shape");
-    ink.replaceChildren(...shapes.map((sh) => {
+    const inkSig = shapes.concat(strokes).map((s) => `${s.id}:${s.updated}:${s.pts?.length || 0}`).join("|");
+    if (inkSig !== lastInkSig) { lastInkSig = inkSig; ink.replaceChildren(...shapes.map((sh) => {
       const path = shapePath(sh);
       if (!knownStrokes.has(sh.id)) { knownStrokes.add(sh.id); if (rev > 0) path.classList.add("fresh"); }
       return path;
@@ -1147,10 +1225,11 @@ export function renderHub(container, state) {
       path.setAttribute("stroke-width", String(s.width));
       path.dataset.id = s.id;
       return path;
-    }));
+    })); }   // (every change to an item is stamped by the server, so an unchanged board leaves its drawings alone)
+    drawPages(items.filter((it) => it.type === "page"));
     const seen = new Set();
     for (const it of items) {
-      if (it.type === "stroke" || it.type === "shape") continue;
+      if (it.type === "stroke" || it.type === "shape" || it.type === "page") continue;
       seen.add(it.id);
       let node = itemEls.get(it.id);
       const fresh = !node;
@@ -1164,6 +1243,7 @@ export function renderHub(container, state) {
       }
       node.__item = it;
       node.style.left = `${it.x}px`; node.style.top = `${it.y}px`;
+      if (gesture?.kind !== "pagedrag") node.style.translate = "";   // (what rode along with a page that was just moved is at its new place now)
       if (it.type === "note") {
         node.style.setProperty("--note", it.color);
         node.style.width = `${it.w}px`; node.style.minHeight = `${it.h}px`;
@@ -1175,9 +1255,17 @@ export function renderHub(container, state) {
         node.querySelector(".hub-note-by").textContent = it.dmOnly ? "DM only" : it.byName || "";
       } else if (it.type === "text") {
         node.style.color = it.color; node.style.fontSize = `${it.size}px`;
+        node.classList.toggle("on-page", !!it.page);
+        const onPg = it.page ? pageEls.get(it.page)?.__item : null;
+        node.style.maxWidth = onPg ? `${Math.max(60, onPg.x + PAGE_W - 14 - it.x)}px` : "";   // (never off the page's edge, whatever the font did)
         if (!node.isContentEditable) node.textContent = it.text;
       } else if (CARD_TYPES.has(it.type)) {
-        fillCard(node, it, state);
+        if (DND && (it.type === "widget" || it.type === "place")) {
+          if (it.type === "widget") dndKit.fillWidget(node, it, widgetCtx); else dndKit.fillPlace(node, it, widgetCtx);
+          node.classList.toggle("editable", canEdit(it));
+        }
+        else if (DND && it.type === "trainer") dndKit.fillCharacterCard(node, it);
+        else if (DND && DND_CARDS.has(it.type)) dndKit.fillCard(node, it); else fillCard(node, it, state);
       } else if (it.type === "prop") {
         const prop = PROP_BY_ID.get(it.prop);
         node.textContent = prop?.glyph || "❔";
@@ -1193,6 +1281,140 @@ export function renderHub(container, state) {
       node.classList.add("hub-leave");
       setTimeout(() => node.remove(), 220);
     }
+  }
+
+  // ---- pages: sheets of weathered paper. Whatever has its corner on one is attached to it (the server decides) and moves with it.
+  const pageEls = new Map();
+  const pagesList = () => items.filter((it) => it.type === "page");
+  function drawPages(pages) {
+    const seenPages = new Set();
+    for (const it of pages) {
+      seenPages.add(it.id);
+      let node = pageEls.get(it.id);
+      if (!node) {
+        const title = el("input", { class: "hub-page-title", type: "text", maxlength: "40", "aria-label": "Page title" });
+        title.addEventListener("change", () => { const cur = node.__item, t = title.value.trim().slice(0, 40) || "Page"; if (t !== cur.title) op({ op: "put", item: { ...cur, title: t } }); });
+        title.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") title.blur(); });
+        const del = el("button", { type: "button", class: "hub-page-del", "aria-label": "Take this page off the board", title: "Remove the page (what is on it stays)" }, "×");
+        del.addEventListener("click", (e) => { e.stopPropagation(); op({ op: "delete", itemId: node.__item.id }); });
+        const head = el("div", { class: "hub-page-head" }, [el("span", { class: "hub-page-grip", "aria-hidden": "true" }), title, del]);
+        node = el("div", { class: "hub-page hub-enter" }, [el("div", { class: "hub-page-sheet" }), head]);
+        node.dataset.id = it.id;
+        pageLayer.append(node); pageEls.set(it.id, node);
+        setTimeout(() => node.classList.remove("hub-enter"), 500);
+      }
+      node.__item = it;
+      const head = node.querySelector(".hub-page-head"), title = node.querySelector(".hub-page-title");
+      head.__item = it;
+      node.style.left = `${it.x}px`; node.style.top = `${it.y}px`;
+      node.dataset.kind = it.pageKind || "blank";
+      const own = canEdit(it);
+      node.classList.toggle("editable", own);
+      if (document.activeElement !== title) title.value = it.title || "Page";
+      title.readOnly = !own;
+      node.querySelector(".hub-page-del").hidden = !own;
+      if (gesture?.kind !== "pagedrag") node.style.translate = "";
+    }
+    for (const [id, node] of pageEls) if (!seenPages.has(id)) { pageEls.delete(id); node.classList.add("hub-leave"); setTimeout(() => node.remove(), 220); }
+  }
+  // a page dropped from the Widgets pull-out: the sheet, then the widgets its template arrives with, each in its grid cell
+  async function placePage(card, at) {
+    const pages = pagesList();
+    if (pages.length >= MAX_PAGES) { say(`The hub can hold ${MAX_PAGES} pages. Remove one first.`); return; }
+    let x = Math.round(at.x - PAGE_W / 2), y = Math.round(at.y - 60);
+    while (pages.some((p) => Math.abs(p.x - x) < PAGE_W && Math.abs(p.y - y) < PAGE_H)) x += PAGE_W + 40;   // beside the others, never on top of one
+    const kind = PAGE_TEMPLATES[card.pageKind] ? card.pageKind : "blank";
+    const res = await op({ op: "put", item: { type: "page", id: uid(), x, y, title: card.title || PAGE_TEMPLATES[kind].title, pageKind: kind } });
+    if (!res) return;
+    await opMany(PAGE_TEMPLATES[kind].widgets.map((w) => {
+      const c = cellXY({ x, y }, w.col, w.row);
+      return { op: "put", item: { type: "widget", id: uid(), widget: w.widget, size: w.size, x: c.x, y: c.y } };
+    }));
+    say(`${card.title || "Page"} is on the hub.`);
+  }
+  // widgets and places never cover each other: one dropped on another settles beside it (on a page, in a free cell)
+  const cardSize = (it) => {
+    if (it.type === "widget") return sizePx(it.size || dndKit.defaultSize(it.widget));
+    const n = itemEls.get(it.id), first = [...itemEls.values()].find((x) => x.__item?.type === "place");
+    return [n?.offsetWidth || first?.offsetWidth || 220, n?.offsetHeight || first?.offsetHeight || 180];
+  };
+  const cardRects = (exceptId) => items.filter((o) => o.id !== exceptId && (o.type === "widget" || o.type === "place"))
+    .map((o) => { const n = itemEls.get(o.id); return n && { x: o.x, y: o.y, w: n.offsetWidth, h: n.offsetHeight }; }).filter(Boolean);
+  const cellSnapFor = (pg) => (pg ? (c) => { const s = snapToCell(pg, c.x, c.y); return { x: s.x, y: s.y }; } : null);
+  function spotFor(it, x, y, w, h) {
+    if (!DND || (it.type !== "widget" && it.type !== "place")) return { x, y };
+    return resolveOverlap({ x, y, w, h }, cardRects(it.id), GAP, cellSnapFor(pageAt(pagesList(), x + w / 2, y + Math.min(h, 140) / 2)));
+  }
+  // a widget that grew over its neighbours moves them aside
+  async function pushAside(id, size) {
+    const self = items.find((o) => o.id === id);
+    if (!self) return;
+    const [w, h] = sizePx(size), selfRect = { x: self.x, y: self.y, w, h };
+    const others = items.filter((o) => o.id !== id && (o.type === "widget" || o.type === "place")).map((o) => { const n = itemEls.get(o.id); return n && { it: o, r: { x: o.x, y: o.y, w: n.offsetWidth, h: n.offsetHeight } }; }).filter(Boolean);
+    const moves = [];
+    for (const o of others) {
+      const pg = pageAt(pagesList(), o.r.x + o.r.w / 2, o.r.y + Math.min(o.r.h, 140) / 2);
+      const to = resolveOverlap(o.r, [selfRect, ...others.filter((p) => p !== o).map((p) => p.r)], GAP, cellSnapFor(pg));
+      if (to.x !== o.r.x || to.y !== o.r.y) { o.r = { ...o.r, ...to }; const n = itemEls.get(o.it.id); if (n) { n.classList.add("settling"); setTimeout(() => n.classList.remove("settling"), 450); } moves.push({ op: "put", item: { ...o.it, x: to.x, y: to.y } }); }
+    }
+    if (moves.length) await opMany(moves);
+  }
+  // pages put away: a page and what is on it are kept in this browser (per campaign) and come back from the Pages tab
+  const savedKey = () => `pkdnd-hub-pages:${getActiveCampaign() || "local"}`;
+  function loadSavedPages() { try { const v = JSON.parse(localStorage.getItem(savedKey()) || "[]"); return Array.isArray(v) ? v : []; } catch { return []; } }
+  function storeSavedPages(list) { try { localStorage.setItem(savedKey(), JSON.stringify(list)); return true; } catch { say("Couldn't save that page on this device."); return false; } }
+  const overDex = (e) => { if (!dexEl) return false; const r = dexEl.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; };
+  async function savePageAway(it) {
+    const attached = items.filter((x) => x.page === it.id && canEdit(x));
+    const list = loadSavedPages();
+    if (list.length >= 20) { say("You can keep 20 saved pages. Delete one first."); return false; }
+    if (attached.length > 80) { say("That page has too much on it to save (80 things at most)."); return false; }
+    list.unshift({ id: uid(), savedAt: Date.now(), ...packPage(it, attached) });
+    if (!storeSavedPages(list)) return false;
+    await opMany([...attached.map((a) => ({ op: "delete", itemId: a.id })), { op: "delete", itemId: it.id }]);
+    say(`${it.title || "The page"} is saved in your Pages.`);
+    if (dexOpen) toggleDex("page");
+    return true;
+  }
+  async function placeSavedPage(savedId, at) {
+    const saved = loadSavedPages().find((s) => s.id === savedId);
+    if (!saved) return;
+    const pages = pagesList();
+    if (pages.length >= MAX_PAGES) { say(`The hub can hold ${MAX_PAGES} pages. Remove one first.`); return; }
+    let x = Math.round(at.x - PAGE_W / 2), y = Math.round(at.y - 60);
+    while (pages.some((p) => Math.abs(p.x - x) < PAGE_W && Math.abs(p.y - y) < PAGE_H)) x += PAGE_W + 40;
+    const { page, items: all } = unpackPage(saved, { x, y }, uid);
+    const dmOnly = (it) => it.type === "place" || (it.type === "widget" && (it.widget === "weather" || it.widget === "combatdm"));
+    const inside = dmToken ? all : all.filter((it) => !dmOnly(it));   // (the server would refuse them, and stop the page half way)
+    if (!await op({ op: "put", item: page })) return;
+    await opMany(inside.map((it) => ({ op: "put", item: it })));
+    say(inside.length < all.length ? `${saved.title} is on the hub, without the parts only the DM can place.` : `${saved.title} is on the hub.`);
+  }
+  // where a widget, place or card lands when dropped on a page: in the nearest cell of its grid
+  function pageSnap(node, x, y) {
+    const it = node.__item;
+    if (!DND || !it || !CARD_TYPES.has(it.type)) return { x, y };
+    const pg = pageAt(pagesList(), x + node.offsetWidth / 2, y + Math.min(node.offsetHeight, 140) / 2);
+    if (!pg) return { x, y };
+    const c = snapToCell(pg, x, y);
+    return { x: c.x, y: c.y };
+  }
+  // A character dropped on a place dissolves into it: the card (or a ghost of the dragged avatar) shrinks, blurs and drifts
+  // into the place, which glows as it takes them in.
+  function dissolveInto(place, from, label = "", color = "#e9c27a", node = null) {
+    place.classList.add("absorbing");
+    setTimeout(() => place.classList.remove("absorbing"), 900);
+    if (calm() || document.documentElement.dataset.gfx === "low") return;   // (Low graphics: the place still glows, nothing flies)
+    const cx = place.offsetLeft + place.offsetWidth / 2, cy = place.offsetTop + place.offsetHeight / 2;
+    const target = node || el("div", { class: "hub-dissolve", style: `left:${from.x}px;top:${from.y}px;--c:${color}` }, [el("span", { class: "me-avatar", style: `--c:${color}` }, (label.trim()[0] || "?").toUpperCase()), el("b", {}, label)]);
+    if (!node) itemLayer.append(target);
+    const sx = node ? node.offsetLeft + node.offsetWidth / 2 : from.x, sy = node ? node.offsetTop + node.offsetHeight / 2 : from.y;
+    const a = target.animate([
+      { transform: "translate(0, 0) scale(1)", opacity: 1, filter: "blur(0px)" },
+      { transform: `translate(${(cx - sx) * 0.7}px, ${(cy - sy) * 0.7}px) scale(.55)`, opacity: .8, filter: "blur(2px)", offset: .55 },
+      { transform: `translate(${cx - sx}px, ${cy - sy}px) scale(.12)`, opacity: 0, filter: "blur(10px)" },
+    ], { duration: 620, easing: "cubic-bezier(.4, 0, .2, 1)", fill: "forwards" });
+    if (!node) a.onfinish = () => target.remove();
   }
 
   // A shape as one SVG path, in board units: a box, an ellipse, a line, or a line with an arrowhead.
@@ -1245,7 +1467,7 @@ export function renderHub(container, state) {
   const makeText = () => el("div", { class: "hub-text" });
 
   function makeButton() {
-    return el("button", { type: "button", class: "hub-btn" }, [el("span", { class: "hub-btn-icon", "aria-hidden": "true" }), el("span", { class: "hub-btn-label" }), el("span", { class: "hub-btn-live" }, "Battle live")]);
+    return el("button", { type: "button", class: "hub-btn" }, [el("span", { class: "hub-btn-icon", "aria-hidden": "true" }), el("span", { class: "hub-btn-label" }), el("span", { class: "hub-btn-live" }, DND ? "Fight on" : "Battle live")]);
   }
   function fillButton(node, it) {
     const portrait = it.preview?.portrait;
@@ -1253,7 +1475,8 @@ export function renderHub(container, state) {
     const ic = node.querySelector(".hub-btn-icon");
     if (portrait) ic.style.backgroundImage = `url("${trainerSpriteUrl(portrait)}")`; else ic.style.backgroundImage = "";
     node.querySelector(".hub-btn-label").textContent = it.label;
-    node.setAttribute("aria-label", `${it.label}: ${activeButton === it.id ? "battle in progress, open it" : dmToken ? "start this battle" : "open the battle"}`);
+    const fight = DND ? "fight" : "battle";
+    node.setAttribute("aria-label", `${it.label}: ${activeButton === it.id ? `${fight} in progress, open it` : dmToken ? `start this ${fight}` : `open the ${fight}`}`);
   }
 
   // ------------------------------------------------------------------ backdrop (the DM's map, blurred, behind the dots)
@@ -1357,12 +1580,40 @@ export function renderHub(container, state) {
     node.addEventListener("blur", () => finish(true), { once: true });
   }
   function newTextAt(p) {
-    const node = el("div", { class: "hub-text draft", style: `left:${Math.round(p.x)}px;top:${Math.round(p.y - 16)}px;color:${me.color};font-size:28px` });
+    // on a page the text sits on its ruled lines, from the margin
+    const pg = DND ? pageAt(pagesList(), p.x, p.y) : null;
+    const on = pg ? snapToLine(pg, p.x, p.y) : null;   // (a click in the header goes on the first line)
+    const x = on ? on.x : Math.round(p.x), y = on ? on.y : Math.round(p.y - 16), size = on ? on.size : 28;
+    const node = el("div", { class: `hub-text draft${on ? " on-page" : ""}`, style: `left:${x}px;top:${y}px;color:${me.color};font-size:${size}px` });
     itemLayer.append(node);
     editText(node, async (text) => {
       node.remove();
-      if (text) await op({ op: "put", item: { type: "text", id: uid(), x: Math.round(p.x), y: Math.round(p.y - 16), text, size: 28, color: me.color } });
+      if (!text) return;
+      if (!on) { await op({ op: "put", item: { type: "text", id: uid(), x, y, text, size, color: me.color } }); return; }
+      // on a page the writing goes round whatever is on it, and on to the next line at the page's edge
+      await (document.fonts?.ready || null);   // (measure with the real font, never a stand-in)
+      measureCache.clear();
+      const flow = flowText(text, pg, on.line - 1, obstaclesOn(pg), measureText);
+      await opMany(flow.pieces.map((piece) => ({ op: "put", item: { type: "text", id: uid(), x: piece.x, y: piece.y, text: piece.text, size, color: me.color } })));
+      if (flow.full) say("The page is full: the rest of that didn't fit.");
     });
+  }
+  // what is standing on a page that writing has to go round: widgets, places, cards, notes and earlier writing
+  function obstaclesOn(pg) {
+    return items.filter((it) => CARD_TYPES.has(it.type) || it.type === "note" || it.type === "text").map((it) => itemEls.get(it.id)).filter(Boolean)
+      .map((n) => ({ x: n.offsetLeft, y: n.offsetTop, w: n.offsetWidth, h: n.offsetHeight }))
+      .filter((r) => r.x < pg.x + PAGE_W && r.x + r.w > pg.x && r.y < pg.y + PAGE_H && r.y + r.h > pg.y);
+  }
+  const measureCache = new Map();
+  const measureEl = el("span", { class: "hub-text on-page", style: `visibility:hidden;pointer-events:none;font-size:${TEXT_SIZE_ON_PAGE}px;padding:0;margin:0`, "aria-hidden": "true" });
+  function measureText(s) {
+    let w = measureCache.get(s);
+    if (w === undefined) {
+      if (!measureEl.isConnected) itemLayer.append(measureEl);
+      measureEl.textContent = s; w = measureEl.offsetWidth * 1.06;   // (a little slack: letter spacing and rounding)
+      measureCache.set(s, w);
+    }
+    return w;
   }
   function editExistingText(node) {
     const it = node.__item;
@@ -1379,7 +1630,7 @@ export function renderHub(container, state) {
   // from where they are, with the speed they have, and settle with a little bounce because the drag carried momentum.
   const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
   function dragFx(g, e) {
-    if (calm()) return;
+    if (calm() || g.node.classList.contains("hub-text")) return;
     const now = performance.now();
     g.hist.push([e.clientX, e.clientY, now]);
     while (g.hist.length > 2 && now - g.hist[0][2] > 90) g.hist.shift();
@@ -1399,7 +1650,7 @@ export function renderHub(container, state) {
   }
   function landFx(g) {
     const n = g.node;
-    if (calm()) { n.style.rotate = ""; n.style.scale = ""; return; }
+    if (calm() || n.classList.contains("hub-text")) { n.style.rotate = ""; n.style.scale = ""; return; }
     const [x0, , t0] = g.hist[0], [x1, , t1] = g.hist[g.hist.length - 1];
     const vx = t1 > t0 ? ((x1 - x0) / (t1 - t0)) * 1000 : 0;
     const tilt = spring({ from: g.tilt, to: 0, velocity: -vx / 40, damping: 0.55, response: 0.45,
@@ -1512,6 +1763,23 @@ export function renderHub(container, state) {
   // ------------------------------------------------------------------ hover card on encounter buttons
   function showHover(node) {
     const it = node.__item, pv = it.preview || {};
+    if (DND) {
+      const many = (it.source.mons || []).length;
+      hover.replaceChildren(
+        el("div", { class: "hub-hover-art" }, el("span", { class: pv.name ? "hub-hover-glyph" : "hub-hover-q", "aria-hidden": "true" }, pv.name ? "⚔️" : "?")),
+        el("div", { class: "hub-hover-body" }, [
+          el("span", { class: "hub-hover-kind" }, it.source.kind === "monster" ? "Monster" : "Encounter"),
+          el("strong", { class: "hub-hover-level" }, pv.level ? `CR ~${pv.level}` : "CR ?"),
+          el("span", { class: "hub-hover-note" }, pv.name ? (many > 1 ? `${pv.name} and ${many - 1} more` : pv.name) : many > 1 ? `${many} foes` : "A mystery"),
+          activeButton === it.id ? el("span", { class: "hub-hover-live" }, "Fight in progress") : null,
+        ].filter(Boolean)),
+      );
+      const r = node.getBoundingClientRect(), rr = root.getBoundingClientRect();
+      hover.style.left = `${r.left - rr.left + r.width / 2}px`;
+      hover.style.top = `${r.top - rr.top}px`;
+      hover.classList.add("show");
+      return;
+    }
     const species = pv.name ? state?.pokemonByName?.get(pv.name) : null;
     const art = species?.dex ? el("img", { class: "hub-hover-sprite", src: spriteUrl(species.dex), alt: pv.name }) : el("span", { class: "hub-hover-q", "aria-hidden": "true" }, "?");
     const face = pv.portrait ? el("img", { class: "hub-hover-portrait", src: trainerSpriteUrl(pv.portrait), alt: "" }) : null;
@@ -1534,6 +1802,27 @@ export function renderHub(container, state) {
   itemLayer.addEventListener("pointerover", (e) => { const b = e.target.closest(".hub-btn"); if (b && e.pointerType === "mouse") showHover(b); });
   itemLayer.addEventListener("pointerout", (e) => { const b = e.target.closest(".hub-btn"); if (b && !b.contains(e.relatedTarget)) hideHover(); });
 
+  // ------------------------------------------------------------------ all pages (D&D)
+  function openPagesMenu(anchor) {
+    const sys = activeSystem();
+    const groups = (sys?.nav || []).map((g) => [g.label, g.views.filter((v) => v.id !== "hub" && !(g.label === "Compendium" && v.id === "dndCompendium") && (!/^dndDm|^dndEncounter/.test(v.id) || dmToken))]).filter(([, v]) => v.length);
+    if (DND) groups.forEach((g) => { if (g[0] === "Play") g[1] = [...g[1], { id: "dice", label: "Dice roller", pull: true }]; });   // the dice roller is a pull tab
+    groups.push(["Campaign", [{ id: "planner", label: "Whiteboard" }, { id: "mapeditor", label: "Map editor" }, { id: "library", label: "Library" }, { id: "settings", label: "Settings" }]]);
+    menu.classList.add("wide");
+    menu.replaceChildren(el("p", { class: "hub-menu-title" }, "All pages"), el("div", { class: "hub-pages-grid" }, groups.map(([label, views]) => el("section", { class: "hub-pages-group" }, [
+      label ? el("h4", {}, label) : el("h4", {}, "General"),
+      ...views.map((v) => {
+        const b = el("button", { type: "button", class: "hub-menu-item" }, typeof v.label === "string" ? v.label : String(v.label));
+        // a rules section opens the Compendium page on that section
+        const section = label === "Compendium" && v.id !== "dndCompendium";
+        b.addEventListener("click", () => { closeMenu(); if (v.pull) openPullTab(v.id); else if (section) { setViewState("dnd:compendium:tab", v.id); openFromHub("dndCompendium"); } else openFromHub(v.id); });
+        return b;
+      }),
+    ]))));
+    const r = anchor.getBoundingClientRect(), rr = root.getBoundingClientRect();
+    openMenuAt(Math.min(r.left - rr.left, rr.width - 560), r.bottom - rr.top + 8);
+  }
+
   // ------------------------------------------------------------------ button menu (DM) and clicks
   function openMenuAt(x, y) {
     const rr = root.getBoundingClientRect();
@@ -1550,15 +1839,15 @@ export function renderHub(container, state) {
   function buttonClicked(node) {
     const it = node.__item;
     hideHover();
-    if (!dmToken) { openFromHub("battleview"); return; }
+    if (!dmToken) { openFromHub(DND ? "dndCombat" : "battleview"); return; }
     const row = (label, fn, cls = "") => { const b = el("button", { type: "button", class: `hub-menu-item ${cls}` }, label); b.addEventListener("click", () => { closeMenu(); fn(); }); return b; };
     menu.classList.remove("wide");
     menu.replaceChildren(...[
       el("p", { class: "hub-menu-title" }, it.label),
-      row(activeButton === it.id ? "Restart this battle" : "Start this battle", () => startBattle(it), "primary"),
-      activeButton === it.id ? row("Open Battle Control", () => { setViewState("controlcentre:tab", "Battle Control"); openFromHub("controlcentre"); }) : null,
-      activeButton === it.id ? row("Mark the battle as over", () => op({ op: "activate", itemId: null })) : null,
-      row(it.reveal === "sprite" ? "Hide the Pokémon on hover (show ?)" : "Show the Pokémon on hover", () => op({ op: "put", item: { ...it, reveal: it.reveal === "sprite" ? "hidden" : "sprite" } })),
+      row(activeButton === it.id ? (DND ? "Restart this fight" : "Restart this battle") : (DND ? "Start this fight" : "Start this battle"), () => startBattle(it), "primary"),
+      activeButton === it.id ? row(DND ? "Open the combat tracker" : "Open Battle Control", () => { if (DND) openFromHub("dndCombat"); else { setViewState("controlcentre:tab", "Battle Control"); openFromHub("controlcentre"); } }) : null,
+      activeButton === it.id ? row(DND ? "Mark the fight as over" : "Mark the battle as over", () => op({ op: "activate", itemId: null })) : null,
+      row(it.reveal === "sprite" ? `Hide the ${DND ? "monsters" : "Pokémon"} on hover (show ?)` : `Show the ${DND ? "monsters" : "Pokémon"} on hover`, () => op({ op: "put", item: { ...it, reveal: it.reveal === "sprite" ? "hidden" : "sprite" } })),
       row("Rename", () => {
         const name = prompt("Button name", it.label);
         if (name && name.trim()) op({ op: "put", item: { ...it, label: name.trim().slice(0, 60) } });
@@ -1618,6 +1907,18 @@ export function renderHub(container, state) {
   }
 
   async function startBattle(it) {
+    if (DND) {
+      say("Setting up the fight…");
+      const fresh = await getFullTurn();
+      if (fresh?.combatants?.length && activeButton !== it.id && !confirm("A fight is already running. Replace it with this one?")) return;
+      let n = 0;
+      try { n = await dndKit.startFight(it, { meId: me.id, dmToken }); } catch { n = 0; }
+      if (!n) { say("That encounter has no monsters the Bestiary knows. Check it in the Encounter Builder."); return; }
+      await op({ op: "activate", itemId: it.id });
+      hubSound("ping");
+      openFromHub("dndCombat");
+      return;
+    }
     say("Setting up the battle…");
     const current = await getFullTurn();
     if (current?.combatants?.length && activeButton !== it.id && !confirm("A battle is already set up. Replace it with this one?")) return;
@@ -1643,6 +1944,22 @@ export function renderHub(container, state) {
   // ------------------------------------------------------------------ the DM's encounter drawer
   async function drawDrawer() {
     drawer.replaceChildren(el("div", { class: "hub-drawer-head" }, [el("strong", {}, "Encounters"), el("span", {}, "Drag one onto the board")]), el("p", { class: "hub-drawer-note" }, "Loading…"));
+    if (DND) {
+      const entry = (label, meta, kind, source) => {
+        const row = el("div", { class: `hub-src kind-${kind}`, draggable: "true", role: "button", tabindex: "0" }, [
+          el("span", { class: "hub-btn-icon", "aria-hidden": "true" }), el("span", { class: "hub-src-text" }, [el("strong", {}, label), el("span", {}, meta)]),
+        ]);
+        const payload = { label: String(label).slice(0, 60), source };
+        row.addEventListener("dragstart", (e) => { e.dataTransfer.setData("application/x-hub-button", JSON.stringify(payload)); e.dataTransfer.effectAllowed = "copy"; });
+        const placeHere = () => { const r = stage.getBoundingClientRect(); addButton(payload, toWorld(r.left + r.width / 2, r.top + r.height / 2)); };
+        row.addEventListener("keydown", (e) => { if (e.key === "Enter") placeHere(); });
+        row.addEventListener("dblclick", placeHere);
+        return row;
+      };
+      const group = (title, rows, emptyText) => el("section", { class: "hub-drawer-group" }, [el("h3", {}, title), ...(rows.length ? rows : [el("p", { class: "hub-drawer-note" }, emptyText)])]);
+      drawer.replaceChildren(el("div", { class: "hub-drawer-head" }, [el("strong", {}, "Encounters"), el("span", {}, "Drag one onto the board, or double-click it")]), ...(await dndKit.drawerGroups({ entry, group })));
+      return;
+    }
     const [npcs, wild] = await Promise.all([getNpcs(), getWildList()]);
     const plan = [];
     for (const b of getPlan().boards) for (const n of b.nodes) if (n.type === "gen" && ["wild", "trainer", "gym"].includes(n.gen) && n.mons?.length) plan.push({ b, n });
@@ -1671,9 +1988,10 @@ export function renderHub(container, state) {
     let x = Math.round(at.x - 70), y = Math.round(at.y - 24);
     while (items.some((it) => it.type === "button" && Math.abs(it.x - x) < 40 && Math.abs(it.y - y) < 30)) { x += 34; y += 58; }
     await op({ op: "put", item: { type: "button", id: uid(), x, y, label: payload.label.slice(0, 60), reveal: "hidden", source: payload.source } });
-    say("Encounter placed. Players can hover it to see the level.");
+    say(DND ? "Encounter placed. Players can hover it to see how dangerous it looks." : "Encounter placed. Players can hover it to see the level.");
   }
   async function placeCard(card, at, screen = null) {
+    if (card.type === "page") { await (card.saved ? placeSavedPage(card.saved, at) : placePage(card, at)); return; }
     if (card.type === "mon" && card.level === undefined) {
       const r = stage.getBoundingClientRect();
       const lvl = await askLevel({ x: screen?.x ?? r.left + r.width / 2, y: screen?.y ?? r.top + r.height / 2, name: card.name });
@@ -1685,14 +2003,56 @@ export function renderHub(container, state) {
     if (already) {
       const { own, ...clean } = card; void own;
       await op({ op: "put", item: { ...already, ...clean, id: already.id, x: Math.round(at.x - 110), y: Math.round(at.y - 40), open: already.open } });
-      say(card.type === "trainer" ? "Your trainer is already on the board: moved it here." : `${card.nickname || card.name} is already on the board: moved it here.`);
+      say(card.type === "trainer" ? `Your ${DND ? "character" : "trainer"} is already on the board: moved it here.` : `${card.nickname || card.name} is already on the board: moved it here.`);
       return;
     }
     let x = Math.round(at.x - 110), y = Math.round(at.y - 40);
-    while (items.some((it) => CARD_TYPES.has(it.type) && Math.abs(it.x - x) < 30 && Math.abs(it.y - y) < 30)) { x += 28; y += 28; }
+    const pg = DND && CARD_TYPES.has(card.type) ? pageAt(pagesList(), at.x, at.y) : null;
+    if (pg) { const c = snapToCell(pg, x, y); x = c.x; y = c.y; }   // (dropped on a page: into its grid)
+    if (DND && (card.type === "widget" || card.type === "place")) { const [cw, ch] = cardSize({ ...card, id: "" }); const sp = spotFor({ ...card, id: "" }, x, y, cw, ch); x = sp.x; y = sp.y; }   // (never on top of another widget)
+    while (items.some((it) => CARD_TYPES.has(it.type) && Math.abs(it.x - x) < 30 && Math.abs(it.y - y) < 30)) { x += pg ? UNIT + GAP : 28; y += pg ? 0 : 28; if (pg && x > pg.x + PAGE_W - 150) { x = pg.x + PAGE.marginX; y += UNIT + GAP; } }
     const { own, ...clean } = card; void own;
-    await op({ op: "put", item: { ...clean, id: uid(), x, y, open: false } });
+    await op({ op: "put", item: { ...clean, id: uid(), x, y, open: false, ...(card.type === "widget" && !card.size ? { size: dndKit.defaultSize(card.widget) } : {}) } });
   }
+  // ---- travel: dropping a player on a place moves their token to that place's label on the map (the server checks and does it)
+  const PLAYER_MIME = "application/x-hub-player";
+  const placeCardAt = (cx, cy, except = null) => {
+    for (const n of document.elementsFromPoint(cx, cy)) {
+      const c = n.closest?.(".hub-card.kind-place");
+      if (c && c !== except && itemLayer.contains(c)) return c;
+    }
+    return null;
+  };
+  const hotPlace = (c) => { itemLayer.querySelectorAll(".hub-card.drop-hot").forEach((x) => { if (x !== c) x.classList.remove("drop-hot"); }); c?.classList.add("drop-hot"); };
+  async function travelTo(place, who) {
+    const res = await op({ op: "travel", itemId: place.id, who });   // (a refusal is said by op itself)
+    if (!res) return false;
+    hubSound("ping");
+    say(`${res.who} is now at ${res.place}.`);
+    hubMap?.refresh();
+    dndKit.refreshWidgetData();
+    return true;
+  }
+  let characterDrag = false;   // the character badge is being dragged (so the places light up as it passes over them)
+  itemLayer.addEventListener("dragover", (e) => {
+    if (!DND || !(characterDrag || [...(e.dataTransfer?.types || [])].includes(PLAYER_MIME))) return;
+    const c = placeCardAt(e.clientX, e.clientY);
+    hotPlace(c);
+    if (!c) return;
+    e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move";
+  });
+  itemLayer.addEventListener("dragleave", (e) => { if (!itemLayer.contains(e.relatedTarget)) hotPlace(null); });
+  itemLayer.addEventListener("drop", (e) => {
+    const raw = DND && e.dataTransfer?.getData(PLAYER_MIME);
+    const c = raw && placeCardAt(e.clientX, e.clientY);
+    hotPlace(null);
+    if (!c) return;
+    e.preventDefault(); e.stopPropagation();
+    try {
+      const who = JSON.parse(raw), tok = toWorld(e.clientX, e.clientY);
+      travelTo(c.__item, who.id).then((ok) => { if (ok) dissolveInto(c, tok, who.name || "", who.color || "#e9c27a"); });
+    } catch { /* not a player */ }
+  });
   const trainerCardAt = (t) => { const c = t?.closest?.(".hub-card.kind-trainer"); return c && itemLayer.contains(c) && c.__item && c.__item.owner !== me.id ? c : null; };
   itemLayer.addEventListener("dragover", (e) => {
     const c = ownDrag && trainerCardAt(e.target);
@@ -1715,6 +2075,17 @@ export function renderHub(container, state) {
   });
   stage.addEventListener("drop", (e) => {
     const card = e.dataTransfer.getData(CARD_MIME);
+    if (card && DND) {   // your character dragged from the badge onto a place: they travel there, and dissolve into it
+      try {
+        const parsed = JSON.parse(card), place = parsed.type === "trainer" ? placeCardAt(e.clientX, e.clientY) : null;
+        if (place) {
+          e.preventDefault(); hotPlace(null);
+          const at = toWorld(e.clientX, e.clientY);
+          travelTo(place.__item, me.id).then((ok) => { if (ok) dissolveInto(place, at, parsed.name || me.name, me.color); });
+          return;
+        }
+      } catch { /* not ours */ }
+    }
     if (card) { e.preventDefault(); hubSound("place", e.clientX); try { placeCard(JSON.parse(card), toWorld(e.clientX, e.clientY), { x: e.clientX, y: e.clientY }); } catch { /* not ours */ } return; }
     const raw = e.dataTransfer.getData("application/x-hub-button");
     if (!raw || !dmToken) return;
@@ -1779,7 +2150,21 @@ export function renderHub(container, state) {
     const dx = e.clientX - gesture.sx, dy = e.clientY - gesture.sy;
     if (Math.hypot(dx, dy) > 4) gesture.moved = true;
     if (gesture.kind === "pan") { view.x = gesture.ox + dx; view.y = gesture.oy + dy; applyView(true); }
-    else if (gesture.kind === "resize") {
+    else if (gesture.kind === "pagedrag") {
+      if (!gesture.moved) return;
+      if (!gesture.openedDex && !dexOpen) { gesture.openedDex = true; toggleDex("page"); }   // (the Pages tab slides out as somewhere to put the page away)
+      dexEl?.classList.toggle("drop-hot", overDex(e));
+      const t = `${dx / view.k}px ${dy / view.k}px`;
+      gesture.node.style.translate = t; gesture.node.classList.add("lifted");
+      for (const n of gesture.els) n.style.translate = t;
+      for (const n of gesture.paths) n.style.translate = t;
+    } else if (gesture.kind === "wresize") {
+      const n = gesture.node, w = clamp(gesture.iw + dx / view.k, 150, 520), h = clamp(gesture.ih + dy / view.k, 150, 520);
+      n.style.width = `${w}px`; n.style.height = `${h}px`;
+      const size = nearestSize(w, h), [gw, gh] = sizePx(size);
+      Object.assign(gesture.ghost.style, { left: `${n.offsetLeft}px`, top: `${n.offsetTop}px`, width: `${gw}px`, height: `${gh}px` });
+      gesture.ghost.dataset.size = size;
+    } else if (gesture.kind === "resize") {
       gesture.node.style.width = `${clamp(gesture.iw + dx / view.k, 140, 900)}px`;
       gesture.node.style.minHeight = `${clamp(gesture.ih + dy / view.k, 100, 900)}px`;
     } else if (gesture.kind === "drag" && gesture.moved) {
@@ -1788,6 +2173,7 @@ export function renderHub(container, state) {
       if (!node.classList.contains("dragging")) { node.classList.remove("pressed"); node.classList.add("dragging"); hubSound("pick", e.clientX); }
       else hubSound("move", e.clientX);
       dragFx(gesture, e);
+      if (DND && node.__item?.type === "trainer") hotPlace(placeCardAt(e.clientX, e.clientY, node));
     } else if (gesture.kind === "shape") {
       const p = toWorld(e.clientX, e.clientY);
       gesture.end = [Math.round(p.x), Math.round(p.y)];
@@ -1805,6 +2191,32 @@ export function renderHub(container, state) {
     clicked = true; dirtyCursor = true;
     if (e.button === 0 && (tool === "ping" || e.altKey)) { ping(toWorld(e.clientX, e.clientY), pingTargetOf(e.target)); return; }
     if (e.target.closest(".hub-note-tools") || e.target.isContentEditable) return;
+    if (e.target.closest(".hub-widget-body :is(button, input, select, textarea, a, [draggable='true'])")) return;   // a widget's own buttons, fields, links and draggable rows
+    if (e.target.closest(".hub-page-head :is(button, input)")) return;
+    if (DND && e.button === 0) {
+      // a widget's corner: drag it out to 1x1, 1x2 or 2x2 (whatever tool is out: the corner is only ever for this)
+      const wn = e.target.closest(".hub-widget-grip")?.closest(".hub-card.kind-widget");
+      if (wn && canEdit(wn.__item)) {
+        const ghost = el("div", { class: "hub-size-ghost", "aria-hidden": "true" });
+        itemLayer.append(ghost);
+        wn.classList.add("resizing");
+        gesture = { sx: e.clientX, sy: e.clientY, moved: false, id: e.pointerId, kind: "wresize", node: wn, it: wn.__item, iw: wn.offsetWidth, ih: wn.offsetHeight, ghost };
+        capture(e.pointerId);
+        return;
+      }
+    }
+    if (DND && e.button === 0 && !["pen", "shape", "erase"].includes(tool)) {
+      // a page's header moves the whole page, and everything attached to it rides along
+      const head = e.target.closest(".hub-page-head"), pn = head?.closest(".hub-page");
+      if (pn && canEdit(pn.__item)) {
+        const it = pn.__item, attached = items.filter((x) => x.page === it.id);
+        gesture = { sx: e.clientX, sy: e.clientY, moved: false, id: e.pointerId, kind: "pagedrag", node: pn, it, ix: it.x, iy: it.y,
+          els: attached.map((a) => itemEls.get(a.id)).filter(Boolean),
+          paths: attached.filter((a) => a.type === "stroke" || a.type === "shape").map((a) => ink.querySelector(`[data-id="${CSS.escape(a.id)}"]`)).filter(Boolean) };
+        capture(e.pointerId);
+        return;
+      }
+    }
     const itemNode = e.target.closest(".hub-note, .hub-text, .hub-btn, .hub-card, .hub-prop");
     if (tool === "shape" && e.button === 0) {
       const p = toWorld(e.clientX, e.clientY);
@@ -1880,22 +2292,65 @@ export function renderHub(container, state) {
       await op({ op: "put", item: { ...it, w: Math.round(clamp(g.iw + (e.clientX - g.sx) / view.k, 140, 900)), h: Math.round(clamp(g.ih + (e.clientY - g.sy) / view.k, 100, 900)) } });
       return;
     }
+    if (g.kind === "pagedrag") {
+      g.node.classList.remove("lifted");
+      if (!g.moved) { g.node.style.translate = ""; return; }
+      const putAway = !!dexEl && overDex(e);
+      dexEl?.classList.remove("drop-hot");
+      if (putAway && await savePageAway(g.it)) return;
+      const nx = Math.round(g.ix + (e.clientX - g.sx) / view.k), ny = Math.round(g.iy + (e.clientY - g.sy) / view.k);
+      g.node.style.left = `${nx}px`; g.node.style.top = `${ny}px`; g.node.style.translate = "";
+      hubSound("drop", e.clientX);
+      await op({ op: "put", item: { ...g.it, x: nx, y: ny } });   // (the server moves what is attached by the same amount)
+      if (g.openedDex) closeDex();
+      return;
+    }
+    if (g.kind === "wresize") {
+      const n = g.node, size = nearestSize(n.offsetWidth, n.offsetHeight);
+      g.ghost.remove(); n.classList.remove("resizing");
+      n.style.width = ""; n.style.height = "";
+      n.className = n.className.replace(/\bs-\S+/, `s-${size}`);
+      hubSound("drop", e.clientX);
+      if (size !== (g.it.size || dndKit.defaultSize(g.it.widget))) { await op({ op: "put", item: { ...g.it, size } }); await pushAside(g.it.id, size); }
+      return;
+    }
     g.node?.classList?.remove("pressed");
     if ((g.kind === "drag" || g.kind === "click") && !g.moved) {
       if (g.node.matches(".hub-card, .hub-btn, .hub-prop")) tapFx(g.node, toWorld(e.clientX, e.clientY));
       hubSound("click", e.clientX);
       if (g.node.classList.contains("hub-btn")) buttonClicked(g.node);
       else if (g.node.classList.contains("hub-note")) g.node.querySelector("textarea").focus();
-      else if (g.node.classList.contains("hub-text") && canEdit(g.node.__item)) editExistingText(g.node);
-      else if (g.node.classList.contains("hub-card") && canEdit(g.node.__item)) await op({ op: "put", item: { ...g.node.__item, open: !g.node.__item.open } });
+      else if (g.node.classList.contains("hub-text") && canEdit(g.node.__item)) {
+        // one tap just picks it (so the next drag always moves it); a second quick tap edits it
+        const now = performance.now();
+        if (g.node.__tap && now - g.node.__tap < 450) { g.node.__tap = 0; editExistingText(g.node); } else g.node.__tap = now;
+      }
+      else if (g.node.classList.contains("hub-card") && g.node.__item.type !== "widget" && canEdit(g.node.__item)) await op({ op: "put", item: { ...g.node.__item, open: !g.node.__item.open } });
       return;
     }
     if (g.kind === "drag" && g.moved) {
       const it = g.node.__item;
       g.node.classList.remove("dragging");
+      if (DND && it.type === "trainer") {
+        const place = placeCardAt(e.clientX, e.clientY, g.node);
+        hotPlace(null);
+        if (place && (dmToken || it.owner === me.id)) {
+          // the character card dissolves into the place, and their token goes there on the map
+          if (await travelTo(place.__item, it.owner)) {
+            hubSound("drop", e.clientX);
+            dissolveInto(place, null, "", "", g.node);
+            await op({ op: "delete", itemId: it.id });
+            return;
+          }
+        }
+      }
       hubSound("drop", e.clientX);
       landFx(g);
-      await op({ op: "put", item: { ...it, x: Math.round(it.x + (e.clientX - g.sx) / view.k), y: Math.round(it.y + (e.clientY - g.sy) / view.k) } });
+      let to = pageSnap(g.node, Math.round(it.x + (e.clientX - g.sx) / view.k), Math.round(it.y + (e.clientY - g.sy) / view.k));
+      to = spotFor(it, to.x, to.y, g.node.offsetWidth, g.node.offsetHeight);
+      g.node.classList.add("settling"); setTimeout(() => g.node.classList.remove("settling"), 450);   // (it glides to its spot)
+      g.node.style.left = `${to.x}px`; g.node.style.top = `${to.y}px`;
+      await op({ op: "put", item: { ...it, x: to.x, y: to.y } });
       return;
     }
     if (g.kind === "note" && !g.moved) {
@@ -1953,7 +2408,7 @@ export function renderHub(container, state) {
   const teamTimer = setInterval(() => { if (!document.body.contains(root)) { clearInterval(teamTimer); return; } if (!document.hidden) drawTeam(); }, 4000);
   checkGifts();
   (function comets() {
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (DND || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const next = () => setTimeout(() => {
       if (!document.body.contains(root)) return;
       if (!document.hidden && root.classList.contains("cosmic")) {
@@ -1968,8 +2423,8 @@ export function renderHub(container, state) {
     }, 9000 + Math.random() * 22000);
     next();
   })();
-  hubMap = mountHubMap(root, { me, getDmToken: () => dmToken, say });
-  const quickD = (v) => QUICK.find((q) => q[0] === v)?.[2] || "";
+  hubMap = mountHubMap(root, { me, getDmToken: () => dmToken, say, playerView: DND, openEditor: () => openFromHub("mapeditor") });
+  const quickD = (v) => QUICK_LIST.find((q) => q[0] === v)?.[2] || "";
   const ICON = {
     map: "M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14",
     people: "M9 11a3 3 0 1 0 0-.01M3 20a6 6 0 0 1 12 0M17 11a2.5 2.5 0 1 0 0-.01M15.5 15.5A5 5 0 0 1 21 20",
@@ -1977,7 +2432,7 @@ export function renderHub(container, state) {
     board: "M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1zM8 5H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2",
     control: "M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1",
     settings: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z",
-    encounters: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h6m6 0h6M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
+    encounters: DND ? dndKit.SWORDS : "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h6m6 0h6M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
     dmnote: "M5 4h14v11l-5 5H5zM14 20v-5h5M9 9a3 3 0 1 1 6 0v2H9zM8 11h8",
     backdrop: "M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14",
     dm: "M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6zM9.5 12l2 2 3.5-4",
@@ -1987,17 +2442,28 @@ export function renderHub(container, state) {
     getCurrent: () => (tool === "note" && noteDm ? { label: "DM note", d: ICON.dmnote } : TOOL_INFO[tool] || TOOL_INFO.move),
     getItems: () => [
       ...TOOLS.map(([id, label, d]) => ({ id, label, d, group: "On the board", on: tool === id && !(id === "note" && noteDm), run: () => setTool(id) })),
-      { label: "My Team", group: "Your trainer", d: quickD("team"), run: () => openFromHub("team") },
-      { label: "Bag", group: "Your trainer", d: quickD("bag"), run: () => { if (!bagDrop.classList.contains("open")) toggleBag(); } },
-      { label: "Trainer", group: "Your trainer", d: quickD("trainer"), run: () => openFromHub("trainer") },
-      { label: "Dex", group: "Your trainer", d: quickD("dex"), run: () => toggleDex("pokemon") },
-      { label: "Stats", group: "Your trainer", d: quickD("statcalc"), run: () => openFromHub("statcalc") },
+      ...(DND ? [
+        { label: "Sheet", group: "Your character", d: quickD("dndSheet"), run: () => openFromHub("dndSheet") },
+        { label: "Inventory", group: "Your character", d: quickD("bag"), run: () => { if (!bagDrop.classList.contains("open")) toggleBag(); } },
+        { label: "Compendium", group: "Your character", d: quickD("dex"), run: () => toggleDex("monster") },
+        { label: "Widgets", group: "Your character", d: quickD("widgets"), run: () => toggleDex("widget") },
+        { label: "Dice", group: "Your character", d: "M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 3v18M4 7.5l8 4.5 8-4.5", run: () => openPullTab("dice") },
+        { label: "Party", group: "Your character", d: quickD("dndParty"), run: () => openFromHub("dndParty") },
+        { label: "Combat", group: "The world", d: ICON.encounters, run: () => openFromHub("dndCombat") },
+        { label: "All pages", group: "The world", d: "M4 6h16M4 12h16M4 18h16", run: () => openPagesMenu(root.querySelector(".wheel-dot")) },
+      ] : [
+        { label: "My Team", group: "Your trainer", d: quickD("team"), run: () => openFromHub("team") },
+        { label: "Bag", group: "Your trainer", d: quickD("bag"), run: () => { if (!bagDrop.classList.contains("open")) toggleBag(); } },
+        { label: "Trainer", group: "Your trainer", d: quickD("trainer"), run: () => openFromHub("trainer") },
+        { label: "Dex", group: "Your trainer", d: quickD("dex"), run: () => toggleDex("pokemon") },
+        { label: "Stats", group: "Your trainer", d: quickD("statcalc"), run: () => openFromHub("statcalc") },
+      ]),
       { label: "Map", group: "The world", d: ICON.map, run: () => hubMap?.open() },
       { label: "Who's here", group: "The world", d: ICON.people, run: () => { if (!peopleDrop.classList.contains("open")) togglePeople(); } },
       { label: "Fit board", group: "The world", d: ICON.fit, run: () => fitAll() },
       { label: "Map editor", group: "The world", d: ICON.map, run: () => openFromHub("mapeditor") },
       { label: "Whiteboard", group: "The world", d: ICON.board, run: () => openFromHub("planner") },
-      ...(dmToken ? [{ label: "Control", group: "Dungeon Master", d: ICON.control, run: () => openFromHub("controlcentre") }] : []),
+      ...(dmToken ? [{ label: DND ? "DM screen" : "Control", group: "Dungeon Master", d: ICON.control, run: () => openFromHub(DND ? "dndDmScreen" : "controlcentre") }] : []),
       { label: "Settings", group: "The world", d: ICON.settings, run: () => openFromHub("settings") },
       ...(dmToken ? [
         { label: "Encounters", group: "Dungeon Master", d: ICON.encounters, run: () => { drawer.classList.add("open"); drawDrawer(); drawToolbar(); } },
@@ -2013,5 +2479,4 @@ export function renderHub(container, state) {
     const t = await ensureDmToken();
     if (t) { dmToken = t; applyDmUi(); } else applyDmUi();
   })();
-  void getActiveCampaign;
 }

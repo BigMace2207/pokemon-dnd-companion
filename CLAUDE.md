@@ -11,7 +11,7 @@ feature docs.
 
 ```
 python server.py [port]                    # default 8850; serves the app + /api
-python -m unittest discover -s tests -v    # ~60s, 96 tests, run before every commit
+python -m unittest discover -s tests -v    # ~60s, 105 tests, run before every commit
 python tools/test_server.py --admin you@example.com   # throwaway local copy on :8860; code emails go to an outbox folder
 node --test tests/js/*.test.mjs            # D&D rules engine, <1s (use the glob, not the folder)
 ```
@@ -35,15 +35,16 @@ a proxy), `PKDND_BACKUP_DIR`, `PKDND_BACKUP_INTERVAL`, `PKDND_GOOGLE_CLIENT_ID`,
 - `js/app.js` router + login/campaign gates; `js/network.js` API client;
   `js/storage.js` local save mirrored to the server; `js/views/*` pages;
   `js/systems/*` per-game manifests (add a game there, see docs/architecture.md).
-- `css/style.css` base stylesheet; `dnd5e.css`, `library.css`, `lava.css` (+ generated `lava-bricks.css`)
-  sit beside it. `data/` rules JSON. `sprites/` images.
+- `css/style.css` base stylesheet; `dnd5e.css`, `library.css`, `lava.css` (the D&D side's theme: cosmic.css's shape in
+  warm colours over a blurred lava sea) sit beside it. `data/` rules JSON. `sprites/` images.
 - `js/systems/dnd5e/` the D&D 5e system (engine is DOM-free, tested in `tests/js`); `js/library/` the
-  e-reader; `js/lavaTheme.js` the lava theme's ambient layer. See docs/architecture.md.
+  e-reader; `js/lavaTheme.js` the lava sea behind every D&D page (`#lavaSky`). See docs/architecture.md.
 - `css/vvd.css` vvd.world's taste over the Pokémon (cosmic) theme: white-at-opacity text, glass with hairlines instead of
   shadows, white pills, serif titles. `css/mobile.css` + `js/mobile/` + `js/mobileMode.js` the separate phone layout,
   on when `<html>` has class `m` (`js/layout-init.js` sets it before first paint: coarse pointer and up to 820px, or
   Settings -> Appearance -> Phone layout). Scope every phone rule under `html.m`.
-- `js/views/hub.js` the Pokémon hub (shared board, live cursors, the DM's encounter buttons; the only way into Battle);
+- `js/views/hub.js` the hub, both systems' home page (shared board, live cursors, the DM's encounter buttons; the only
+  way into a Pokémon Battle). A D&D campaign's hub is the same file in lava, its own pieces in `js/hubKits/dnd.js`;
   `js/views/admin.js` the admin console (admins only).
 - `js/views/planner.js` + `js/planner/` the Campaign Planner (players share notes/checklists with the DM via `/api/plan`;
   only the DM token reads `/api/plans`).
@@ -84,9 +85,9 @@ sizes that way, with a 12px minimum for text. Layouts must work at 1920x1080,
 re-render, transform/opacity only, a glow only under reduced motion. Page changes (app.js setView) blur and fade the
 page (filter + opacity, ~0.4s, the user's request): not on the phone layout, no blur on Low graphics, off for reduced motion.
 
-**Lava theme / reader motion:** the lava ambient effects intentionally break the "<0.25s" rule (the user asked
-for them), so keep them on the non-re-rendering `#lavaFx` layer, opacity/transform only, and off for
-`prefers-reduced-motion` and `data-lava-fx="calm"`. The hub and admin console's entrances (styled after vvd.world, at the
+**Lava theme / reader motion:** the lava sea's slow drift intentionally breaks the "<0.25s" rule (the user asked
+for it), so keep it on the non-re-rendering `#lavaSky` layer (or the hub's own sky), opacity/transform only, and off for
+`prefers-reduced-motion`, Low graphics and `data-lava-fx="calm"`. The hub and admin console's entrances (styled after vvd.world, at the
 user's request) run up to 0.7s, once when the page opens, never on a sync or refresh. The Library stores books in IndexedDB;
 only accounts with the `cloudLibrary` permission also upload them (private to that account). CSP: `img-src` allows `blob:` only so map images fetched with the session can be shown; PDF.js needs `isEvalSupported:false`.
 
