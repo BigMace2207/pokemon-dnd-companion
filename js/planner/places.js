@@ -26,7 +26,17 @@ export const PLACE_TYPES = [
   ["camp", "Camp", "⛺", "#d1503a"],
   ["other", "Other", "📍", "#c8402f"],
 ];
-export const placeType = (key) => PLACE_TYPES.find(([k]) => k === key) || PLACE_TYPES[PLACE_TYPES.length - 1];
+/** What a Pokemon campaign adds (the D&D side never shows these). */
+export const POKEMON_PLACE_TYPES = [
+  ["pokecenter", "Pokémon Center", "🏥", "#e24a6a"],
+  ["gym", "Gym", "🏟️", "#3a6fd8"],
+  ["mart", "Poké Mart", "🏪", "#2f7fd0"],
+  ["route", "Route", "🌿", "#5aa84a"],
+  ["lab", "Lab", "🔬", "#7a62d0"],
+];
+/** The types a campaign can pick from: the shared ones, then (for Pokemon) its own before "Other". */
+export const placeTypesFor = (system) => (system === "dnd5e" ? PLACE_TYPES : [...PLACE_TYPES.slice(0, -1), ...POKEMON_PLACE_TYPES, PLACE_TYPES[PLACE_TYPES.length - 1]]);
+export const placeType = (key) => PLACE_TYPES.concat(POKEMON_PLACE_TYPES).find(([k]) => k === key) || PLACE_TYPES[PLACE_TYPES.length - 1];
 
 /** What a place tells its map label: everything a player may read, and nothing of the DM's notes. */
 export function pinFields(node) {

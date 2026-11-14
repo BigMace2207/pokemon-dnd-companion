@@ -1,0 +1,47 @@
+/* Interface preferences (Settings -> Interface and Accessibility; js/uiPrefs.js sets the variables on <html>, js/layout-init.js before first paint).
+   Each part of the interface is zoomed by its own variable (1 = as designed). `zoom` changes the layout size, so a bigger bar pushes
+   its neighbours the way a bigger bar would, and nothing needs repositioning. The text size is not here: it multiplies --s (style.css, vvd.css). */
+.hub-mini { zoom: var(--ui-minimap, 1); }
+.hub-top-left { zoom: var(--ui-title, 1); }
+.hub-top-right { zoom: var(--ui-pages, 1); }
+.hub-toolbar, .hub-subbar { zoom: var(--ui-toolbar, 1); }
+.hub-left-dock { zoom: var(--ui-character, 1); }
+.hub-zoom { zoom: var(--ui-zoom, 1); }
+.pull-tabs { zoom: var(--ui-tabs, 1); }
+.hub-dex, .hub-bag-drop, .hub-people-drop, .hub-drawer { zoom: var(--ui-panels, 1); }
+.me-top, .me-toolbar, .me-subbar, .me-zoom, .me-share { zoom: var(--ui-mapeditor, 1); }
+
+/* How solid the bars and panels are (Settings -> Interface -> Transparency), and the dots on the board */
+html[data-glass] :is(.hub-toolbar, .hub-subbar, .hub-title, .hub-people, .hub-round, .hub-team, .hub-zoom, .hub-quick, .hub-save-box, .hub-dex, .hub-bag-drop, .hub-people-drop, .hub-drawer, .hub-map-tools, .hub-menu, .me-toolbar, .me-subbar, .me-zoom, .me-drawer, .me-top .hub-title, .me-mapbtn, .me-share) {
+  background: rgba(14, 12, 14, calc(var(--ui-glass, 1) * .9)) !important;
+  backdrop-filter: blur(calc(6px + 12px * (1 - var(--ui-glass, 1)))) saturate(1.1); -webkit-backdrop-filter: blur(calc(6px + 12px * (1 - var(--ui-glass, 1)))) saturate(1.1);
+}
+html[data-hub-dots="off"] .hub-dots { display: none; }
+
+/* Accessibility: less motion (the same as the device's own setting; scripts that ask the browser are told yes by layout-init.js) */
+html[data-reduce-motion="on"] *, html[data-reduce-motion="on"] *::before, html[data-reduce-motion="on"] *::after {
+  animation-duration: .001ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important;
+  transition-duration: .001ms !important; transition-delay: 0s !important; scroll-behavior: auto !important;
+}
+html[data-reduce-motion="on"] .hub-leaf-wrap { display: none; }
+/* higher contrast: secondary text as strong as the main text, firmer lines */
+html[data-contrast="high"] { --text-dim: var(--text); --border: color-mix(in srgb, var(--text) 55%, transparent); }
+html[data-contrast="high"] .hub, html[data-contrast="high"] .hub.lava { --h-dim: #f0f0f3; --h-faint: #d4d4da; --h-line: rgba(255, 255, 255, .3); --h-line-2: rgba(255, 255, 255, .5); }
+html[data-contrast="high"] .hub-widget-head strong, html[data-contrast="high"] .hub-big small { color: #f0f0f3; }
+/* focus you can't miss, for keyboard users */
+html[data-focus="strong"] :focus-visible { outline: 3px solid #ffd23f !important; outline-offset: 3px !important; border-radius: 4px; }
+
+/* the size rows in Settings */
+.ui-size-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 1.3fr); align-items: center; gap: calc(12px * var(--s)); padding: calc(10px * var(--s)) 0; border-top: 1px solid var(--border); }
+.ui-size-row:first-of-type { border-top: 0; }
+.ui-size-label { display: grid; gap: 2px; min-width: 0; }
+.ui-size-label strong { font-size: calc(15px * var(--s)); }
+.ui-size-label small { font-size: max(12px, calc(13px * var(--s))); color: var(--text-dim); }
+.ui-size-ctl { display: flex; align-items: center; gap: calc(8px * var(--s)); }
+.ui-size-ctl .audio-slider { flex: 1; min-width: 80px; }
+.ui-size-step { flex: none; width: 34px; height: 34px; display: grid; place-items: center; padding: 0; font: inherit; font-size: 20px; line-height: 1; color: var(--text); background: transparent; border: 1px solid var(--border); border-radius: 50%; cursor: pointer; touch-action: manipulation; }
+.ui-size-step:hover { background: color-mix(in srgb, var(--text) 10%, transparent); }
+.ui-size-val { flex: none; min-width: 3.4em; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.ui-size-row.changed .ui-size-val { color: var(--accent, #e9c27a); }
+.ui-note { margin: 0 0 calc(10px * var(--s)); font-size: max(12px, calc(13px * var(--s))); color: var(--text-dim); }
+@media (max-width: 640px) { .ui-size-row { grid-template-columns: 1fr; } }

@@ -14,6 +14,7 @@ import { fetchMe } from "../account.js";
 import { renderAdmin } from "./admin.js";
 import { getViewState, setViewState } from "../viewState.js";
 import { activeSystem } from "../systems/registry.js";
+import { SIZE_PARTS, SIZE_RANGE, TEXT_RANGE, GLASS_RANGE, clampPct, getUi, setUi, setPartSize, resetSizes } from "../uiPrefs.js";
 
 // Same grouping the sidebar itself uses (the active game system's nav, see
 // js/systems/) -- shown in the same order so "which page is this" is obvious.
@@ -329,6 +330,74 @@ export function renderSettings(container) {
     panel.appendChild(el("div", { class: "card" }, [el("h4", {}, `Members (${rows.length})`), ...rows]));
   }
 
+  // ---------------- Interface: how big each part of the hub is ----------------
+  // A slider with smaller / bigger buttons and the number. Used for every size and for the text size.
+  function sizeRow({ label, hint, range, value, onChange, neutral = 100 }) {
+    const input = el("input", { type: "range", min: String(range.min), max: String(range.max), step: String(range.step), class: "audio-slider", "aria-label": label });
+    const num = el("span", { class: "ui-size-val", "aria-live": "polite" });
+    const step = (d) => { const b = el("button", { type: "button", class: "ui-size-step", "aria-label": `${d < 0 ? "Smaller" : "Bigger"}: ${label}`, title: d < 0 ? "Smaller" : "Bigger" }, d < 0 ? "−" : "+"); b.addEventListener("click", () => paint(Number(input.value) + d * range.step, true)); return b; };
+    const row = el("div", { class: "ui-size-row" }, [
+      el("div", { class: "ui-size-label" }, [el("strong", {}, label), hint ? el("small", {}, hint) : null].filter(Boolean)),
+      el("div", { class: "ui-size-ctl" }, [step(-1), input, step(1), num]),
+    ]);
+    function paint(v, save) {
+      const pct = clampPct(v, range);
+      input.value = String(pct);
+      num.textContent = `${pct}%`;
+      input.style.setProperty("--fill", `${((pct - range.min) / (range.max - range.min)) * 100}%`);
+      row.classList.toggle("changed", pct !== neutral);
+      if (save) onChange(pct);
+    }
+    input.addEventListener("input", () => paint(input.value, true));
+    row.paint = (v) => paint(v, false);
+    paint(value, false);
+    return row;
+  }
+  function sizesCard() {
+    const ui = getUi();
+    const rows = SIZE_PARTS.map((p) => sizeRow({ label: p.label, hint: p.hint, range: SIZE_RANGE, value: ui.sizes[p.id] ?? 100, onChange: (pct) => setPartSize(p.id, pct) }));
+    const reset = el("button", { type: "button", class: "btn" }, "Reset all sizes");
+    reset.addEventListener("click", () => { resetSizes(); rows.forEach((r) => r.paint(100)); });
+    return el("div", { class: "card" }, [
+      el("h4", {}, "Sizes"),
+      el("p", { class: "ui-note" }, "Make a part of the hub bigger or smaller. It changes as you slide, and is kept on this device. The phone layout has its own bars: a size applies wherever its bar is."),
+      ...rows, el("div", { class: "settings-actions", style: "margin-top:12px" }, [reset]),
+    ]);
+  }
+
+  // How see-through the hub's bars and panels are, and whether the board has its dots
+  function backgroundCard() {
+    const ui = getUi();
+    // (shown as transparency, 0 to 80%: the stored value is how solid they are)
+    const glass = sizeRow({ label: "Transparency", hint: "Lets the board show through the bars and panels", neutral: 0,
+      range: { min: 0, max: 100 - GLASS_RANGE.min, step: GLASS_RANGE.step }, value: 100 - ui.glass, onChange: (pct) => setUi({ glass: 100 - pct }) });
+    const dots = el("div", { class: "settings-page-row" }, [
+      el("span", {}, ["Dots on the board", el("br"), el("small", { class: "ui-note", style: "margin:0" }, "The faint grid of dots behind everything on the hub")]),
+      toggleSwitch(ui.dots, (v) => setUi({ dots: v })),
+    ]);
+    return el("div", { class: "card" }, [el("h4", {}, "Hub look"), glass, dots]);
+  }
+
+  // ---------------- Accessibility ----------------
+  function accessibilityCard() {
+    const ui = getUi();
+    const text = sizeRow({ label: "Text size", hint: "Scales the text and spacing across the whole app", range: TEXT_RANGE, value: ui.text, onChange: (pct) => setUi({ text: pct }) });
+    const motion = pillGroup([["system", "Follow my device"], ["on", "Always reduce"]], ui.motion, (m) => setUi({ motion: m }));
+    const toggleRow = (label, hint, key, on) => el("div", { class: "settings-page-row" }, [
+      el("span", {}, [label, el("br"), el("small", { class: "ui-note", style: "margin:0" }, hint)]),
+      toggleSwitch(on, (v) => setUi({ [key]: v })),
+    ]);
+    return el("div", { class: "card" }, [
+      el("h4", {}, "Reading"), text,
+      el("h4", { style: "margin-top:16px" }, "Motion"),
+      el("p", { class: "ui-note" }, "Always reduce turns off the sliding, fading and flying: pages and panels simply appear. Your device's own setting is always respected as well."),
+      motion,
+      el("h4", { style: "margin-top:16px" }, "Seeing it clearly"),
+      toggleRow("High contrast", "Dimmer text and thin lines become clearer", "contrast", ui.contrast),
+      toggleRow("Strong focus outlines", "A thick yellow outline on whatever the keyboard is on", "focus", ui.focus),
+    ]);
+  }
+
   // ---------------- Sidebar pages ----------------
   function pagesCard() {
     const hidden = getHiddenViews();
@@ -349,12 +418,9 @@ export function renderSettings(container) {
     { id: "campaign", label: "Campaign", render: renderCampaignTab },
     { id: "members", label: "Members", ownerOnly: true, render: renderMembersTab },
     {
-      id: "appearance", label: "Appearance", render: (panel) => {
+      id: "video", label: "Video", render: (panel) => {   // how it looks: the theme, how much moves, the window
         panel.appendChild(appearanceCard());
-        panel.appendChild(layoutCard());
         panel.appendChild(graphicsCard());
-        panel.appendChild(soundCard());
-        panel.appendChild(cursorCard());
         const windowSection = renderWindowSection();
         if (windowSection) panel.appendChild(windowSection);
         const fullscreenSection = renderFullscreenSection();
@@ -364,16 +430,28 @@ export function renderSettings(container) {
         if (credit) panel.appendChild(el("p", { class: "art-credit" }, credit));
       },
     },
-    ...(activeSystem()?.noSidebar ? [] : [{ id: "pages", label: "Sidebar", render: (panel) => panel.appendChild(pagesCard()) }]),
+    { id: "audio", label: "Audio", render: (panel) => panel.appendChild(soundCard()) },
+    {
+      id: "interface", label: "Interface", render: (panel) => {   // how big each part is, the phone layout, your cursor, the sidebar's pages
+        panel.appendChild(sizesCard());
+        panel.appendChild(backgroundCard());
+        panel.appendChild(layoutCard());
+        panel.appendChild(cursorCard());
+        if (!activeSystem()?.noSidebar) panel.appendChild(pagesCard());
+      },
+    },
+    { id: "accessibility", label: "Accessibility", render: (panel) => panel.appendChild(accessibilityCard()) },
     { id: "admin", label: "Admin", adminOnly: true, render: (panel) => renderAdmin(panel) },   // always last; only for admins
   ];
+  // (the tab someone last used may have been renamed: Appearance became Video, the Sidebar's pages moved to Interface)
+  const savedTab = () => { const v = getViewState(TAB_KEY, "account"); return v === "appearance" ? "video" : v === "pages" ? "interface" : v; };
 
   const tabBar = el("div", { class: "settings-tabs", role: "tablist" });
   const panel = el("div", { class: "settings-panel", role: "tabpanel" });
   let isOwner = false; // learned from the campaign info; reveals the Members tab
 
   let isAdmin = false;
-  fetchMe().then((acc) => { if (acc?.perms?.admin) { isAdmin = true; drawTabBar(getViewState(TAB_KEY, "account")); } });
+  fetchMe().then((acc) => { if (acc?.perms?.admin) { isAdmin = true; drawTabBar(savedTab()); } });
   function visibleTabs() { return tabDefs.filter((t) => (!t.ownerOnly || isOwner) && (!t.adminOnly || isAdmin)); }
 
   function drawTabBar(activeId) {
@@ -399,19 +477,19 @@ export function renderSettings(container) {
   // redraws the current tab.
   function refresh() {
     infoPromise = null;
-    show(getViewState(TAB_KEY, "account"));
+    show(savedTab());
   }
 
   container.innerHTML = "";
   container.appendChild(el("h1", { class: "view-title" }, "Settings"));
   container.append(tabBar, panel);
-  show(getViewState(TAB_KEY, "account"));
+  show(savedTab());
   // The Members tab only exists for the campaign's owner; add it as soon as we know.
   loadInfo().then((info) => {
     // Only the tab bar is redrawn -- never the panel, which may have typing in it.
     if (info?.isOwner && !isOwner) {
       isOwner = true;
-      const saved = getViewState(TAB_KEY, "account");
+      const saved = savedTab();
       if (saved === "members") show("members"); // they were last on it: now it can open
       else drawTabBar(saved);
     }

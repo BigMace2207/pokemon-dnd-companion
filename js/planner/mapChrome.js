@@ -62,7 +62,7 @@ export function mountMapChrome(panel, api) {
   mapBtn.addEventListener("click", () => toggleDrawer("maps"));
   const top = el("div", { class: "me-top" }, [
     home,
-    el("div", { class: "hub-title" }, [el("span", { class: "hub-eyebrow" }, "Dungeons & Dragons"), el("strong", {}, dm ? "Map editor" : "Maps")]),
+    el("div", { class: "hub-title" }, [el("span", { class: "hub-eyebrow" }, api.pokemon ? "Pokémon D&D" : "Dungeons & Dragons"), el("strong", {}, dm ? "Map editor" : "Maps")]),
     mapBtn,
   ]);
 
@@ -326,7 +326,7 @@ export function mountMapChrome(panel, api) {
       el("div", { class: "me-rows" }, onMap.length ? onMap : [el("p", { class: "me-empty" }, "Nobody is on the map yet.")]),
       el("h3", { class: "me-sub" }, "Not placed"),
       el("div", { class: "me-rows" }, api.rosterLoaded() ? (waiting.length ? waiting : [el("p", { class: "me-empty" }, "Everyone is on the map.")]) : [el("p", { class: "me-empty" }, "Loading players…")]),
-      el("div", { class: "me-actions" }, [pill("Add a marker", async () => { const n = await promptDialog("Add a marker", "Name (a party, a monster, a ship)", ""); if (n?.trim()) api.addToken(`custom-${Math.random().toString(36).slice(2, 10)}`, n.trim(), api.ctl()?.middle()); })]),
+      el("div", { class: "me-actions" }, [pill("Add a marker", async () => { const n = await promptDialog("Add a marker", api.pokemon ? "Name (a party, a wild Pokémon, a ship)" : "Name (a party, a monster, a ship)", ""); if (n?.trim()) api.addToken(`custom-${Math.random().toString(36).slice(2, 10)}`, n.trim(), api.ctl()?.middle()); })]),
     ];
   }
 

@@ -66,33 +66,70 @@ export const PAGE_TEMPLATES = {
     { widget: "here", size: "1x1", col: 0, row: 2 }, { widget: "clock", size: "1x1", col: 1, row: 2 }, { widget: "online", size: "1x1", col: 2, row: 2 }] },
 };
 
-export const TEXT_SIZE_ON_PAGE = 24;
-const TEXT_DY = 27;      // a text box's top sits this far above its ruled line, so the writing rests just above it
-const TEXT_BOX_H = 28, OB_PAD = 8, MIN_RUN = 140;   // a gap narrower than this beside a widget is left empty
+/** The same four pages for a Pokemon campaign: its own widgets (the team, trainers' teams, money, the battle). */
+export const POKEMON_PAGE_TEMPLATES = {
+  blank: PAGE_TEMPLATES.blank,
+  battle: { title: "Battle tracker", blurb: "Whether a battle is on and whose turn it is, your team and the latest from the fight.", widgets: [
+    { widget: "battle", size: "2x2", col: 0, row: 0 }, { widget: "team", size: "2x2", col: 2, row: 0 }, { widget: "battles", size: "2x2", col: 0, row: 2 }] },
+  sheet: { title: "Trainer sheet", blurb: "Your team, your money, where you are and who is here.", widgets: [
+    { widget: "team", size: "2x2", col: 0, row: 0 }, { widget: "money", size: "1x1", col: 2, row: 0 }, { widget: "clock", size: "1x1", col: 3, row: 0 },
+    { widget: "here", size: "1x1", col: 2, row: 1 }, { widget: "online", size: "1x1", col: 3, row: 1 }] },
+  log: { title: "Area log", blurb: "Where everyone is, recent battles and the time, with room to write below.", widgets: [
+    { widget: "positions", size: "2x2", col: 0, row: 0 }, { widget: "battles", size: "2x2", col: 2, row: 0 },
+    { widget: "here", size: "1x1", col: 0, row: 2 }, { widget: "clock", size: "1x1", col: 1, row: 2 }, { widget: "online", size: "1x1", col: 2, row: 2 }] },
+};
+export const pageTemplates = (system) => (system === "pokemon" ? POKEMON_PAGE_TEMPLATES : PAGE_TEMPLATES);
 
-/** Where typed text clicked at (x, y) on a page lands: its first letter on the left margin, sitting on the nearest ruled line. */
-export function snapToLine(page, x, y) {
+export const TEXT_SIZE_ON_PAGE = 24;
+const OB_PAD = 8, MIN_RUN = 140;   // a gap narrower than this beside a widget is left empty
+
+/** The text presets (the Text tool's pills): a size each. How each looks is css: .hub-text[data-style]. The server holds the same names. */
+export const TEXT_STYLES = {
+  title: { label: "Title", size: 44 },
+  heading: { label: "Heading", size: 32 },
+  body: { label: "Body", size: 24 },
+  mysterious: { label: "Mysterious", size: 28 },
+  quote: { label: "Quote", size: 26 },
+};
+export const DEFAULT_TEXT_STYLE = "body";
+const boxH = (size) => Math.round(size * 1.05);   // a line of text is this tall
+/** How far a text box's top sits above the ruled line it rests on, so the writing sits just above the line. */
+export const textDy = (size = TEXT_SIZE_ON_PAGE) => boxH(size) + 2;
+/** How many ruled lines a row of text this big takes (a Title takes two). */
+export const linesFor = (size = TEXT_SIZE_ON_PAGE) => Math.max(1, Math.ceil(textDy(size) / PAGE.lineH));
+
+/** Where typed text clicked at (x, y) on a page lands: its first letter on the left margin, resting on the nearest ruled line it fits. */
+export function snapToLine(page, x, y, size = TEXT_SIZE_ON_PAGE) {
   const first = PAGE.headH + PAGE.lineH;                      // the first ruled line, down from the page's top
-  const n = Math.max(0, Math.min(Math.floor((PAGE_H - first - 20) / PAGE.lineH), Math.round((y - page.y - first) / PAGE.lineH)));
+  const last = Math.floor((PAGE_H - first - 20) / PAGE.lineH);
+  const n = Math.max(linesFor(size) - 1, Math.min(last, Math.round((y - page.y - first) / PAGE.lineH)));
   const lineY = page.y + first + n * PAGE.lineH;
-  return { x: page.x + PAGE.marginX + 8, y: lineY - TEXT_DY, line: n + 1, size: TEXT_SIZE_ON_PAGE };
+  return { x: page.x + PAGE.marginX + 8, y: lineY - textDy(size), line: n + 1, size };
+}
+
+/** Text moved on a page snaps to a grid: the margin, then a column every line-height to the right, so indents line up. */
+export function snapTextX(page, x) {
+  const left = page.x + PAGE.marginX + 8, step = PAGE.lineH;
+  const max = Math.floor((PAGE_W - 40 - PAGE.marginX - 8 - 240) / step);   // (room is left for words before the right margin)
+  return left + Math.max(0, Math.min(max, Math.round((x - left) / step))) * step;
 }
 
 /**
- * Lay text out on a page's ruled lines from line `line` (0 is the first): words fill each line left to right, skip over
+ * Lay text out on a page's ruled lines, the first row resting on line `line` (0 is the first): words fill each row left to right, skip over
  * anything standing on it (widgets, cards, earlier writing: `obstacles` are {x, y, w, h} in board units), and carry on at the
  * next line when they reach the page's edge. `width(str)` measures a string. Returns the runs to write, each a piece of one
  * line at its own x, and whether the page ran out of lines before the text ran out.
  */
-export function flowText(text, page, line, obstacles, width) {
+export function flowText(text, page, line, obstacles, width, { size = TEXT_SIZE_ON_PAGE, startX = null } = {}) {
   const left = page.x + PAGE.marginX + 8, right = page.x + PAGE_W - 40, first = PAGE.headH + PAGE.lineH;
   const lastLine = Math.max(0, Math.floor((PAGE_H - first - 20) / PAGE.lineH));
+  const step = linesFor(size), h = boxH(size), dy = textDy(size);   // (a big preset takes more than one ruled line a row)
   const words = String(text).split(/\s+/).filter(Boolean);
   const pieces = [];
   let i = 0;
-  for (let n = Math.max(0, line); n <= lastLine && i < words.length; n++) {
-    const top = page.y + first + n * PAGE.lineH - TEXT_DY, bottom = top + TEXT_BOX_H;
-    let segs = [[left, right]];
+  for (let n = Math.max(step - 1, line), row = 0; n <= lastLine && i < words.length; n += step, row++) {
+    const top = page.y + first + n * PAGE.lineH - dy, bottom = top + h;
+    let segs = [[row === 0 && startX != null ? Math.max(left, startX) : left, right]];
     for (const o of obstacles) {
       if (o.y >= bottom || o.y + o.h <= top) continue;
       const a = o.x - OB_PAD, b = o.x + o.w + OB_PAD;

@@ -21,7 +21,7 @@ import { putImage, getImage, deleteImage, readAsDataUrl, imageSize } from "./map
 import { icon } from "./icons.js";
 import { openMapLink } from "./mapLink.js";
 import { KINDS, kindOf } from "./kinds.js";
-import { PLACE_TYPES, placeOnMaps } from "./places.js";
+import { placeTypesFor, placeOnMaps } from "./places.js";
 import { syncPlacePins } from "./placeSync.js";
 import { gridRef } from "../mapView.js";
 import { cleanMon, TEAM_MAX } from "./board.js";
@@ -228,7 +228,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
 
   // ---- a Place: type, what it's known for, the description players read, and the DM's own notes
   function placeBody(n) {
-    const typeSel = selectEl(PLACE_TYPES.map(([k, l]) => [k, l]), n.placeKind || "other", (v) => { edit((b) => { const x = nodeOf(b, n.id); if (x) x.placeKind = v; }); syncPlacePins(); });
+    const typeSel = selectEl(placeTypesFor(system).map(([k, l]) => [k, l]), n.placeKind || "other", (v) => { edit((b) => { const x = nodeOf(b, n.id); if (x) x.placeKind = v; }); syncPlacePins(); });
     if (readonly) typeSel.disabled = true;
     const known = el("input", { class: "pl-place-known", type: "text", maxlength: "160", value: n.known || "", placeholder: "A line it's known for", "aria-label": "Known for", ...(readonly ? { readonly: "" } : {}) });
     known.addEventListener("input", () => saveSoon((b) => { const x = nodeOf(b, n.id); if (x) x.known = known.value.slice(0, 160); }));
@@ -579,7 +579,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
       railBtn("note", "Note", "note", { spec: () => ({ type: "note" }) }),
       railBtn("list", "Checklist", "list", { spec: () => ({ type: "list" }) }),
       railBtn("text", "Sticky", "sticky", { spec: () => ({ type: "text" }) }),
-      ...(!pokemon && isDmMode() ? [railBtn("place", "Place", "pin", { spec: () => ({ type: "place" }) })] : []),
+      ...(isDmMode() ? [railBtn("place", "Place", "pin", { spec: () => ({ type: "place" }) })] : []),
       railBtn("dungeon", "Dungeon", "dungeon", { fly: true }),
       railBtn("gens", "Generate", "dice", { fly: true }),
       ...(pokemon ? [railBtn("libs", "Libraries", "paw", { fly: true }), dexRailBtn()] : []),

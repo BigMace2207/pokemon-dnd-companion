@@ -21,7 +21,7 @@ import { resetCombat, mutateCombat, addMonsterToCombat, publishCombat } from "..
 import { listTrainers, getTrainerTeam } from "../network.js";
 import { getPlan } from "../planner/store.js";
 import { placeNodes, placeOnMaps, pinFields } from "../planner/places.js";
-import { WIDGETS, widgetIcon, WEATHER_DEFAULT, placeHere } from "./widgets.js";
+import { widgetsFor, widgetIcon, WEATHER_DEFAULT, placeHere } from "./widgets.js";
 import { PAGE_TEMPLATES } from "./paper.js";
 export { fillWidget, refreshWidgetData, defaultSize } from "./widgets.js";
 
@@ -433,7 +433,7 @@ export function personInfo(team) {
 
 
 // ---- the Widgets pull-out: smart widgets for everyone, and (for the DM) the places on their map -------------------------------
-export function widgetsPanel(kind, { CARD_MIME, onPlace, onClose, onSwitch, dm, saved = [], onDeleteSaved }) {
+export function widgetsPanel(kind, { CARD_MIME, onPlace, onClose, onSwitch, dm, saved = [], onDeleteSaved, system = "dnd", templates = PAGE_TEMPLATES }) {
   const tabs = [["widget", "Widgets"], ["page", "Pages"], ...(dm ? [["place", "Places"]] : [])];
   const close = el("button", { type: "button", class: "hub-round small", "aria-label": "Close", title: "Close" }, "×");
   close.addEventListener("click", onClose);
@@ -456,11 +456,11 @@ export function widgetsPanel(kind, { CARD_MIME, onPlace, onClose, onSwitch, dm, 
   let rows, hint;
   if (kind === "widget") {
     hint = "Drag a widget onto the hub, or press +. They keep themselves up to date.";
-    rows = WIDGETS.filter((w) => dm || !w.dm).map((w) => row(widgetIcon(w.id), w.title, `${w.blurb}${w.dm ? " (DM)" : ""}`, { type: "widget", widget: w.id, ...(w.id === "weather" ? { data: WEATHER_DEFAULT } : {}) }));
+    rows = widgetsFor(system, dm).map((w) => row(widgetIcon(w.id), w.title, `${w.blurb}${w.dm ? " (DM)" : ""}`, { type: "widget", widget: w.id, ...(w.id === "weather" ? { data: WEATHER_DEFAULT } : {}) }));
   } else if (kind === "page") {
     hint = "Paper to write on and pin things to. Drag a page onto the hub. Everything on it moves with it.";
     const paper = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l3 3v15H6zM9 9h6M9 13h6M9 17h4"/></svg>`;
-    rows = Object.entries(PAGE_TEMPLATES).map(([k, t]) => row(paper, t.title, t.blurb, { type: "page", pageKind: k, title: t.title }));
+    rows = Object.entries(templates).map(([k, t]) => row(paper, t.title, t.blurb, { type: "page", pageKind: k, title: t.title }));
     if (saved.length) {
       rows.push(el("h4", { class: "hub-dex-section" }, "Saved pages"));
       for (const s of saved) {
@@ -470,7 +470,7 @@ export function widgetsPanel(kind, { CARD_MIME, onPlace, onClose, onSwitch, dm, 
         r.querySelector(".hub-dex-head").append(del);
         rows.push(r);
       }
-    } else rows.push(el("p", { class: "hub-menu-note" }, "Drag a page from the hub onto this list to save it, with everything on it."));
+    } else rows.push(el("p", { class: "hub-menu-note" }, "Drag a page by its header and a Save page box appears: drop it there to keep it here, with everything on it."));
   } else {
     const plan = getPlan(), shared = plan.maps.find((m) => m.shared);
     const places = placeNodes(plan);

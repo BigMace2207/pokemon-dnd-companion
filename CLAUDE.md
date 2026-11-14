@@ -11,7 +11,7 @@ feature docs.
 
 ```
 python server.py [port]                    # default 8850; serves the app + /api
-python -m unittest discover -s tests -v    # ~60s, 105 tests, run before every commit
+python -m unittest discover -s tests -v    # ~60s, 108 tests, run before every commit
 python tools/test_server.py --admin you@example.com   # throwaway local copy on :8860; code emails go to an outbox folder
 node --test tests/js/*.test.mjs            # D&D rules engine, <1s (use the glob, not the folder)
 ```

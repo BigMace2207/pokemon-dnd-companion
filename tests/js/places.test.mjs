@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PLACE_TYPES, placeType, pinFields, pinDiffers, placeNodes, placeOnMaps, nodeForPin } from "../../js/planner/places.js";
+import { PLACE_TYPES, POKEMON_PLACE_TYPES, placeTypesFor, placeType, pinFields, pinDiffers, placeNodes, placeOnMaps, nodeForPin } from "../../js/planner/places.js";
 
 const tavern = { id: "n1", type: "place", title: "The Rusty Anchor", placeKind: "tavern", known: "Best stew in Red Larch", body: "A smoky dockside tavern.", dmNotes: "The owner is a spy." };
 
@@ -29,6 +29,17 @@ test("every place type has a one-word label, an icon of at most two characters a
     assert.ok([...icon].length <= 2, `${key} icon is ${[...icon].length} characters`);
     assert.match(colour, /^#[0-9a-f]{6}$/i, key);
   }
+});
+
+test("a Pokemon campaign has its own place types, and the D&D side never shows them", () => {
+  const dnd = placeTypesFor("dnd5e").map(([k]) => k), pokemon = placeTypesFor("pokemon-dnd").map(([k]) => k);
+  for (const [key, , icon, colour] of POKEMON_PLACE_TYPES) {
+    assert.ok(pokemon.includes(key) && !dnd.includes(key), key);
+    assert.ok([...icon].length <= 2, key); assert.match(colour, /^#[0-9a-f]{6}$/i, key);
+  }
+  assert.equal(dnd[dnd.length - 1], "other"); assert.equal(pokemon[pokemon.length - 1], "other", "Other stays last");
+  assert.equal(placeType("gym")[1], "Gym", "a label made on a Pokemon campaign still reads as one");
+  assert.equal(pinFields({ title: "Pewter Gym", placeKind: "gym" }).icon, "🏟️");
 });
 
 test("pinDiffers sees only changes to what a place sets", () => {

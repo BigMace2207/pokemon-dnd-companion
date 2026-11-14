@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { UNIT, GAP, PAGE_W, PAGE_H, PAGE, GRID, SIZE_NAMES, sizePx, nearestSize, pageAt, snapToCell, snapToLine, cellXY, flowText, PAGE_TEMPLATES, resolveOverlap, packPage, unpackPage } from "../../js/hubKits/paper.js";
+import { UNIT, GAP, PAGE_W, PAGE_H, PAGE, GRID, SIZE_NAMES, sizePx, nearestSize, pageAt, snapToCell, snapToLine, snapTextX, TEXT_STYLES, textDy, linesFor, cellXY, flowText, PAGE_TEMPLATES, POKEMON_PAGE_TEMPLATES, pageTemplates, resolveOverlap, packPage, unpackPage } from "../../js/hubKits/paper.js";
 
 test("the three widget sizes: one square, two wide, two by two", () => {
   assert.deepEqual(sizePx("1x1"), [UNIT, UNIT]);
@@ -63,8 +63,11 @@ test("typed text lands on the nearest ruled line, from the left margin", () => {
 
 test("every page template fits the page's grid, without two widgets on the same cell", () => {
   assert.deepEqual(Object.keys(PAGE_TEMPLATES), ["blank", "battle", "sheet", "log"]);
+  assert.deepEqual(Object.keys(POKEMON_PAGE_TEMPLATES), ["blank", "battle", "sheet", "log"], "a Pokemon campaign has the same four kinds");
+  assert.equal(pageTemplates("pokemon"), POKEMON_PAGE_TEMPLATES);
+  assert.equal(pageTemplates("dnd"), PAGE_TEMPLATES);
   const page = { x: 0, y: 0 };
-  for (const [kind, t] of Object.entries(PAGE_TEMPLATES)) {
+  for (const [kind, t] of [...Object.entries(PAGE_TEMPLATES), ...Object.entries(POKEMON_PAGE_TEMPLATES)]) {
     const taken = new Set();
     for (const w of t.widgets) {
       const [cw, ch] = { "1x1": [1, 1], "1x2": [2, 1], "2x2": [2, 2] }[w.size];
@@ -157,9 +160,47 @@ test("the client and the server agree on pages and widgets", () => {
   assert.deepEqual([w, h], [PAGE_W, PAGE_H], "a page is the same size on both sides");
   assert.deepEqual(tuple("HUB_WIDGET_SIZES"), SIZE_NAMES, "the same three widget sizes");
   assert.deepEqual(tuple("HUB_PAGE_KINDS"), Object.keys(PAGE_TEMPLATES), "the same page kinds");
+  assert.deepEqual(tuple("HUB_TEXT_STYLES"), Object.keys(TEXT_STYLES), "the same text presets");
   assert.equal(Number(server.match(/^HUB_MAX_PAGES = (\d+)/m)[1]), Number(hub.match(/^const MAX_PAGES = (\d+)/m)[1]), "the same page limit");
   const ids = [...widgets.matchAll(/id: "(\w+)", size: "(\dx\d)"/g)];
   assert.deepEqual(ids.map((m) => m[1]).sort(), [...tuple("HUB_WIDGETS")].sort(), "every widget the client has, the server accepts, and no more");
   for (const m of ids) assert.ok(SIZE_NAMES.includes(m[2]), `${m[1]} has a size that exists`);
+  // every widget on a page template exists for that template's own system (a D&D page never holds a Pokemon widget, nor the reverse)
+  const only = new Map([...widgets.matchAll(/id: "(\w+)", size: "\dx\d"(?:, only: "(\w+)")?/g)].map((m) => [m[1], m[2] || ""]));
+  for (const [system, set] of [["dnd", PAGE_TEMPLATES], ["pokemon", POKEMON_PAGE_TEMPLATES]]) {
+    for (const [kind, t] of Object.entries(set)) for (const w of t.widgets) assert.ok(only.has(w.widget) && (!only.get(w.widget) || only.get(w.widget) === system), `${system}/${kind}/${w.widget} is a widget for ${system}`);
+  }
   for (const id of tuple("HUB_DM_WIDGETS")) assert.ok(widgets.includes(`id: "${id}", size: "1x2", title:`) || widgets.includes(`id: "${id}", size:`), `${id} exists`);
+});
+
+test("text presets: five of them, each a size, and a big one takes more ruled lines and still rests on a line", () => {
+  assert.deepEqual(Object.keys(TEXT_STYLES), ["title", "heading", "body", "mysterious", "quote"]);
+  for (const [k, v] of Object.entries(TEXT_STYLES)) assert.ok(v.label && v.size >= 12 && v.size <= 120, k);
+  assert.equal(linesFor(TEXT_STYLES.body.size), 1);
+  assert.equal(linesFor(TEXT_STYLES.title.size), 2, "a title takes two ruled lines");
+  const page = { x: 0, y: 0 }, first = PAGE.headH + PAGE.lineH;
+  const body = snapToLine(page, 100, 0, 24), title = snapToLine(page, 100, 0, 44);
+  assert.equal(body.line, 1);
+  assert.equal(title.line, 2, "a title clicked on the first line moves down to the second so it fits above its line");
+  assert.equal(title.y + textDy(44), first + PAGE.lineH, "its box rests just above that line");
+  assert.equal(snapToLine(page, 100, first + 36 * 6, 44).line, 7);
+});
+
+test("text moved on a page snaps to the margin or a column of the grid, and never past the page", () => {
+  const page = { x: 100, y: 0 }, left = 100 + PAGE.marginX + 8;
+  assert.equal(snapTextX(page, -500), left);
+  assert.equal(snapTextX(page, left + 10), left);
+  assert.equal(snapTextX(page, left + PAGE.lineH * 2 + 5), left + PAGE.lineH * 2);
+  assert.ok(snapTextX(page, 99999) + 240 <= 100 + PAGE_W - 40, "room is left for words before the right margin");
+  assert.equal((snapTextX(page, left + 130) - left) % PAGE.lineH, 0, "always on a column");
+});
+
+test("a preset's size and an indent change how text flows", () => {
+  const page = { x: 0, y: 0 }, w = (s) => s.length * 10, left = PAGE.marginX + 8;
+  const big = flowText(Array(30).fill("word").join(" "), page, 0, [], w, { size: 44 });
+  assert.equal(big.pieces[0].line, 2, "a title starts on the second ruled line");
+  assert.equal(big.pieces[1].line - big.pieces[0].line, 2, "and each row takes two");
+  const indented = flowText("one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen", page, 0, [], w, { startX: left + 72 });
+  assert.equal(indented.pieces[0].x, left + 72, "the first row starts at the indent");
+  assert.equal(indented.pieces[1].x, left, "the rows after it return to the margin");
 });

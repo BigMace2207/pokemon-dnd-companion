@@ -17,3 +17,33 @@
   try { var v = localStorage.getItem("pkdnd-gfx"); if (v === "low" || v === "medium" || v === "high") g = v; } catch (e) { /* storage blocked */ }
   document.documentElement.setAttribute("data-gfx", g);
 })();
+
+// The interface preferences (js/uiPrefs.js: Settings -> Interface and Accessibility), applied before first paint too.
+// Keep the key, the ranges and the names in step with js/uiPrefs.js.
+(function () {
+  var ui = {};
+  try { ui = JSON.parse(localStorage.getItem("pkdnd-ui") || "{}") || {}; } catch (e) { ui = {}; }
+  var root = document.documentElement, sizes = ui.sizes || {};
+  Object.keys(sizes).forEach(function (id) {
+    var v = Number(sizes[id]);
+    if (/^[a-z]+$/.test(id) && v >= 60 && v <= 160) root.style.setProperty("--ui-" + id, String(v / 100));
+  });
+  var t = Number(ui.text);
+  if (t >= 85 && t <= 150) root.style.setProperty("--ui-text", String(t / 100));
+  var g = Number(ui.glass);
+  if (g >= 20 && g < 100) { root.style.setProperty("--ui-glass", String(g / 100)); root.setAttribute("data-glass", "on"); }
+  if (ui.dots === false) root.setAttribute("data-hub-dots", "off");
+  if (ui.motion === "on") root.setAttribute("data-reduce-motion", "on");
+  if (ui.contrast === true) root.setAttribute("data-contrast", "high");
+  if (ui.focus === true) root.setAttribute("data-focus", "strong");
+  // Scripts that ask "does this person want less motion?" ask matchMedia: with Reduce motion on, the answer is yes.
+  var real = window.matchMedia && window.matchMedia.bind(window);
+  if (real) {
+    window.matchMedia = function (q) {
+      if (/prefers-reduced-motion:\s*reduce/.test(String(q)) && root.getAttribute("data-reduce-motion") === "on") {
+        return { matches: true, media: String(q), onchange: null, addEventListener: function () {}, removeEventListener: function () {}, addListener: function () {}, removeListener: function () {}, dispatchEvent: function () { return false; } };
+      }
+      return real(q);
+    };
+  }
+})();

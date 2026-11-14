@@ -156,7 +156,7 @@
 
 /* ---- Rayquaza, a constellation in the cosmic sky (js/constellation.js), drawn like a star chart: a faint glowing
    outline of the figure, gold four-point stars along its body joined by one thin line ---- */
-.constellation { position: absolute; display: block; width: min(46vmin, 500px); height: auto; overflow: visible; pointer-events: none; will-change: transform; }
+.constellation { opacity: .62; position: absolute; display: block; width: min(46vmin, 500px); height: auto; overflow: visible; pointer-events: none; will-change: transform; }
 .sky-constellation { right: 5vw; top: 10vh; }
 .sky-constellation.con-charizard { right: auto; left: -8vw; top: 42vh; width: min(70vmin, 800px); }
 .sky-constellation.con-entei { right: auto; left: 46vw; top: 70vh; width: min(54vmin, 620px); }

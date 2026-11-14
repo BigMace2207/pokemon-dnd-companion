@@ -23,7 +23,7 @@
      calc(Npx * var(--s)): 1 reproduces the original sizing (phones and
      tablets keep their carefully tuned values), below 1 tightens the roomy
      desktop sizing, and ultrawide screens get a little more back. */
-  --s: .82;
+  --s: calc(.82 * var(--ui-text, 1));
   --sidenav-w: calc(226px * var(--s));
   --topbar-h: calc(58px * var(--s) + env(safe-area-inset-top, 0px));
   --content-max: 2400px; /* widest the page content grows on ultrawides */
@@ -103,8 +103,8 @@ body {
 
 /* Density by screen: roomy ultrawides (3440x1440) get a bit more than 1080p;
    tablets and phones use the original sizing. */
-@media (min-width: 2400px) { :root { --s: .96; } }
-@media (max-width: 900px) { :root { --s: 1; } }
+@media (min-width: 2400px) { :root { --s: calc(.96 * var(--ui-text, 1)); } }
+@media (max-width: 900px) { :root { --s: calc(1 * var(--ui-text, 1)); } }
 
 #app {
   display: grid;

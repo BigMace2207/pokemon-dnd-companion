@@ -422,6 +422,46 @@ class Hub(Base):
         self.op(self.owner, "id-owner", op="put", item={**place, "id": "pl2", "pin": "gone"}, token=self.dm)
         self.assertEqual(self.op(self.member, "id-member", op="travel", itemId="pl2")[0], 409)
 
+    def test_a_pokemon_campaigns_widgets_are_accepted_too(self):
+        for i, wid in enumerate(("team", "partyhp", "money", "battle", "positions", "clock")):
+            self.assertEqual(self.op(self.member, "id-member", op="put", item={"type": "widget", "id": f"pw{i}", "widget": wid, "size": "1x2", "x": i * 200, "y": 0})[0], 200, wid)
+        got = {i["id"]: i for i in self.sync(self.member, "id-member", since=-1)[1]["items"]}
+        self.assertEqual([got[f"pw{i}"]["widget"] for i in range(6)], ["team", "partyhp", "money", "battle", "positions", "clock"])
+
+    def dm_sync(self):
+        """The hub as the DM sees it (the DM token goes in the body; the session token is the owner's)."""
+        return call(self.base, "POST", "/api/hub/sync", {"campaignId": self.cid, "id": "id-owner", "since": -1, "token": self.dm}, token=self.owner)
+
+    def test_text_has_one_of_five_presets(self):
+        put = lambda style: self.op(self.member, "id-member", op="put", item={"type": "text", "id": "t1", "text": "hi", "x": 0, "y": 0, "style": style})
+        for style in ("title", "heading", "body", "mysterious", "quote"):
+            self.assertEqual(put(style)[0], 200)
+            self.assertEqual({i["id"]: i for i in self.sync(self.member, "id-member", since=-1)[1]["items"]}["t1"]["style"], style)
+        self.assertEqual(put("comic-sans")[0], 200)
+        self.assertNotIn("style", {i["id"]: i for i in self.sync(self.member, "id-member", since=-1)[1]["items"]}["t1"], "any other style is dropped")
+
+    def test_the_dm_can_turn_to_a_clean_page_and_back(self):
+        items = lambda: {i["id"]: i for i in self.dm_sync()[1]["items"]}
+        self.op(self.member, "id-member", op="put", item={"type": "note", "id": "n1", "x": 5, "y": 5, "text": "kept", "color": "#fde68a"})
+        self.op(self.member, "id-member", op="put", item={"type": "page", "id": "pg", "x": 0, "y": 0})
+        before = self.dm_sync()[1]
+        self.assertEqual((before["wipes"], before["canTurnBack"]), (0, False))
+        self.assertEqual(self.op(self.member, "id-member", op="wipe")[0], 403, "only the DM turns the page")
+        self.assertEqual(self.op(self.owner, "id-owner", op="turnBack", token=self.dm)[0], 409, "nothing to turn back to yet")
+        self.assertEqual(self.op(self.owner, "id-owner", op="wipe", token=self.dm)[0], 200)
+        after = self.dm_sync()[1]
+        self.assertEqual((after["items"], after["wipes"], after["canTurnBack"]), ([], 1, True), "a clean page, and it is announced")
+        self.assertNotIn("canTurnBack", self.sync(self.member, "id-member", since=-1)[1], "players are not told")
+        self.assertEqual(self.op(self.member, "id-member", op="turnBack")[0], 403)
+        self.assertEqual(self.op(self.owner, "id-owner", op="turnBack", token=self.dm)[0], 200)
+        got = items()
+        self.assertEqual({"n1", "pg"}, set(got), "everything that was on the page is back")
+        self.assertEqual(self.dm_sync()[1]["wipes"], 2)
+        self.op(self.owner, "id-owner", op="wipe", token=self.dm)
+        self.op(self.member, "id-member", op="put", item={"type": "note", "id": "n2", "x": 1, "y": 1, "text": "new", "color": "#fde68a"})
+        self.assertEqual(self.op(self.owner, "id-owner", op="turnBack", token=self.dm)[0], 200)
+        self.assertEqual(set(items()), {"n1", "pg"}, "turning back swaps the two pages")
+
     def test_a_widgets_size_is_one_of_three(self):
         put = lambda size: self.op(self.member, "id-member", op="put", item={"type": "widget", "id": "w1", "widget": "order", "size": size, "x": 0, "y": 0})
         for size in ("1x1", "1x2", "2x2"):

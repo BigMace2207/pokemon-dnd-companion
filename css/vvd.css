@@ -18,7 +18,7 @@
    =========================================================================== */
 
 :root:is([data-theme="cosmic"], [data-theme="lava"]) {
-  --s: .861;
+  --s: calc(.861 * var(--ui-text, 1));
   /* the text ladder: one white at fixed opacities, so it reads the same over stars, maps or panels */
   --v-1: #ffffff;
   --v-2: rgba(255, 255, 255, .85);
@@ -43,8 +43,8 @@
   --c-line-2: var(--v-hair-2);
   --radius: 20px;
 }
-@media (min-width: 2400px) { :root:is([data-theme="cosmic"], [data-theme="lava"]) { --s: 1.008; } }
-@media (max-width: 900px) { :root:is([data-theme="cosmic"], [data-theme="lava"]) { --s: 1.05; } }
+@media (min-width: 2400px) { :root:is([data-theme="cosmic"], [data-theme="lava"]) { --s: calc(1.008 * var(--ui-text, 1)); } }
+@media (max-width: 900px) { :root:is([data-theme="cosmic"], [data-theme="lava"]) { --s: calc(1.05 * var(--ui-text, 1)); } }
 
 /* the hub uses its own tokens: same ladder, same glass */
 :root:is([data-theme="cosmic"], [data-theme="lava"]) .hub, :root:is([data-theme="cosmic"], [data-theme="lava"]) .pl-wb {

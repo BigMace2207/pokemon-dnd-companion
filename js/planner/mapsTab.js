@@ -67,7 +67,7 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
   let imageUrl = null;
   const view = { x: 0, y: 0, k: 1, fit: 1 };
   // The D&D editor: the map fills the page and a toolbar runs along the bottom (js/planner/mapChrome.js).
-  const dndUi = !!(shared.hubLayout && shared.system === "dnd5e");
+  const hubUi = !!shared.hubLayout;   // the Map editor page (both systems): bottom toolbar, drawers, areas, coordinates, places
   let chrome = null;
   const changed = () => chrome?.refresh();
 
@@ -129,7 +129,7 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
       if (m && t) { try { await updatePartyMapLive(t, m.pins, tokens); } catch { /* offline: it goes next time */ } }
     }, 350);
   };
-  const patchMap = (id, fn) => { mutatePlan((p) => { const m = p.maps.find((x) => x.id === id); if (m) fn(m); }); if (dndUi) syncPinAreas(); if (dm) pushLive(); };
+  const patchMap = (id, fn) => { mutatePlan((p) => { const m = p.maps.find((x) => x.id === id); if (m) fn(m); }); if (hubUi) syncPinAreas(); if (dm) pushLive(); };
 
   // ------------------------------------------------------------ places (D&D): Whiteboard cards dragged onto the map as labels
   // A label remembers the area it is in (only if it is in one) so the Whiteboard card can say so; players are told the area
@@ -170,7 +170,7 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
   }
   // The place cards, and where each is: on this map, on another one, or nowhere yet.
   function placesState() {
-    if (!dndUi || !dm) return [];
+    if (!hubUi || !dm) return [];
     const plan = getPlan(), here = current();
     return placeNodes(plan).map(({ node, board }) => {
       const hit = placeOnMaps(plan, node.id, here?.id);
@@ -184,7 +184,7 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
     live = m?.shared && dm && t ? await getPartyMap(t).catch(() => null) : null;
     viewerHost.__live?.();
     drawShare?.();
-    if (dndUi) syncPinAreas();
+    if (hubUi) syncPinAreas();
     changed();
   }
   function startLive() {
@@ -323,7 +323,7 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
         } catch { /* over the limit or offline: it stays on this device for now */ }
       }, 0);
     }
-    rightHost.replaceChildren(...(dndUi ? [] : dm ? [shareBar(m)] : [el("div", { class: "card" }, [el("h4", {}, "Your map"), el("p", { class: "dnd-small dnd-muted" }, "Label places as you find them. The DM's map on the hub is in “Hub map”.")])]));
+    rightHost.replaceChildren(...(hubUi ? [] : dm ? [shareBar(m)] : [el("div", { class: "card" }, [el("h4", {}, "Your map"), el("p", { class: "dnd-small dnd-muted" }, "Label places as you find them. The DM's map on the hub is in “Hub map”.")])]));
     const wrap = el("div", { class: "pl-map-wrap" });
     const stage = el("div", { class: "pl-map-stage", style: `width:${m.w}px;height:${m.h}px` });
     const img = el("img", { src: imageUrl, alt: m.name, draggable: "false" });
@@ -339,9 +339,9 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
     const areaShapes = document.createElementNS(NS, "svg"); areaShapes.setAttribute("class", "mv-area-shapes");
     const draftSvg = document.createElementNS(NS, "svg"); draftSvg.setAttribute("class", "mv-area-shapes");
     const draft = areaDraft(draftSvg);
-    const areaList = () => (dndUi && dm && m.shared && live ? live.areas || [] : []);
+    const areaList = () => (hubUi && dm && m.shared && live ? live.areas || [] : []);
     function drawAreas() {
-      if (!dndUi) return;
+      if (!hubUi) return;
       areaShapes.setAttribute("viewBox", `0 0 ${m.w} ${m.h}`); areaShapes.setAttribute("width", m.w); areaShapes.setAttribute("height", m.h);
       const list = areaList();
       // each outline has a light halo under it, so it shows on a dark map and a pale one
@@ -354,9 +354,9 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
       }));
       areaLayer.replaceChildren(areaShapes, ...list.map((a) => el("span", { class: "mv-area-name", "data-id": a.id, style: `left:${a.x * m.w}px;top:${a.y * m.h}px;--c:${a.color || "#e9c27a"}` }, a.name)));
     }
-    if (dndUi) { stage.insertBefore(areaLayer, fogCv); stage.append(draftSvg); drawAreas(); }
+    if (hubUi) { stage.insertBefore(areaLayer, fogCv); stage.append(draftSvg); drawAreas(); }
     // the same coordinate grid as the hub's full map: columns A, B, C... along the top, rows 1, 2, 3... down the left
-    if (dndUi) {
+    if (hubUi) {
       const g = mapGrid(m);
       const grid = el("div", { class: "mv-grid", "aria-hidden": "true" });
       grid.style.backgroundSize = `${g.cell}px ${g.cell}px`;
@@ -391,14 +391,14 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
       el("div", { class: "pl-map-frame" }, [wrap, tools]),
       el("p", { class: "dnd-small dnd-muted pl-map-hint" }, "Drag to pan, scroll or pinch to zoom, double-click to add a label, drag a label to move it."),
     ].filter(Boolean));
-    if (dndUi) viewerHost.replaceChildren(el("div", { class: "pl-map-frame" }, wrap));
+    if (hubUi) viewerHost.replaceChildren(el("div", { class: "pl-map-frame" }, wrap));
     viewerHost.__wrap = wrap;
 
     // transform handling
     // (the hub layout fits the map a little smaller, so there's sky round it)
     function fit() {
       const r = wrap.getBoundingClientRect();
-      if (dndUi) {   // the clear space between the top bar and the toolbar
+      if (hubUi) {   // the clear space between the top bar and the toolbar
         const top = 84, bottom = 104, availH = Math.max(120, r.height - top - bottom);
         view.fit = Math.min((r.width - 32) / m.w, availH / m.h); view.k = view.fit;
         view.x = (r.width - m.w * view.k) / 2; view.y = top + (availH - m.h * view.k) / 2;
@@ -410,7 +410,7 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
       stage.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`;
       wrap.style.setProperty("--inv", String(1 / view.k));
       viewerHost.__onView?.(view.k / view.fit);
-      if (dndUi) draft.draw(m, view.k);
+      if (hubUi) draft.draw(m, view.k);
     }
     function zoomAt(px, py, factor) {
       const k2 = Math.max(view.fit * 0.4, Math.min(10, view.k * factor));
@@ -526,20 +526,20 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
     function openPinCard(id) { openPin = id; drawStagePins(true); }
     function closePinCard() { if (openPin) { openPin = null; drawStagePins(true); changed(); } }
     function pinEl(cur, p) {
-      const open = dndUi && openPin === p.id;
+      const open = hubUi && openPin === p.id;
       const n = el("div", {
         class: `pl-pin${dm && !p.revealed ? " secret" : ""}${open ? " open" : ""}`, style: `left:${p.x * cur.w}px;top:${p.y * cur.h}px;--c:${p.color}`, "data-id": p.id,
-        ...(dndUi ? { role: "button", "aria-expanded": String(open), "aria-label": p.label || "Place" } : { title: p.note || p.label }),
+        ...(hubUi ? { role: "button", "aria-expanded": String(open), "aria-label": p.label || "Place" } : { title: p.note || p.label }),
       }, [el("span", { class: "pl-pin-dot" }, p.icon || "●"), el("span", { class: "pl-pin-text" }, p.label || "")]);
       if (open) n.append(pinCard(cur, p));
       draggable(n, cur, () => p, {
         onDrop(x, y) { patchMap(cur.id, (m2) => { const r = m2.pins.find((q) => q.id === p.id); if (r) { r.x = x; r.y = y; } }); },
-        onTap() { if (dndUi) { if (openPin === p.id) closePinCard(); else openPinCard(p.id); } else editPin(cur.id, p.id); },
+        onTap() { if (hubUi) { if (openPin === p.id) closePinCard(); else openPinCard(p.id); } else editPin(cur.id, p.id); },
       });
       return n;
     }
     drawStagePins();
-    drawPins(m, (id) => { focusPin(id); if (dndUi) openPinCard(id); });
+    drawPins(m, (id) => { focusPin(id); if (hubUi) openPinCard(id); });
 
     function focusPin(id) {
       const p = current().pins.find((q) => q.id === id); if (!p) return;
@@ -604,15 +604,15 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
       if (mode !== "area" || !draft.count || e.pointerType !== "mouse" || pts.size) return;
       draft.hover(toMap(e.clientX, e.clientY)); draft.draw(m, view.k);
     });
-    wrap.addEventListener("pointerleave", () => { viewerHost.__onCursor?.(null); if (dndUi && draft.count) { draft.hover(null); draft.draw(m, view.k); } });
+    wrap.addEventListener("pointerleave", () => { viewerHost.__onCursor?.(null); if (hubUi && draft.count) { draft.hover(null); draft.draw(m, view.k); } });
     // where the pointer is, as a grid square (the chrome shows it)
     wrap.addEventListener("pointermove", (e) => {
-      if (!dndUi || !viewerHost.__onCursor || e.pointerType !== "mouse") return;
+      if (!hubUi || !viewerHost.__onCursor || e.pointerType !== "mouse") return;
       const pt = toMap(e.clientX, e.clientY);
       viewerHost.__onCursor(pt.x < 0 || pt.x > 1 || pt.y < 0 || pt.y > 1 ? null : { ...pt, map: m });
     });
     wrap.addEventListener("dblclick", (e) => { if (!e.target.closest(".pl-pin")) addPinAt(e.clientX, e.clientY); });
-    if (dndUi) {   // a place dragged in from the Places drawer
+    if (hubUi) {   // a place dragged in from the Places drawer
       const isPlace = (e) => [...(e.dataTransfer?.types || [])].includes("application/x-map-place");
       wrap.addEventListener("dragover", (e) => { if (isPlace(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; wrap.classList.add("drop-place"); } });
       wrap.addEventListener("dragleave", () => wrap.classList.remove("drop-place"));
@@ -788,7 +788,7 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
   function editPin(mapId, pinId, isNew = false) {
     const m = maps().find((x) => x.id === mapId); const p = m?.pins.find((x) => x.id === pinId);
     if (!p) return;
-    if (p.placeId && dndUi && nodeForPin(getPlan(), p)) return editLinkedPin(m, p);
+    if (p.placeId && hubUi && nodeForPin(getPlan(), p)) return editLinkedPin(m, p);
     const label = textInput(p.label, () => {}, { placeholder: "e.g. Pewter City, The Rusty Anchor, Trap!", ariaLabel: "Label" });
     const note = textInput(p.note, () => {}, { multiline: true, rows: 4, placeholder: "Notes about this place (optional)", ariaLabel: "Note" });
     const icon = selectEl(ICONS.map(([v, l]) => [v, `${v}  ${l}`]), p.icon || "●", () => {});
@@ -824,7 +824,7 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
   for (const ev of ["dragleave", "drop"]) drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); });
   drop.addEventListener("drop", (e) => importFile(e.dataTransfer.files[0]));
 
-  if (dndUi) {
+  if (hubUi) {
     chrome = mountMapChrome(panel, chromeApi());
   } else if (shared.hubLayout) {
     mountHubLayout(panel, { dm, viewerHost, rightHost, pinsHost, mapsCard: el("div", { class: "card me-maps" }, [el("div", { class: "dnd-row between" }, [el("h4", {}, "Your maps"), importBtn]), listHost, drop, usageHost]), onBack: shared.onBack, startOpen: maps().length ? null : "maps" });
@@ -840,13 +840,14 @@ export function renderMapsTab(panel, shared = {}, arg = null) {
   }
   drawList();
   drawViewer().then(startLive);
-  if (dndUi) syncPlacePins().then((any) => { if (any) { drawList(); viewerHost.__redraw?.(); changed(); } });
+  if (hubUi) syncPlacePins().then((any) => { if (any) { drawList(); viewerHost.__redraw?.(); changed(); } });
   void chip;
 
   // What the D&D editor's chrome reads and does (it never touches this file's variables directly)
   function chromeApi() {
     return {
       dm, viewerHost, pinsHost, usageHost, dropEl: drop, onBack: shared.onBack,
+      pokemon: shared.system !== "dnd5e",   // (the editor is shared: its wording follows the campaign's game)
       state: () => {
         const m = current();
         return {

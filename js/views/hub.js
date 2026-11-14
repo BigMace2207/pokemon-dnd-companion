@@ -56,7 +56,7 @@ import { mountHubMap } from "../hubMap.js";
 import { openPullTab } from "../logDrawer.js";
 import { mountWheel, sheetDrag, spring } from "../mobile/wheel.js";
 import { trainerSpriteUrl } from "../trainerSpritePicker.js";
-import { PAGE_W, PAGE_H, PAGE, UNIT, GAP, sizePx, nearestSize, pageAt, snapToCell, snapToLine, cellXY, flowText, TEXT_SIZE_ON_PAGE, resolveOverlap, packPage, unpackPage, PAGE_TEMPLATES } from "../hubKits/paper.js";
+import { PAGE_W, PAGE_H, PAGE, UNIT, GAP, sizePx, nearestSize, pageAt, snapToCell, snapToLine, cellXY, flowText, TEXT_SIZE_ON_PAGE, TEXT_STYLES, DEFAULT_TEXT_STYLE, snapTextX, textDy, resolveOverlap, packPage, unpackPage, PAGE_TEMPLATES, POKEMON_PAGE_TEMPLATES } from "../hubKits/paper.js";
 
 // Buttons for the rest of the app. Beside the "Hub" title (a bar like the tool bar at the bottom): your trainer's
 // pages, the Pokédex and Move Dex (one pull-out with both) and the stat calculator. Down the right-hand side: the
@@ -67,6 +67,7 @@ const QUICK = [
   ["trainer", "Trainer", "M4 5h16v14H4zM9 10a2 2 0 1 0 0-.01M6.5 15.5a3 3 0 0 1 5 0M14 9h4M14 12h4M14 15h3"],
   ["dex", "Dex", "M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11M9 8h6"],
   ["statcalc", "Stats", "M5 20V10M10 20V4M15 20v-7M20 20v-12"],
+  ["widgets", "Widgets", "M4 4h7v7H4zM13 4h7v4h-7zM13 11h7v9h-7zM4 14h7v6H4z"],
 ];
 const RIGHT_PAGES = [["mapeditor", "Map editor"], ["planner", "Whiteboard"], ["controlcentre", "Control Centre"]];
 // line icons for the round page buttons, in the hub's style (the Whiteboard's comes from navIcons.js)
@@ -128,13 +129,15 @@ function cursorCss(color) {
 export function renderHub(container, state) {
   container.replaceChildren();
   const DND = state?.system === "dnd5e";   // a D&D campaign: its own pieces come from js/hubKits/dnd.js
+  const TEMPLATES = DND ? PAGE_TEMPLATES : POKEMON_PAGE_TEMPLATES;   // the pages the Pages tab starts from
   const QUICK_LIST = DND ? dndKit.QUICK : QUICK, PAGE_LIST = DND ? dndKit.PAGES : RIGHT_PAGES, ICONS = DND ? { ...PAGE_ICONS, ...dndKit.PAGE_ICONS } : PAGE_ICONS;
   const save = loadSave();
   const me = { id: save.networkId, name: (state?.system === "dnd5e" ? dndKit.characterName() : save.trainer?.name?.trim()) || (state?.system === "dnd5e" ? "Adventurer" : "Trainer"), color: cursorColorOf(save) };
   let dmToken = null;
   let items = [];                 // the board, as the server last sent it
   let rev = -1, activeButton = null;
-  let tool = "move", penColor = me.color, penWidth = PEN_WIDTHS[0], noteColor = NOTE_COLORS[0];
+  let tool = "move", penColor = me.color, penWidth = PEN_WIDTHS[0], noteColor = NOTE_COLORS[0], textStyle = DEFAULT_TEXT_STYLE;
+  let canTurnBack = false, wipeSeen = null;   // (the DM's page turning: whether there is an earlier page, and the last turn this screen has seen)
   const view = { x: 0, y: 0, k: 1 };
   let bounds = { ...BASE_AREA };
   let pointerWorld = null;        // where my cursor is on the board (null when it's off the board)
@@ -264,7 +267,7 @@ export function renderHub(container, state) {
     const already = dexOpen;
     dexOpen = kind;
     const onPlaceCard = (card) => { const r = stage.getBoundingClientRect(); hubSound("place"); placeCard(card, toWorld(r.left + r.width / 2, r.top + r.height / 2)); };
-    const panel = DND && WIDGET_KINDS.has(kind) ? dndKit.widgetsPanel(kind, { CARD_MIME, onSwitch: (k) => toggleDex(k), onClose: closeDex, onPlace: onPlaceCard, dm: !!dmToken,
+    const panel = WIDGET_KINDS.has(kind) ? dndKit.widgetsPanel(kind, { system: DND ? "dnd" : "pokemon", templates: TEMPLATES, CARD_MIME, onSwitch: (k) => toggleDex(k), onClose: closeDex, onPlace: onPlaceCard, dm: !!dmToken,
       saved: kind === "page" ? loadSavedPages().map((s) => ({ id: s.id, title: String(s.title || "Page"), count: (s.items || []).length })) : [],
       onDeleteSaved: (id) => { storeSavedPages(loadSavedPages().filter((s) => s.id !== id)); toggleDex("page"); } }) : DND ? dndKit.compendiumPanel(kind, {
       CARD_MIME, onSwitch: (k) => toggleDex(k), onClose: closeDex, openFull: (view) => { setViewState("dnd:compendium:tab", view); openFromHub("dndCompendium"); },
@@ -338,7 +341,7 @@ export function renderHub(container, state) {
     if (!card) { e.preventDefault(); return; }
     e.dataTransfer.setData(CARD_MIME, JSON.stringify(card));
     e.dataTransfer.effectAllowed = "copy";
-    if (DND) characterDrag = true;
+    characterDrag = true;
   });
   meBadge.addEventListener("dragend", () => { characterDrag = false; hotPlace(null); });
   function monCard(m) {
@@ -938,7 +941,10 @@ export function renderHub(container, state) {
       const bd = el("button", { type: "button", class: "hub-tool", title: "Backdrop: a map behind the board" });
       bd.innerHTML = icon("M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14") + "<span>Backdrop</span>";
       bd.addEventListener("click", () => openBackdropMenu(bd));
-      return el("span", { class: "hub-dm-tools" }, [b, dn, bd]);
+      const np = el("button", { type: "button", class: "hub-tool", title: "Turn to a clean page" });
+      np.innerHTML = icon("M5 4h10l4 4v12H5zM15 4v4h4M8 13h8M8 17h5") + "<span>New page</span>";
+      np.addEventListener("click", () => openPageMenu(np));
+      return el("span", { class: "hub-dm-tools" }, [b, dn, bd, np]);
     }
     return null;
   }
@@ -994,8 +1000,9 @@ export function renderHub(container, state) {
   }
   function drawSubbar() {
     subbar.replaceChildren();
+    if (tool !== "text") hideTextGhost();
     drawPenArc();
-    subbar.classList.toggle("show", ["note", "erase", "ping", "shape", "prop"].includes(tool) || (tool === "pen" && !phone()));
+    subbar.classList.toggle("show", ["note", "erase", "ping", "shape", "prop", "text"].includes(tool) || (tool === "pen" && !phone()));
     if (tool === "shape") {
       subbar.append(...SHAPES.map(([id, label, d]) => {
         const b = el("button", { type: "button", class: `hub-shape-pick${shapeKind === id ? " on" : ""}`, title: label, "aria-label": label });
@@ -1034,6 +1041,13 @@ export function renderHub(container, state) {
         s.addEventListener("click", () => { noteColor = c; drawSubbar(); });
         return s;
       }));
+    } else if (tool === "text") {
+      // five presets: how the next piece of writing looks (each is a size and a typeface; css .hub-text[data-style])
+      subbar.append(...Object.entries(TEXT_STYLES).map(([k, v]) => {
+        const b = el("button", { type: "button", class: `hub-pill hub-text-pick${textStyle === k ? " solid" : ""}`, "data-style": k, "aria-pressed": String(textStyle === k) }, v.label);
+        b.addEventListener("click", () => { textStyle = k; drawSubbar(); });
+        return b;
+      }), el("span", { class: "hub-hint" }, "Click the board to write. On a page it sits on the lines."));
     }
     if (tool === "erase") {
       subbar.append(el("span", { class: "hub-hint" }, dmToken ? "Click or drag across anything to remove it" : "Click or drag across your own notes and drawings to remove them"), clearButton());
@@ -1079,6 +1093,33 @@ export function renderHub(container, state) {
     return res;
   }
 
+  // The DM turned the page: the board as it was swings away like the leaf of a book, and the clean page is already underneath.
+  // (A copy of the board is the leaf's front; the real board is redrawn straight away behind it.)
+  function turnPage() {
+    if (calm() || document.documentElement.dataset.gfx === "low") return;
+    const copy = world.cloneNode(true);
+    copy.querySelectorAll("[id]").forEach((n) => n.removeAttribute("id"));
+    copy.querySelector(".hub-cursors")?.remove();
+    const leaf = el("div", { class: "hub-leaf" }, [el("div", { class: "hub-leaf-face front" }, copy), el("div", { class: "hub-leaf-face back" })]);
+    const wrap = el("div", { class: "hub-leaf-wrap", "aria-hidden": "true" }, leaf);
+    stage.append(wrap);
+    hubSound("place");
+    leaf.addEventListener("animationend", (e) => { if (e.target === leaf) wrap.remove(); });
+    setTimeout(() => wrap.remove(), 1800);
+  }
+  function openPageMenu(anchor) {
+    const row = (label, fn, cls = "") => { const b = el("button", { type: "button", class: `hub-menu-item ${cls}` }, label); b.addEventListener("click", () => { closeMenu(); fn(); }); return b; };
+    menu.classList.remove("wide");
+    menu.replaceChildren(
+      el("p", { class: "hub-menu-title" }, "Turn the page"),
+      el("p", { class: "hub-menu-note" }, "Everyone sees the page turn to a clean one. What was on the hub (notes, drawings, cards, widgets, pages) is kept as the last page, so you can turn back to it."),
+      row("Turn to a clean page", () => op({ op: "wipe" }), "primary"),
+      ...(canTurnBack ? [row("Turn back to the last page", () => op({ op: "turnBack" }))] : []),   // (a null child would be written out as the word "null")
+    );
+    const r = anchor.getBoundingClientRect(), rr = root.getBoundingClientRect();
+    openMenuAt(r.left - rr.left - 40, r.top - rr.top - 200);
+  }
+
   // Several changes at once (a page and its widgets, a wrapped paragraph, widgets pushed aside): they go out together and the
   // board is pulled once, where op() pulls after every one. Returns the answers, or null if any failed.
   async function opMany(bodies) {
@@ -1121,6 +1162,8 @@ export function renderHub(container, state) {
     if ("backdrop" in res) setBackdrop(res.backdrop);
     if (res.isDm === true && !dmToken) becomeDm();
     else if (res.isDm === false && dmToken) stopBeingDm();
+    if (typeof res.wipes === "number") { if (wipeSeen !== null && res.wipes !== wipeSeen && res.items) turnPage(); wipeSeen = res.wipes; }
+    canTurnBack = !!res.canTurnBack;
     if (res.items) { items = res.items; rev = res.rev; activeButton = res.activeButton; drawItems(); syncLinkedCards(); }   // (your cards catch up with changes made while you were away)
     else if (res.activeButton !== activeButton) { activeButton = res.activeButton; drawItems(); }
   }
@@ -1187,12 +1230,27 @@ export function renderHub(container, state) {
   // ------------------------------------------------------------------ items
   const itemEls = new Map();
   let lastInkSig = "";
+  // what a Pokemon widget can read: this trainer's team and purse on this device, and how hurt any Pokemon is
+  const pokemonCtx = {
+    sprite: (dex) => spriteUrl(dex),
+    hp: (m) => {
+      const sp = state?.pokemonByName?.get(m.name), level = Math.min(100, Math.max(1, Number(m.level) || 1));
+      const max = sp ? calcAllStats(sp, level, 15, 0, 1).hp : null;
+      return { dex: m.dex || sp?.dex || 0, level, max, hp: m.currentHp === null || m.currentHp === undefined ? max : m.currentHp };
+    },
+    team: () => (loadSave().party || []).filter((m) => m && m.name).map((m) => ({ ...pokemonCtx.hp(m), name: m.nickname || m.name, species: m.name, status: m.status || "" })),
+    purse: () => {
+      const s = loadSave(), items = bagEntries(s).filter(([name]) => name !== MONEY);
+      return { cash: Number(s.trainer?.cash) || 0, badges: Number(s.trainer?.badges) || 0, items: items.length, names: items.sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name]) => name) };
+    },
+  };
   // what a widget on the board can ask of the hub (js/hubKits/widgets.js)
   const widgetCtx = {
     me, dm: () => !!dmToken, dmToken: () => dmToken || "", say: (t) => say(t),
     open: (v) => (v === "map" ? hubMap?.open() : openFromHub(v)),
     update: (it, patch) => op({ op: "put", item: { ...it, ...patch } }),
-    mine: () => dndKit.mySummary(),
+    mine: () => (DND ? dndKit.mySummary() : null),
+    pokemon: DND ? null : pokemonCtx,
     // a place's name in a widget is a link: players get the map on it, the DM gets the Map editor there
     openPlace: (pinId) => {
       if (dmToken) {
@@ -1255,12 +1313,13 @@ export function renderHub(container, state) {
         node.querySelector(".hub-note-by").textContent = it.dmOnly ? "DM only" : it.byName || "";
       } else if (it.type === "text") {
         node.style.color = it.color; node.style.fontSize = `${it.size}px`;
+        node.dataset.style = it.style || "";
         node.classList.toggle("on-page", !!it.page);
         const onPg = it.page ? pageEls.get(it.page)?.__item : null;
         node.style.maxWidth = onPg ? `${Math.max(60, onPg.x + PAGE_W - 14 - it.x)}px` : "";   // (never off the page's edge, whatever the font did)
         if (!node.isContentEditable) node.textContent = it.text;
       } else if (CARD_TYPES.has(it.type)) {
-        if (DND && (it.type === "widget" || it.type === "place")) {
+        if (it.type === "widget" || it.type === "place") {
           if (it.type === "widget") dndKit.fillWidget(node, it, widgetCtx); else dndKit.fillPlace(node, it, widgetCtx);
           node.classList.toggle("editable", canEdit(it));
         }
@@ -1323,10 +1382,10 @@ export function renderHub(container, state) {
     if (pages.length >= MAX_PAGES) { say(`The hub can hold ${MAX_PAGES} pages. Remove one first.`); return; }
     let x = Math.round(at.x - PAGE_W / 2), y = Math.round(at.y - 60);
     while (pages.some((p) => Math.abs(p.x - x) < PAGE_W && Math.abs(p.y - y) < PAGE_H)) x += PAGE_W + 40;   // beside the others, never on top of one
-    const kind = PAGE_TEMPLATES[card.pageKind] ? card.pageKind : "blank";
-    const res = await op({ op: "put", item: { type: "page", id: uid(), x, y, title: card.title || PAGE_TEMPLATES[kind].title, pageKind: kind } });
+    const kind = TEMPLATES[card.pageKind] ? card.pageKind : "blank";
+    const res = await op({ op: "put", item: { type: "page", id: uid(), x, y, title: card.title || TEMPLATES[kind].title, pageKind: kind } });
     if (!res) return;
-    await opMany(PAGE_TEMPLATES[kind].widgets.map((w) => {
+    await opMany(TEMPLATES[kind].widgets.map((w) => {
       const c = cellXY({ x, y }, w.col, w.row);
       return { op: "put", item: { type: "widget", id: uid(), widget: w.widget, size: w.size, x: c.x, y: c.y } };
     }));
@@ -1342,7 +1401,7 @@ export function renderHub(container, state) {
     .map((o) => { const n = itemEls.get(o.id); return n && { x: o.x, y: o.y, w: n.offsetWidth, h: n.offsetHeight }; }).filter(Boolean);
   const cellSnapFor = (pg) => (pg ? (c) => { const s = snapToCell(pg, c.x, c.y); return { x: s.x, y: s.y }; } : null);
   function spotFor(it, x, y, w, h) {
-    if (!DND || (it.type !== "widget" && it.type !== "place")) return { x, y };
+    if (it.type !== "widget" && it.type !== "place") return { x, y };
     return resolveOverlap({ x, y, w, h }, cardRects(it.id), GAP, cellSnapFor(pageAt(pagesList(), x + w / 2, y + Math.min(h, 140) / 2)));
   }
   // a widget that grew over its neighbours moves them aside
@@ -1363,7 +1422,11 @@ export function renderHub(container, state) {
   const savedKey = () => `pkdnd-hub-pages:${getActiveCampaign() || "local"}`;
   function loadSavedPages() { try { const v = JSON.parse(localStorage.getItem(savedKey()) || "[]"); return Array.isArray(v) ? v : []; } catch { return []; } }
   function storeSavedPages(list) { try { localStorage.setItem(savedKey(), JSON.stringify(list)); return true; } catch { say("Couldn't save that page on this device."); return false; } }
-  const overDex = (e) => { if (!dexEl) return false; const r = dexEl.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; };
+  // while a page is carried, a small box appears to put it away in (the Pages tab lists what has been saved)
+  const saveBox = el("div", { class: "hub-save-box", hidden: "", "aria-hidden": "true" }, [el("span", { class: "hub-save-ico" }), el("strong", {}, "Save page")]);
+  saveBox.firstChild.innerHTML = icon("M6 3h9l3 3v15H6zM9 11h6M9 15h6M12 3v5");
+  root.append(saveBox);
+  const overSave = (e) => { if (saveBox.hidden) return false; const r = saveBox.getBoundingClientRect(); return e.clientX >= r.left - 12 && e.clientX <= r.right + 12 && e.clientY >= r.top - 12 && e.clientY <= r.bottom + 12; };
   async function savePageAway(it) {
     const attached = items.filter((x) => x.page === it.id && canEdit(x));
     const list = loadSavedPages();
@@ -1393,7 +1456,7 @@ export function renderHub(container, state) {
   // where a widget, place or card lands when dropped on a page: in the nearest cell of its grid
   function pageSnap(node, x, y) {
     const it = node.__item;
-    if (!DND || !it || !CARD_TYPES.has(it.type)) return { x, y };
+    if (!it || !CARD_TYPES.has(it.type)) return { x, y };
     const pg = pageAt(pagesList(), x + node.offsetWidth / 2, y + Math.min(node.offsetHeight, 140) / 2);
     if (!pg) return { x, y };
     const c = snapToCell(pg, x, y);
@@ -1580,23 +1643,49 @@ export function renderHub(container, state) {
     node.addEventListener("blur", () => finish(true), { once: true });
   }
   function newTextAt(p) {
-    // on a page the text sits on its ruled lines, from the margin
-    const pg = DND ? pageAt(pagesList(), p.x, p.y) : null;
-    const on = pg ? snapToLine(pg, p.x, p.y) : null;   // (a click in the header goes on the first line)
-    const x = on ? on.x : Math.round(p.x), y = on ? on.y : Math.round(p.y - 16), size = on ? on.size : 28;
-    const node = el("div", { class: `hub-text draft${on ? " on-page" : ""}`, style: `left:${x}px;top:${y}px;color:${me.color};font-size:${size}px` });
+    const style = textStyle, size = TEXT_STYLES[style].size;
+    // on a page the text sits on its ruled lines, from the margin (a click in the header goes on the first line it fits)
+    const pg = pageAt(pagesList(), p.x, p.y);
+    const on = pg ? snapToLine(pg, p.x, p.y, size) : null;
+    const x = on ? on.x : Math.round(p.x), y = on ? on.y : Math.round(p.y - size * 0.55);
+    hideTextGhost();
+    const node = el("div", { class: `hub-text draft${on ? " on-page" : ""}`, "data-style": style, style: `left:${x}px;top:${y}px;color:${me.color};font-size:${size}px` });
     itemLayer.append(node);
     editText(node, async (text) => {
       node.remove();
       if (!text) return;
-      if (!on) { await op({ op: "put", item: { type: "text", id: uid(), x, y, text, size, color: me.color } }); return; }
+      if (!on) { await op({ op: "put", item: { type: "text", id: uid(), x, y, text, size, style, color: me.color } }); return; }
       // on a page the writing goes round whatever is on it, and on to the next line at the page's edge
       await (document.fonts?.ready || null);   // (measure with the real font, never a stand-in)
       measureCache.clear();
-      const flow = flowText(text, pg, on.line - 1, obstaclesOn(pg), measureText);
-      await opMany(flow.pieces.map((piece) => ({ op: "put", item: { type: "text", id: uid(), x: piece.x, y: piece.y, text: piece.text, size, color: me.color } })));
+      const flow = flowText(text, pg, on.line - 1, obstaclesOn(pg), (s) => measureText(s, style), { size });
+      await opMany(flow.pieces.map((piece) => ({ op: "put", item: { type: "text", id: uid(), x: piece.x, y: piece.y, text: piece.text, size, style, color: me.color } })));
       if (flow.full) say("The page is full: the rest of that didn't fit.");
     });
+  }
+  // Where writing would land, as a dashed box on the line it will rest on: shown while the Text tool hovers the board, and while
+  // text is dragged over a page (it snaps to the lines and the grid), so nothing lands anywhere unexpected.
+  const textGhost = el("div", { class: "hub-text-ghost", hidden: "", "aria-hidden": "true" });
+  itemLayer.append(textGhost);
+  function showTextGhost({ x, y, size, style, label = "", w = 0, free = false }) {
+    textGhost.hidden = false;
+    textGhost.className = `hub-text-ghost${free ? " free" : ""}`;
+    textGhost.dataset.style = style || "";
+    textGhost.dataset.label = label;
+    Object.assign(textGhost.style, { left: `${x}px`, top: `${y}px`, fontSize: `${size}px`, width: w ? `${w}px` : "", color: me.color });
+  }
+  function hideTextGhost() { textGhost.hidden = true; }
+  function updateTextGhost(e) {
+    if (tool !== "text" || gesture || e.target.closest?.(".hub-note, .hub-btn, .hub-card, .hub-prop, .hub-page-head, .hub-widget-grip") || e.target.closest?.(".hub-text:not(.hub-text-ghost)")) { hideTextGhost(); return; }
+    const p = toWorld(e.clientX, e.clientY), style = textStyle, size = TEXT_STYLES[style].size, pg = pageAt(pagesList(), p.x, p.y);
+    if (pg) { const on = snapToLine(pg, p.x, p.y, size); showTextGhost({ x: on.x, y: on.y, size, style, label: TEXT_STYLES[style].label }); }
+    else showTextGhost({ x: Math.round(p.x), y: Math.round(p.y - size * 0.55), size, style, label: TEXT_STYLES[style].label, free: true });
+  }
+  // where text being moved lands: on a page, on the nearest line it can rest on and a column of the page's grid; elsewhere where it is let go
+  function snapDraggedText(it, x, y) {
+    const size = it.size || TEXT_SIZE_ON_PAGE, pg = pageAt(pagesList(), x + 24, y + size);
+    if (!pg) return { x, y };
+    return { x: snapTextX(pg, x), y: snapToLine(pg, x, y + textDy(size), size).y };
   }
   // what is standing on a page that writing has to go round: widgets, places, cards, notes and earlier writing
   function obstaclesOn(pg) {
@@ -1604,14 +1693,16 @@ export function renderHub(container, state) {
       .map((n) => ({ x: n.offsetLeft, y: n.offsetTop, w: n.offsetWidth, h: n.offsetHeight }))
       .filter((r) => r.x < pg.x + PAGE_W && r.x + r.w > pg.x && r.y < pg.y + PAGE_H && r.y + r.h > pg.y);
   }
-  const measureCache = new Map();
-  const measureEl = el("span", { class: "hub-text on-page", style: `visibility:hidden;pointer-events:none;font-size:${TEXT_SIZE_ON_PAGE}px;padding:0;margin:0`, "aria-hidden": "true" });
-  function measureText(s) {
-    let w = measureCache.get(s);
+  const measureCache = new Map(), measureEls = new Map();
+  function measureText(s, style = DEFAULT_TEXT_STYLE) {
+    const key = `${style}|${s}`;
+    let w = measureCache.get(key);
     if (w === undefined) {
-      if (!measureEl.isConnected) itemLayer.append(measureEl);
-      measureEl.textContent = s; w = measureEl.offsetWidth * 1.06;   // (a little slack: letter spacing and rounding)
-      measureCache.set(s, w);
+      let m = measureEls.get(style);   // one hidden span per preset, in that preset's own typeface and size
+      if (!m) { m = el("span", { class: "hub-text on-page", "data-style": style, style: `visibility:hidden;pointer-events:none;font-size:${TEXT_STYLES[style].size}px;padding:0;margin:0`, "aria-hidden": "true" }); measureEls.set(style, m); }
+      if (!m.isConnected) itemLayer.append(m);
+      m.textContent = s; w = m.offsetWidth * 1.06 + (style === "quote" ? 20 : 0);   // (a little slack: letter spacing and rounding; a quote's bar and indent)
+      measureCache.set(key, w);
     }
     return w;
   }
@@ -2007,9 +2098,9 @@ export function renderHub(container, state) {
       return;
     }
     let x = Math.round(at.x - 110), y = Math.round(at.y - 40);
-    const pg = DND && CARD_TYPES.has(card.type) ? pageAt(pagesList(), at.x, at.y) : null;
+    const pg = CARD_TYPES.has(card.type) ? pageAt(pagesList(), at.x, at.y) : null;
     if (pg) { const c = snapToCell(pg, x, y); x = c.x; y = c.y; }   // (dropped on a page: into its grid)
-    if (DND && (card.type === "widget" || card.type === "place")) { const [cw, ch] = cardSize({ ...card, id: "" }); const sp = spotFor({ ...card, id: "" }, x, y, cw, ch); x = sp.x; y = sp.y; }   // (never on top of another widget)
+    if (card.type === "widget" || card.type === "place") { const [cw, ch] = cardSize({ ...card, id: "" }); const sp = spotFor({ ...card, id: "" }, x, y, cw, ch); x = sp.x; y = sp.y; }   // (never on top of another widget)
     while (items.some((it) => CARD_TYPES.has(it.type) && Math.abs(it.x - x) < 30 && Math.abs(it.y - y) < 30)) { x += pg ? UNIT + GAP : 28; y += pg ? 0 : 28; if (pg && x > pg.x + PAGE_W - 150) { x = pg.x + PAGE.marginX; y += UNIT + GAP; } }
     const { own, ...clean } = card; void own;
     await op({ op: "put", item: { ...clean, id: uid(), x, y, open: false, ...(card.type === "widget" && !card.size ? { size: dndKit.defaultSize(card.widget) } : {}) } });
@@ -2035,7 +2126,7 @@ export function renderHub(container, state) {
   }
   let characterDrag = false;   // the character badge is being dragged (so the places light up as it passes over them)
   itemLayer.addEventListener("dragover", (e) => {
-    if (!DND || !(characterDrag || [...(e.dataTransfer?.types || [])].includes(PLAYER_MIME))) return;
+    if (!(characterDrag || [...(e.dataTransfer?.types || [])].includes(PLAYER_MIME))) return;
     const c = placeCardAt(e.clientX, e.clientY);
     hotPlace(c);
     if (!c) return;
@@ -2043,7 +2134,7 @@ export function renderHub(container, state) {
   });
   itemLayer.addEventListener("dragleave", (e) => { if (!itemLayer.contains(e.relatedTarget)) hotPlace(null); });
   itemLayer.addEventListener("drop", (e) => {
-    const raw = DND && e.dataTransfer?.getData(PLAYER_MIME);
+    const raw = e.dataTransfer?.getData(PLAYER_MIME);
     const c = raw && placeCardAt(e.clientX, e.clientY);
     hotPlace(null);
     if (!c) return;
@@ -2075,7 +2166,7 @@ export function renderHub(container, state) {
   });
   stage.addEventListener("drop", (e) => {
     const card = e.dataTransfer.getData(CARD_MIME);
-    if (card && DND) {   // your character dragged from the badge onto a place: they travel there, and dissolve into it
+    if (card) {   // your character dragged from the badge onto a place: they travel there, and dissolve into it
       try {
         const parsed = JSON.parse(card), place = parsed.type === "trainer" ? placeCardAt(e.clientX, e.clientY) : null;
         if (place) {
@@ -2115,6 +2206,7 @@ export function renderHub(container, state) {
     if (touches.size > 2) return;
     if (gesture?.kind === "pen" || gesture?.kind === "shape") { liveStroke?.remove(); liveStroke = null; }
     if (gesture?.kind === "drag") { gesture.node.classList.remove("dragging"); drawItems(); }
+    saveBox.hidden = true; hideTextGhost();
     gesture = null;
     capture(e.pointerId);
     pinchStart();
@@ -2145,6 +2237,7 @@ export function renderHub(container, state) {
     myTag.classList.add("show");
     if (tool === "erase") highlight(erasable(eraseTargetAt(e)), "erase-target");
     else highlight(tool === "ping" || e.altKey ? pingTargetOf(e.target) : null);
+    if (tool === "text") updateTextGhost(e); else if (!textGhost.hidden && !(gesture?.kind === "drag" && gesture.node?.classList.contains("hub-text"))) hideTextGhost();
     if (!gesture) return;
     if (gesture.kind === "erase") { const id = erasable(eraseTargetAt(e)); if (id) eraseOne(id); return; }
     const dx = e.clientX - gesture.sx, dy = e.clientY - gesture.sy;
@@ -2152,8 +2245,8 @@ export function renderHub(container, state) {
     if (gesture.kind === "pan") { view.x = gesture.ox + dx; view.y = gesture.oy + dy; applyView(true); }
     else if (gesture.kind === "pagedrag") {
       if (!gesture.moved) return;
-      if (!gesture.openedDex && !dexOpen) { gesture.openedDex = true; toggleDex("page"); }   // (the Pages tab slides out as somewhere to put the page away)
-      dexEl?.classList.toggle("drop-hot", overDex(e));
+      if (saveBox.hidden) saveBox.hidden = false;   // (a small box to put the page away in)
+      saveBox.classList.toggle("hot", overSave(e));
       const t = `${dx / view.k}px ${dy / view.k}px`;
       gesture.node.style.translate = t; gesture.node.classList.add("lifted");
       for (const n of gesture.els) n.style.translate = t;
@@ -2173,7 +2266,12 @@ export function renderHub(container, state) {
       if (!node.classList.contains("dragging")) { node.classList.remove("pressed"); node.classList.add("dragging"); hubSound("pick", e.clientX); }
       else hubSound("move", e.clientX);
       dragFx(gesture, e);
-      if (DND && node.__item?.type === "trainer") hotPlace(placeCardAt(e.clientX, e.clientY, node));
+      if (node.__item?.type === "trainer") hotPlace(placeCardAt(e.clientX, e.clientY, node));
+      if (node.classList.contains("hub-text")) {   // text snaps on a page: show the spot it will take
+        const at = snapDraggedText(node.__item, gesture.ix + dx / view.k, gesture.iy + dy / view.k);
+        if (pageAt(pagesList(), gesture.ix + dx / view.k + 24, gesture.iy + dy / view.k + (node.__item.size || 24))) showTextGhost({ x: at.x, y: at.y, size: node.__item.size || 24, style: node.__item.style, w: node.offsetWidth });
+        else hideTextGhost();
+      }
     } else if (gesture.kind === "shape") {
       const p = toWorld(e.clientX, e.clientY);
       gesture.end = [Math.round(p.x), Math.round(p.y)];
@@ -2193,7 +2291,7 @@ export function renderHub(container, state) {
     if (e.target.closest(".hub-note-tools") || e.target.isContentEditable) return;
     if (e.target.closest(".hub-widget-body :is(button, input, select, textarea, a, [draggable='true'])")) return;   // a widget's own buttons, fields, links and draggable rows
     if (e.target.closest(".hub-page-head :is(button, input)")) return;
-    if (DND && e.button === 0) {
+    if (e.button === 0) {
       // a widget's corner: drag it out to 1x1, 1x2 or 2x2 (whatever tool is out: the corner is only ever for this)
       const wn = e.target.closest(".hub-widget-grip")?.closest(".hub-card.kind-widget");
       if (wn && canEdit(wn.__item)) {
@@ -2205,7 +2303,7 @@ export function renderHub(container, state) {
         return;
       }
     }
-    if (DND && e.button === 0 && !["pen", "shape", "erase"].includes(tool)) {
+    if (e.button === 0 && !["pen", "shape", "erase"].includes(tool)) {
       // a page's header moves the whole page, and everything attached to it rides along
       const head = e.target.closest(".hub-page-head"), pn = head?.closest(".hub-page");
       if (pn && canEdit(pn.__item)) {
@@ -2295,14 +2393,13 @@ export function renderHub(container, state) {
     if (g.kind === "pagedrag") {
       g.node.classList.remove("lifted");
       if (!g.moved) { g.node.style.translate = ""; return; }
-      const putAway = !!dexEl && overDex(e);
-      dexEl?.classList.remove("drop-hot");
+      const putAway = overSave(e);
+      saveBox.hidden = true; saveBox.classList.remove("hot");
       if (putAway && await savePageAway(g.it)) return;
       const nx = Math.round(g.ix + (e.clientX - g.sx) / view.k), ny = Math.round(g.iy + (e.clientY - g.sy) / view.k);
       g.node.style.left = `${nx}px`; g.node.style.top = `${ny}px`; g.node.style.translate = "";
       hubSound("drop", e.clientX);
       await op({ op: "put", item: { ...g.it, x: nx, y: ny } });   // (the server moves what is attached by the same amount)
-      if (g.openedDex) closeDex();
       return;
     }
     if (g.kind === "wresize") {
@@ -2331,7 +2428,7 @@ export function renderHub(container, state) {
     if (g.kind === "drag" && g.moved) {
       const it = g.node.__item;
       g.node.classList.remove("dragging");
-      if (DND && it.type === "trainer") {
+      if (it.type === "trainer") {
         const place = placeCardAt(e.clientX, e.clientY, g.node);
         hotPlace(null);
         if (place && (dmToken || it.owner === me.id)) {
@@ -2346,7 +2443,9 @@ export function renderHub(container, state) {
       }
       hubSound("drop", e.clientX);
       landFx(g);
-      let to = pageSnap(g.node, Math.round(it.x + (e.clientX - g.sx) / view.k), Math.round(it.y + (e.clientY - g.sy) / view.k));
+      const rx = Math.round(it.x + (e.clientX - g.sx) / view.k), ry = Math.round(it.y + (e.clientY - g.sy) / view.k);
+      hideTextGhost();
+      let to = it.type === "text" ? snapDraggedText(it, rx, ry) : pageSnap(g.node, rx, ry);
       to = spotFor(it, to.x, to.y, g.node.offsetWidth, g.node.offsetHeight);
       g.node.classList.add("settling"); setTimeout(() => g.node.classList.remove("settling"), 450);   // (it glides to its spot)
       g.node.style.left = `${to.x}px`; g.node.style.top = `${to.y}px`;
@@ -2423,7 +2522,7 @@ export function renderHub(container, state) {
     }, 9000 + Math.random() * 22000);
     next();
   })();
-  hubMap = mountHubMap(root, { me, getDmToken: () => dmToken, say, playerView: DND, openEditor: () => openFromHub("mapeditor") });
+  hubMap = mountHubMap(root, { me, getDmToken: () => dmToken, say, playerView: true, openEditor: () => openFromHub("mapeditor") });
   const quickD = (v) => QUICK_LIST.find((q) => q[0] === v)?.[2] || "";
   const ICON = {
     map: "M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14",
@@ -2457,6 +2556,7 @@ export function renderHub(container, state) {
         { label: "Trainer", group: "Your trainer", d: quickD("trainer"), run: () => openFromHub("trainer") },
         { label: "Dex", group: "Your trainer", d: quickD("dex"), run: () => toggleDex("pokemon") },
         { label: "Stats", group: "Your trainer", d: quickD("statcalc"), run: () => openFromHub("statcalc") },
+        { label: "Widgets", group: "Your trainer", d: quickD("widgets"), run: () => toggleDex("widget") },
       ]),
       { label: "Map", group: "The world", d: ICON.map, run: () => hubMap?.open() },
       { label: "Who's here", group: "The world", d: ICON.people, run: () => { if (!peopleDrop.classList.contains("open")) togglePeople(); } },
@@ -2469,6 +2569,7 @@ export function renderHub(container, state) {
         { label: "Encounters", group: "Dungeon Master", d: ICON.encounters, run: () => { drawer.classList.add("open"); drawDrawer(); drawToolbar(); } },
         { label: "DM note", group: "Dungeon Master", d: ICON.dmnote, on: tool === "note" && noteDm, run: () => setTool("note", true) },
         { label: "Backdrop", group: "Dungeon Master", d: ICON.backdrop, run: () => openBackdropMenu(root.querySelector(".wheel-dot")) },
+        { label: "New page", group: "Dungeon Master", d: "M5 4h10l4 4v12H5zM15 4v4h4M8 13h8M8 17h5", run: () => openPageMenu(root.querySelector(".wheel-dot")) },
       ] : []),
     ],
   });

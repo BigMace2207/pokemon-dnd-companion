@@ -1077,12 +1077,14 @@ HUB_TYPES = ("note", "stroke", "text", "button", "mon", "move", "shape", "prop",
 HUB_SHAPES = ("rect", "ellipse", "line", "arrow")
 # widget: a smart widget on a D&D hub (its data comes from the live game, shown by the client); place: somewhere the DM put on the hub,
 # which players can travel to. The DM alone places a place, and the weather and combat-control widgets.
-HUB_WIDGETS = ("positions", "vitals", "weather", "turn", "order", "mine", "combatdm", "battles", "here", "online", "dice", "purse", "clock")
+HUB_WIDGETS = ("positions", "vitals", "weather", "turn", "order", "mine", "combatdm", "battles", "here", "online", "dice", "purse", "clock",
+               "team", "partyhp", "money", "battle")   # (the last four are a Pokemon campaign's)
 HUB_DM_WIDGETS = ("weather", "combatdm")
 HUB_WIDGET_SIZES = ("1x1", "1x2", "2x2")   # a widget is one square, two squares wide, or two by two (the client draws them)
 # page: a sheet of paper on the board (A4 in proportion). Anything whose corner is on a page is attached to it and moves with it.
 HUB_PAGE_W, HUB_PAGE_H = 900, 1273
 HUB_PAGE_KINDS = ("blank", "battle", "sheet", "log")
+HUB_TEXT_STYLES = ("title", "heading", "body", "mysterious", "quote")   # the Text tool's presets (how each looks is the client's)
 HUB_MAX_PAGES = 12
 HUB_WEATHER = ("clear", "cloudy", "rain", "storm", "snow", "fog", "wind", "heat", "cold")
 HUB_SOURCES = ("npc", "wild", "plan", "encounter", "monster")   # encounter / monster: a D&D campaign's saved encounter or a bestiary monster
@@ -1123,6 +1125,8 @@ def clean_hub_item(raw, owner, is_dm):
             item["dmOnly"] = True
     elif kind == "text":
         item.update({"text": _text(raw.get("text"), 400), "size": _num(raw.get("size"), 12, 120) or 28})
+        if raw.get("style") in HUB_TEXT_STYLES:
+            item["style"] = raw["style"]
     elif kind == "shape":
         if raw.get("shape") not in HUB_SHAPES:
             return None
@@ -2607,7 +2611,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 sees_dm_notes = self._dm_ok(data.get("token"), cid)
                 out = {"rev": hub["rev"], "isDm": has_dm_access(entry, acc), "activeButton": hub.get("activeButton"), "backdrop": hub.get("backdrop"),
                        "cursors": [{"id": k, **{f: c.get(f) for f in ("name", "color", "x", "y", "down", "draft")}} for k, c in cursors.items() if k != nid],
-                       "pings": [{f: pg.get(f) for f in ("id", "by", "x", "y", "item", "color", "name")} for pg in pings]}
+                       "pings": [{f: pg.get(f) for f in ("id", "by", "x", "y", "item", "color", "name")} for pg in pings],
+                       "wipes": hub.get("wipes", 0)}   # (goes up when the DM turns the page, so every screen can show the turn)
+                if sees_dm_notes:
+                    out["canTurnBack"] = bool(hub.get("previous"))
                 if data.get("since") != hub["rev"]:
                     out["items"] = [{**it, "preview": hub_button_preview(state, it)} if it["type"] == "button" else it
                                     for it in hub["items"] if sees_dm_notes or not it.get("dmOnly")]
@@ -2664,6 +2671,23 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 elif op == "clearDrawings":
                     # Anyone can wipe their own drawings; the DM wipes everyone's.
                     hub["items"] = [it for it in hub["items"] if it["type"] != "stroke" or (not is_dm and it["owner"] not in mine)]
+                elif op == "wipe":
+                    # DM only: turn to a clean page. What was on the hub is kept as the previous page (one level), so a slip can be turned back.
+                    if not is_dm:
+                        return self._send_json({"error": "DM only"}, 403)
+                    hub["previous"] = hub["items"]
+                    hub["items"] = []
+                    hub["activeButton"] = None
+                    hub["wipes"] = hub.get("wipes", 0) + 1
+                elif op == "turnBack":
+                    # DM only: swap the page with the previous one (turning back, and turning forward again)
+                    if not is_dm:
+                        return self._send_json({"error": "DM only"}, 403)
+                    if not hub.get("previous"):
+                        return self._send_json({"error": "there is no earlier page"}, 409)
+                    hub["items"], hub["previous"] = hub["previous"], hub["items"]
+                    hub["activeButton"] = None
+                    hub["wipes"] = hub.get("wipes", 0) + 1
                 elif op == "backdrop":
                     # DM only: a map (one of the DM's uploads in this campaign) shown blurred behind the board, or none
                     if not is_dm:

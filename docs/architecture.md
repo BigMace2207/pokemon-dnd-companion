@@ -339,7 +339,26 @@ The area a label is in is not stored in what players get: `hubMap.js drawPlaceCa
 (`areaAt`) each time, and says "In <area>." only when the label is inside one. The Map editor keeps `pin.area` locally
 (`syncPinAreas`) so the Whiteboard card can say the same.
 
-## Widgets, and places on the hub
+## The start screen
+
+After signing in (and whenever no campaign is selected) `js/views/campaignSelect.js` shows the start screen: two sides, **Dungeons & Dragons**
+(a d20 logo over the hub's own lava sea, `lavaSky`) and **Pokémon D&D** (deep space, a nebula, and Rayquaza's constellation as the logo).
+Each side lists that game's campaigns (Enter), starts a new one for that game (D&D asks for the rules version), and a strip below joins any
+campaign by invite code. One above the other on a phone. Styles are `css/start.css`; it is a fixed full-screen layer, so it covers the app's chrome.
+
+## Interface preferences (Settings)
+
+Settings → Interface also has **Transparency** (the hub's bars and panels, 0 to 80% see-through: `data-glass` + `--ui-glass`) and a switch for the **dots** on the board (`data-hub-dots="off"`). The minimap is a quiet bezel: a hairline ring, a faint halo, four compass ticks and a small area name (css/hub.css, the last block). Settings is sectioned: Account, Campaign, Members (owner), Video (theme, graphics, window), Audio, Interface (sizes, phone layout, cursor, the
+sidebar's pages) and Accessibility (text size, reduce motion, high contrast, strong focus), then Admin. `js/uiPrefs.js` keeps the device's
+choices in localStorage (`pkdnd-ui`), applies them as `--ui-<part>` custom properties and `data-reduce-motion` / `data-contrast` / `data-focus`
+on `<html>`, and `js/layout-init.js` does the same before first paint (keep the key and ranges in step: a test reads both). `css/ui-prefs.css`
+zooms each bar by its own variable (`zoom` changes layout size, so nothing needs repositioning). The text size multiplies `--s`
+(`calc(.861 * var(--ui-text, 1))` in style.css and vvd.css), so every `calc(Npx * var(--s))` follows. *Always reduce* motion works for CSS with one
+blunt rule and for scripts because layout-init.js makes `matchMedia("(prefers-reduced-motion: reduce)")` answer yes.
+
+## Widgets, pages and places on the hub
+
+Both systems' hubs have all of this (since 2026-11-13: first D&D, then ported to Pokémon). The shared parts are the same code (`js/hubKits/widgets.js`, `paper.js`, `js/hubKits/dnd.js widgetsPanel`, the Map editor in `js/planner/mapsTab.js` + `mapChrome.js`, Places in `places.js`). What differs per system: each widget has `only: "dnd"` or `only: "pokemon"` (or neither: shared; `widgetsFor(system, dm)` picks), each system has its own page templates (`pageTemplates(system)`: `PAGE_TEMPLATES` for D&D, `POKEMON_PAGE_TEMPLATES`), Pokémon adds place types (`POKEMON_PLACE_TYPES`, never shown on the D&D side), and the cosmic theme gets cool glass instead of the lava glass (`.hub:not(.lava)` rules in css/hub.css). The Pokémon widgets are My team, Trainers' teams, My money and The battle; they read this device's save and the species data through `ctx.pokemon` (built in hub.js, so widgets.js stays free of the hub's state) and `/api/fullturn`. The Map editor's wording and brand follow the campaign (`api.pokemon`). A test checks every template widget exists for its own system.
 
 A D&D hub's **Widgets** pull-out (quick bar, `js/hubKits/dnd.js widgetsPanel`) puts smart widgets and (for the DM) places on the
 board by drag or +. They are hub items: `{ type: "widget", widget: "positions" | "vitals" | "weather" | "turn" | "order" | "mine" |
@@ -384,6 +403,20 @@ character card dropped on a place is exempt: that is travel.
 **Saved pages.** Dragging a page's header onto the Pages tab (it slides out while you drag) puts the page away with what is on it
 (`packPage`, kept per campaign in this browser's localStorage, up to 20 pages of 80 things). Saved pages are listed under the
 templates, with a × to delete them, and are dragged or added back out (`unpackPage`, fresh ids).
+
+**Turning the page.** The DM's *New page* (hub tool bar, phone wheel) sends `op: "wipe"`: the server keeps what was on the hub as `hub.previous`
+(one level), empties the board and bumps `hub.wipes`; `turnBack` swaps the two (and bumps `wipes`). Every sync carries `wipes`, and the
+DM's carries `canTurnBack`. A screen that sees `wipes` change, with new items, calls `turnPage()` *before* redrawing: a copy of the board
+(`world.cloneNode`) becomes the front of a CSS 3D leaf that swings away over 1.2s while the real board, already clean, shows underneath
+(none on Low graphics or reduced motion). Players cannot wipe, and are not told whether there is an earlier page.
+
+**Text.** The Text tool has five presets (`TEXT_STYLES` in paper.js, `style` on the item, `data-style` in css: Title, Heading, Body, Mysterious in
+Almendra, Quote). A preset is a size, so a Title takes two ruled lines (`linesFor`, `textDy`); `flowText` and `snapToLine` know it. While the tool
+hovers a page, `showTextGhost` shows a dashed box on the line the text will rest on; text dragged over a page shows the same box and, on drop, snaps to
+the nearest line and a column of the page's grid (`snapTextX`, `snapDraggedText`). Text placed on a page drops in and inks its line (`hub-ink-in`).
+
+**Saving a page.** Dragging a page's header shows a small *Save page* box (`.hub-save-box`); dropping the page there is `savePageAway`. The
+Pages tab only lists what has been saved.
 
 **Motion** on pages and widgets follows the Graphics setting (`html[data-gfx]`, css/hub.css "motion, by the Graphics setting"):
 Low has none, Medium adds pages rising in, widgets gliding to where they snapped, smooth resizing and a pulse when a widget's

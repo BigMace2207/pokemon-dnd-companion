@@ -13,7 +13,7 @@
 
 import { el } from "../components.js";
 import { SIZES } from "./paper.js";
-import { getPartyMap, listTrainers, getTrainerTeam, getBattleLog, sendNoteToDm } from "../network.js";
+import { getPartyMap, listTrainers, getTrainerTeam, getBattleLog, getFullTurn, sendNoteToDm } from "../network.js";
 import { gridRef, areaAt } from "../mapView.js";
 import { fetchPublicCombat, getCombat, mutateCombat, publishCombat } from "../systems/dnd5e/combatState.js";
 import { orderedCombatants, currentCombatant, nextTurn, prevTurn } from "../systems/dnd5e/engine/encounter.js";
@@ -35,6 +35,10 @@ const ICONS = {
   dice: "M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 3v18M4 7.5l8 4.5 8-4.5",
   purse: "M6 8h12l1 12H5zM9 8V6a3 3 0 0 1 6 0v2M9 13h6",
   clock: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2",
+  team: "M5 8a3 3 0 1 0 6 0 3 3 0 0 0-6 0zM13 8a3 3 0 1 0 6 0 3 3 0 0 0-6 0zM9 16a3 3 0 1 0 6 0 3 3 0 0 0-6 0z",
+  partyhp: "M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z",
+  money: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v10M9.5 9.5c0-1 1-1.7 2.5-1.7s2.5.7 2.5 1.7-1 1.5-2.5 1.8-2.5.8-2.5 1.8 1 1.7 2.5 1.7 2.5-.7 2.5-1.7",
+  battle: "M13 2L4 14h7l-1 8 9-12h-7z",
 };
 export const widgetIcon = (id) => svg(ICONS[id] || ICONS.order);
 
@@ -56,8 +60,9 @@ const data = {
   people: (ctx) => cached("people", 6000, async () => {
     const list = await listTrainers(ctx.me.id);
     const teams = await Promise.all(list.map((t) => getTrainerTeam(t.id).catch(() => null)));
-    return list.map((t, i) => ({ id: t.id, name: teams[i]?.team?.dnd?.name || t.name, dnd: teams[i]?.team?.dnd || null }));
+    return list.map((t, i) => ({ id: t.id, name: teams[i]?.team?.dnd?.name || t.name, dnd: teams[i]?.team?.dnd || null, team: teams[i]?.team || null }));
   }),
+  fullturn: () => cached("fullturn", 2500, () => getFullTurn()),
 };
 
 // ---- small pieces ---------------------------------------------------------------------------------------------------
@@ -129,7 +134,7 @@ export const WIDGETS = [
     },
   },
   {
-    id: "vitals", size: "1x2", title: "Party health", blurb: "Hit points, armour class and conditions for everyone who is online.",
+    id: "vitals", size: "1x2", only: "dnd", title: "Party health", blurb: "Hit points, armour class and conditions for everyone who is online.",
     async load(ctx) {
       const mine = ctx.mine();
       const others = (await data.people(ctx)) || [];
@@ -185,7 +190,7 @@ export const WIDGETS = [
     },
   },
   {
-    id: "turn", size: "1x1", title: "Whose turn", every: 3000, blurb: "Big and plain: the round and whose turn it is in the fight.",
+    id: "turn", size: "1x1", only: "dnd", title: "Whose turn", every: 3000, blurb: "Big and plain: the round and whose turn it is in the fight.",
     async load(ctx) {
       const ft = await data.combat();
       if (!ft || !ft.combatants.length || ft.phase === "draft") return { live: false };
@@ -204,7 +209,7 @@ export const WIDGETS = [
     },
   },
   {
-    id: "order", size: "1x2", title: "Initiative order", every: 3000, blurb: "The order of the fight, who's acting, and how hurt everyone looks.",
+    id: "order", size: "1x2", only: "dnd", title: "Initiative order", every: 3000, blurb: "The order of the fight, who's acting, and how hurt everyone looks.",
     async load() {
       const ft = await data.combat();
       if (!ft || !ft.combatants.length || ft.phase === "draft") return { live: false };
@@ -226,7 +231,7 @@ export const WIDGETS = [
     },
   },
   {
-    id: "mine", size: "1x2", title: "My character in the fight", every: 3000, blurb: "Your hit points and conditions in the fight, and a way to tell the DM your initiative.",
+    id: "mine", size: "1x2", only: "dnd", title: "My character in the fight", every: 3000, blurb: "Your hit points and conditions in the fight, and a way to tell the DM your initiative.",
     async load(ctx) {
       const ft = await data.combat();
       const live = !!ft && ft.combatants.length && ft.phase !== "draft";
@@ -258,7 +263,7 @@ export const WIDGETS = [
     },
   },
   {
-    id: "combatdm", size: "1x2", title: "Combat control", dm: true, every: 3000, blurb: "The DM's turn controls: the round, whose turn it is, previous and next.",
+    id: "combatdm", size: "1x2", only: "dnd", title: "Combat control", dm: true, every: 3000, blurb: "The DM's turn controls: the round, whose turn it is, previous and next.",
     load() {
       const c = getCombat();
       const cur = currentCombatant(c);
@@ -313,7 +318,7 @@ export const WIDGETS = [
   },
   {
     id: "online", size: "1x1", title: "Who's here", every: 6000, blurb: "Everyone at the table right now.",
-    async load(ctx) { const list = (await data.people(ctx)) || []; return { names: [ctx.mine()?.name || ctx.me.name, ...list.map((p) => p.name)].filter(Boolean) }; },
+    async load(ctx) { const list = (await data.people(ctx)) || []; return { names: [ctx.mine?.()?.name || ctx.me.name, ...list.map((p) => p.name)].filter(Boolean) }; },
     view(m, _c, _g, _st, size) {
       const lv = LV[size];
       if (lv === 0) return [big(String(m.names.length), m.names.length === 1 ? "at the table" : "at the table"), el("div", { class: "hub-avatars" }, m.names.slice(0, 6).map((n) => el("span", { class: "hub-wav", title: n }, avatar(n))))];
@@ -321,7 +326,7 @@ export const WIDGETS = [
     },
   },
   {
-    id: "dice", size: "1x2", title: "Dice", quiet: true, every: 60000, blurb: "Quick dice: roll a d20 with advantage or disadvantage, or any other die.",
+    id: "dice", size: "1x2", only: "dnd", title: "Dice", quiet: true, every: 60000, blurb: "Quick dice: roll a d20 with advantage or disadvantage, or any other die.",
     load() { return {}; },
     view(_m, _ctx, _g, st, size) {
       const lv = LV[size];
@@ -351,7 +356,7 @@ export const WIDGETS = [
     },
   },
   {
-    id: "purse", size: "1x1", title: "My purse", every: 4000, blurb: "Your coins and how much you're carrying.",
+    id: "purse", size: "1x1", only: "dnd", title: "My purse", every: 4000, blurb: "Your coins and how much you're carrying.",
     load() {
       const c = activeCharacter();
       if (!c) return { none: true };
@@ -379,10 +384,76 @@ export const WIDGETS = [
       return el("div", { class: "hub-turn" }, [lv ? el("small", {}, m.date) : null, el("strong", { class: "hub-sky-time" }, m.time), lv === 2 ? el("small", {}, `At the table ${Math.floor(at / 60)}h ${pad(at % 60)}m`) : null].filter(Boolean));
     },
   },
+  // ---- a Pokemon campaign's own (ctx.pokemon is built by hub.js from this device's save and the species data) ----
+  {
+    id: "team", size: "1x2", only: "pokemon", title: "My team", every: 4000, blurb: "Your Pokémon and how hurt each one is.",
+    load(ctx) { return { rows: ctx.pokemon.team() }; },
+    view(m, ctx, _g, _st, size) {
+      if (!m.rows.length) return empty("No Pokémon on your team yet.");
+      const lv = LV[size];
+      const sprite = (r) => el("img", { class: "hub-wmon", src: ctx.pokemon.sprite(r.dex), alt: r.name, title: `${r.name} · Lv ${r.level}`, draggable: "false" });
+      if (lv === 0) { const r = m.rows[0]; return [sprite(r), el("strong", { class: "hub-wmon-name" }, r.name), r.max ? hpBar(r.hp, r.max) : null].filter(Boolean); }
+      if (lv === 1) return [el("div", { class: "hub-wmons" }, m.rows.slice(0, 6).map((r) => el("div", { class: "hub-wmonc" }, [sprite(r), r.max ? hpBar(r.hp, r.max) : null].filter(Boolean)))), el("small", { class: "hub-wstatus" }, `${m.rows.length} on your team`)];
+      return m.rows.slice(0, 6).map((r) => el("div", { class: "hub-wmonrow" }, [sprite(r), el("div", { class: "hub-wcard" }, [
+        el("div", { class: "hub-wline" }, [el("strong", {}, r.name), el("small", {}, joined([`Lv ${r.level}`, r.status]))]),
+        r.max ? el("div", { class: "hub-wline" }, [hpBar(r.hp, r.max), el("span", { class: "hub-whp" }, `${r.hp}/${r.max}`)]) : null,
+      ].filter(Boolean))]));
+    },
+  },
+  {
+    id: "partyhp", size: "1x2", only: "pokemon", title: "Trainers' teams", every: 6000, blurb: "Each trainer online and how their team is doing.",
+    async load(ctx) {
+      const people = (await data.people(ctx)) || [];
+      const mons = (list) => (list || []).filter((m) => m && m.name).slice(0, 6).map((m) => { const h = ctx.pokemon.hp(m); return { dex: h.dex, name: m.nickname || m.name, level: h.level, hp: h.hp, max: h.max }; });
+      const rows = [{ name: ctx.me.name, you: true, mons: ctx.pokemon.team().map(({ dex, name, level, hp, max }) => ({ dex, name, level, hp, max })) }, ...people.map((p) => ({ name: p.name, you: false, mons: mons(p.team?.party) }))];
+      return { rows: rows.filter((r) => r.mons.length) };
+    },
+    view(m, ctx, _g, _st, size) {
+      if (!m.rows.length) return empty("Nobody has a team yet.");
+      const lv = LV[size];
+      if (lv === 0) return [big(String(m.rows.length), m.rows.length === 1 ? "trainer" : "trainers"), el("div", { class: "hub-avatars" }, m.rows.slice(0, 6).map((r) => el("span", { class: "hub-wav", title: r.name }, avatar(r.name))))];
+      return m.rows.slice(0, lv === 1 ? 3 : 8).map((r) => el("div", { class: "hub-wcard" }, [
+        el("div", { class: "hub-wline" }, [el("strong", {}, `${r.name}${r.you ? " (you)" : ""}`), el("small", {}, `${r.mons.length} Pokémon`)]),
+        el("div", { class: "hub-wmons" }, r.mons.map((x) => el("div", { class: "hub-wmonc", title: `${x.name} · Lv ${x.level}${x.max ? ` · ${x.hp}/${x.max} HP` : ""}` }, [el("img", { class: "hub-wmon small", src: ctx.pokemon.sprite(x.dex), alt: x.name, draggable: "false" }), x.max ? hpBar(x.hp, x.max) : null].filter(Boolean)))),
+      ]));
+    },
+  },
+  {
+    id: "money", size: "1x1", only: "pokemon", title: "My money", every: 4000, blurb: "Your cash, your badges and what's in your bag.",
+    load(ctx) { return ctx.pokemon.purse(); },
+    view(m, _c, _g, _st, size) {
+      const lv = LV[size], cash = `£${m.cash.toLocaleString()}`;
+      if (lv === 0) return big(cash, "cash");
+      return [big(cash, "cash"), el("small", { class: "hub-wstatus" }, `${m.items} kind${m.items === 1 ? "" : "s"} of item · ${m.badges} badge${m.badges === 1 ? "" : "s"}`), lv === 2 && m.names.length ? el("div", { class: "hub-wchips" }, m.names.map((n) => el("span", { class: "dnd-cond" }, n))) : null].filter(Boolean);
+    },
+  },
+  {
+    id: "battle", size: "1x2", only: "pokemon", title: "The battle", every: 3000, blurb: "Whether a battle is on, the round and whose turn it is.",
+    async load(ctx) {
+      const ft = await data.fullturn();
+      if (!ft || ft.phase !== "live" || !(ft.combatants || []).length) return { live: false };
+      const named = ft.turnId && ft.combatants.find((c) => c.id === ft.turnId);
+      const cur = named || ft.combatants[Math.min(ft.currentIndex || 0, ft.combatants.length - 1)];
+      const mySide = ft.combatants.find((c) => c.sourceId === ctx.me.id)?.side || "A";
+      const row = (c) => ({ ...ctx.pokemon.hp(c.mon || {}), name: c.mon?.nickname || c.mon?.name || "?", status: c.mon?.status || "", mine: c.sourceId === ctx.me.id, yours: c.side === mySide });
+      return { live: true, round: ft.round, cur: cur ? row(cur) : null, all: ft.combatants.map(row) };
+    },
+    view(m, ctx, _g, _st, size) {
+      if (!m.live) return empty("No battle right now. When the DM starts one, it shows here.");
+      const lv = LV[size];
+      if (lv === 0) return big(m.cur?.name || "–", `Round ${m.round}`);
+      const mons = (list) => list.map((r) => el("div", { class: "hub-wmonc", title: `${r.name} · Lv ${r.level}${r.max ? ` · ${r.hp}/${r.max} HP` : ""}` }, [el("img", { class: "hub-wmon small", src: ctx.pokemon.sprite(r.dex), alt: r.name, draggable: "false" }), r.max ? hpBar(r.hp, r.max) : null].filter(Boolean)));
+      const head = el("div", { class: `hub-turn${m.cur?.mine ? " you" : ""}` }, [el("small", {}, `Round ${m.round}`), el("strong", {}, `${m.cur?.name || "–"}’s turn`), m.cur?.mine ? el("span", { class: "hub-turn-you" }, "That’s yours!") : null].filter(Boolean));
+      if (lv === 1) return [head];
+      return [head, el("small", { class: "hub-wround" }, "Your side"), el("div", { class: "hub-wmons" }, mons(m.all.filter((r) => r.yours))), el("small", { class: "hub-wround" }, "Opponents"), el("div", { class: "hub-wmons" }, mons(m.all.filter((r) => !r.yours)))];
+    },
+  },
 ];
 const BY_ID = new Map(WIDGETS.map((w) => [w.id, w]));
 export const widgetDef = (id) => BY_ID.get(id) || null;
 export const defaultSize = (id) => BY_ID.get(id)?.size || "1x1";
+/** The widgets a campaign can put on its hub: the shared ones and its own system's ("dnd" or "pokemon"), without the DM's unless it is the DM. */
+export const widgetsFor = (system, dm) => WIDGETS.filter((w) => (!w.only || w.only === system) && (dm || !w.dm));
 
 /** Names of the players standing at a place on the hub (their token is on its label on the map). Only where the label is known to the viewer. */
 export async function placeHere(ctx, it) {
