@@ -57,8 +57,12 @@ function openMenu(items, { x, y, title = null, center = false } = {}) {
 }
 
 // ---------------------------------------------------------------- right click
-function contextItems() {
-  const items = [];
+// What is under the pointer can add to the menu: it listens for "pkdnd-context" and pushes items (the hub adds Copy / Duplicate / Remove
+// for a note, widget or drawing; the whiteboard the same for a node). They come first, then the usual ones.
+function contextItems(target, x, y) {
+  const here = [];
+  try { target?.dispatchEvent?.(new CustomEvent("pkdnd-context", { bubbles: true, detail: { target, x, y, items: here } })); } catch { /* nothing under it */ }
+  const items = here.length ? [...here, "-"] : [];
   const picked = String(getSelection() || "").trim();
   if (picked) items.push({ label: "Copy", keys: "Ctrl+C", run: () => navigator.clipboard?.writeText(picked).catch(() => document.execCommand?.("copy")) }, "-");
   // where to go: the Pokémon side has a hub, a team and a trainer sheet; the D&D side its home page and characters
@@ -97,7 +101,7 @@ export function mountAppMenus() {
   document.addEventListener("contextmenu", (e) => {
     if (isTyping(e.target) || e.target.closest?.("[contenteditable='']")) return;   // text boxes keep the browser's menu: copy and paste
     e.preventDefault();
-    openMenu(contextItems(), { x: e.clientX, y: e.clientY });
+    openMenu(contextItems(e.target, e.clientX, e.clientY), { x: e.clientX, y: e.clientY });
   });
 
   window.addEventListener("keydown", (e) => {

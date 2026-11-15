@@ -2531,6 +2531,23 @@ export function renderHub(container, state) {
     if (res) setTimeout(() => select(id), 120);
   }
 
+  // Right click: what is under the pointer (a note, text, widget, place, card, button, prop, page, drawing or shape) offers Copy, Duplicate
+  // and, to whoever put it there (or a DM), Remove: the same as dragging the eraser over it.
+  stage.addEventListener("pkdnd-context", (ev) => {
+    const { x, y, target, items: out } = ev.detail;
+    let n = target.closest?.("[data-id]");
+    while (n && itemEls.get(n.dataset.id) !== n) n = n.parentElement?.closest?.("[data-id]") || null;
+    const id = n ? n.dataset.id : eraseTargetAt({ clientX: x, clientY: y });
+    const it = id && items.find((o) => o.id === id);
+    if (!it) { if (clipItem) out.push({ label: "Paste", keys: "Ctrl+V", run: () => pasteClip(true) }); return; }
+    select(id);
+    const copyable = !(it.link || ["page", "stroke", "shape"].includes(it.type));
+    if (copyable) out.push({ label: "Copy", keys: "Ctrl+C", run: () => copySelected() }, { label: "Duplicate", keys: "Ctrl+D", run: () => { if (copySelected()) pasteClip(true); } });
+    if (clipItem) out.push({ label: "Paste", keys: "Ctrl+V", run: () => pasteClip() });
+    const gone = erasable(id);
+    if (gone) out.push({ label: it.type === "page" ? "Remove page and its contents" : "Remove", danger: true, run: () => eraseOne(gone) });
+  });
+
   // shortcuts anywhere on the page while the hub is open (never while typing)
   document.addEventListener("keydown", function keys(e) {
     if (!document.body.contains(root)) { document.removeEventListener("keydown", keys); return; }

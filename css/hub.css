@@ -1443,3 +1443,9 @@ html:not([data-gfx="low"]) .hub-save-box:not([hidden]) { animation: hub-save-in 
 /* the weather buttons stay on one line whatever the widget's width, so nothing below them is pushed out of the widget */
 .hub-wpicks { flex-wrap: nowrap; }
 .hub-wpick { flex: 1 1 0; min-width: 0; max-width: calc(40px * var(--s)); height: auto; aspect-ratio: 1; }
+
+/* The zoom pill sits on the dock's centre line: its bottom edge is the dock's, plus half the difference in height (the pill grows with
+   the UI scale, the dock buttons don't, so a fixed offset drifts out of line). */
+html:not(.m) .hub .hub-zoom, html:not(.m) .hub.lava .hub-zoom {
+  bottom: calc(max(var(--dock-edge, 20px), env(safe-area-inset-bottom)) + (var(--dock-size, 54px) - (max(30px, 34px * var(--s)) + 10px)) / 2) !important;
+}

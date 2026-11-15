@@ -1359,3 +1359,6 @@ a, button, input, select, textarea, label, .nav-item, .pill-btn { touch-action: 
 @keyframes cc-in { from { opacity: 0; transform: translateY(12px); } }
 .cc-option { transition: background-color .2s, color .2s, border-color .2s, transform .15s; }
 @media (prefers-reduced-motion: reduce) { .cc-body.cc-swap > * { animation: none; } }
+
+/* Settings > Admin: the console takes the whole row (it is not a card, so the settings grid would give it one narrow column) */
+.settings-panel > .adm { grid-column: 1 / -1; }

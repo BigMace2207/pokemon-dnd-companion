@@ -1092,6 +1092,29 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     if (wheelIntent(ev) === "pan") { stopViewAnim(); const v = view(); setView(v.x - ev.deltaX, v.y - ev.deltaY, v.z); return; }
     zoomAt(ev.clientX, ev.clientY, ev.ctrlKey ? Math.exp(-ev.deltaY * 0.01) : ev.deltaY < 0 ? 1.18 : 1 / 1.18, ev.ctrlKey);
   }, { passive: false });
+  // Right click on a node: Copy, Duplicate, Remove (no question asked, like the eraser)
+  async function removeNodeNow(id) {
+    const gone = nodeEls.get(id);
+    if (gone) {
+      hubSound("remove", screenX(gone));
+      const an = play(gone, [{ transform: "scale(1)", opacity: 1 }, { transform: "scale(.9)", opacity: 0 }], 180, "cubic-bezier(.4,0,1,1)");
+      if (an) await an.finished.catch(() => {});
+    }
+    edit((b) => { b.nodes = b.nodes.filter((x) => x.id !== id); removeLinksOf(b, id); });
+    drawNodes();
+  }
+  shell.addEventListener("pkdnd-context", (ev) => {
+    if (readonly) return;
+    const node = ev.detail.target.closest?.(".pl-node");
+    if (!node) { if (nodeClip) ev.detail.items.push({ label: "Paste", keys: "Ctrl+V", run: () => pasteNode(true) }); return; }
+    const id = node.dataset.id;
+    selectNode(id);
+    ev.detail.items.push(
+      { label: "Copy", keys: "Ctrl+C", run: () => copyNode() },
+      { label: "Duplicate", keys: "Ctrl+D", run: () => { if (copyNode()) pasteNode(true); } },
+      ...(nodeClip ? [{ label: "Paste", keys: "Ctrl+V", run: () => pasteNode() }] : []),
+      { label: "Remove", danger: true, run: () => removeNodeNow(id) });
+  });
   document.addEventListener("keydown", function nodeKeys(ev) {
     if (!shell.isConnected) { document.removeEventListener("keydown", nodeKeys); return; }
     if (!(ev.ctrlKey || ev.metaKey) || ev.altKey) return;
