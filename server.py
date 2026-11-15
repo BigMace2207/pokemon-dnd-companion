@@ -933,6 +933,7 @@ CODE_TRIES = 5
 # system browser on /app-signin?code=..., the person signs in there as usual, and the app collects the result by polling. The
 # browser never hands the app a token: it only says which account the code now belongs to (app-link-complete, signed in), and the
 # app trades its secret for a brand new session of its own (app-link-poll). A code lives ten minutes and works once.
+DM_PING_MAX = 40   # players waiting on the DM at once (see the dmping routes)
 APP_LINKS = {}    # code -> {secretHash, expires, accountId}
 APP_LINK_TTL = 600
 APP_LINK_MAX = 500
@@ -2354,6 +2355,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                        for pid, p in state.get("plans", {}).items() if pid in members]
                 return self._send_json({"plans": out})
 
+            if parts[1:] == ["dmpings"]:
+                # who has pinged the DM, in the order they first pressed it: the DM only
+                token = qs.get("token", [None])[0]
+                if not self._dm_ok(token, cid):
+                    return self._send_json({"error": "unauthorized"}, 403)
+                return self._send_json({"pings": state.get("dmPings", [])[:DM_PING_MAX]})
+
             if parts[1:] == ["partymap"]:
                 # the map the DM shares: members get only the pins the DM has revealed (decided here, never by the client);
                 # the DM token gets everything so the DM's own view is complete
@@ -2596,6 +2604,27 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     return self._send_json({"error": "plan too large"}, 413)
                 name = name.strip()[:MAX_NAME] if isinstance(name, str) and name.strip() else "Player"
                 state.setdefault("plans", {})[nid] = {"name": name, "updated": time.time(), "plan": plan}
+                mark_dirty()
+                return self._send_json({"ok": True})
+
+            if parts[1:] == ["dmping"]:
+                # a player asks for the DM's attention. Pressing again while waiting changes nothing: the order is who pressed first.
+                nid, name = data.get("id"), data.get("name")
+                if not nid or nid not in mine or nid not in (entry["meta"].get("memberIds") or []):
+                    return self._send_json({"error": "not your identity"}, 403)
+                name = name.strip()[:MAX_NAME] if isinstance(name, str) and name.strip() else "A player"
+                pings = state.setdefault("dmPings", [])
+                if not any(pg["id"] == nid for pg in pings) and len(pings) < DM_PING_MAX:
+                    pings.append({"id": nid, "name": name, "t": time.time()})
+                    mark_dirty()
+                return self._send_json({"ok": True})
+
+            if parts[1:] == ["dmping", "clear"]:
+                # the DM answers one ping (id) or clears the lot
+                if not self._dm_ok(data.get("token"), cid):
+                    return self._send_json({"error": "unauthorized"}, 403)
+                who = data.get("id")
+                state["dmPings"] = [pg for pg in state.get("dmPings", []) if who and pg["id"] != who]
                 mark_dirty()
                 return self._send_json({"ok": True})
 

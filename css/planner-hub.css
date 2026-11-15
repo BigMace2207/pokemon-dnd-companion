@@ -389,3 +389,15 @@ html.m .me-dnd .me-drawer { position: fixed; left: 0; right: 0; top: auto; botto
 .pl-pin-card-acts .btn { font-size: 13px; min-height: 32px; padding: 5px 12px; border-radius: 999px; touch-action: manipulation; }
 @media (prefers-reduced-motion: no-preference) { .pl-pin-card { animation: pl-card-in .18s cubic-bezier(.23, 1, .32, 1); } }
 @keyframes pl-card-in { from { opacity: 0; transform: translateY(-4px); } }
+
+/* the cosmic board shows the hub's own sky (boardView.js builds the same layers as hub.js): the viewport and paper let it through */
+.pl-hubsky.hub { position: absolute; inset: 0; height: auto; min-height: 0; pointer-events: none; z-index: 0; background: radial-gradient(ellipse at 30% 20%, #15131f 0%, #09090b 60%); }
+.pl-hubsky[hidden] { display: none; }
+.pl-wb .pl-viewport:has(> .pl-hubsky:not([hidden])) { background: #09090b; }
+.pl-wb .pl-paper.pl-bg-cosmic { background: none; border-color: transparent; box-shadow: none; }
+
+/* the top bar's small icon buttons (+, rename, zoom, ...): square, the icon centred and one size */
+.pl-wb .pl-tbtn.icon { width: calc(38px * var(--s)); height: calc(38px * var(--s)); min-width: 0; min-height: 0; padding: 0; display: inline-grid; place-items: center; }
+.pl-wb .pl-tbtn.icon .pl-ico { display: grid; place-items: center; line-height: 0; }
+.pl-wb .pl-tbtn.icon .pl-ico svg { width: calc(18px * var(--s)); height: calc(18px * var(--s)); }
+.pl-wb .pl-seg { align-items: center; }

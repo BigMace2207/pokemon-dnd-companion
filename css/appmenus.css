@@ -1,0 +1,41 @@
+/* Right-click menu and Escape menu (js/appMenus.js), the Ping button and the DM's PINGS tab (js/dmPings.js). Glass over the page, white-at-opacity text. */
+.am-layer { position: fixed; inset: 0; z-index: 2147482000; }
+.am-layer.dim { display: grid; place-items: center; background: rgba(4, 4, 10, .55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: am-fade .16s ease-out; }
+.am-menu { position: fixed; min-width: calc(220px * var(--s)); padding: calc(6px * var(--s)); border-radius: calc(14px * var(--s)); background: rgba(16, 16, 22, .86); border: 1px solid rgba(255, 255, 255, .14); backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2); box-shadow: 0 18px 50px rgba(0, 0, 0, .5); color: #f4f4f5; font-family: var(--font-body, system-ui, sans-serif); animation: am-pop .14s cubic-bezier(.2, .9, .3, 1.05); transform-origin: top left; }
+.am-menu.center { position: static; min-width: calc(300px * var(--s)); padding: calc(10px * var(--s)); border-radius: calc(20px * var(--s)); transform-origin: center; }
+.am-title { margin: calc(8px * var(--s)) calc(10px * var(--s)) calc(10px * var(--s)); font-family: var(--font-head, Georgia, serif); font-weight: 400; font-size: calc(28px * var(--s)); letter-spacing: -.01em; text-align: center; }
+.am-item { appearance: none; display: flex; align-items: center; justify-content: space-between; gap: calc(24px * var(--s)); width: 100%; padding: calc(9px * var(--s)) calc(12px * var(--s)); border: 0; border-radius: calc(9px * var(--s)); background: transparent; color: inherit; font: inherit; font-size: calc(15px * var(--s)); text-align: left; cursor: default; }
+.am-menu.center .am-item { padding: calc(13px * var(--s)) calc(16px * var(--s)); font-size: calc(17px * var(--s)); border-radius: calc(12px * var(--s)); }
+.am-item:hover, .am-item:focus-visible { background: rgba(255, 255, 255, .11); outline: none; }
+.am-item.danger { color: #ff8a7a; }
+.am-item.danger:hover, .am-item.danger:focus-visible { background: rgba(229, 72, 77, .22); }
+.am-item kbd { font: inherit; font-size: calc(12px * var(--s)); letter-spacing: .04em; color: rgba(255, 255, 255, .5); }
+.am-sep { height: 1px; margin: calc(5px * var(--s)) calc(6px * var(--s)); background: rgba(255, 255, 255, .1); }
+@keyframes am-fade { from { opacity: 0; } }
+@keyframes am-pop { from { opacity: 0; transform: scale(.96); } }
+@media (prefers-reduced-motion: reduce) { .am-layer.dim, .am-menu { animation: none; } }
+
+/* the player's Ping button sits with the dice and bag in the dock */
+.ping-widget-btn[hidden] { display: none !important; }
+.ping-widget-btn.sent { opacity: .75; }
+.pull-tab[data-count]:not([data-count=""])::after { content: attr(data-count); display: inline-grid; place-items: center; min-width: 1.5em; height: 1.5em; margin-left: .5em; border-radius: 999px; background: #ff5a4e; color: #fff; font-size: .8em; font-weight: 700; letter-spacing: 0; }
+
+/* the DM's PINGS tab */
+.dm-pings-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: calc(12px * var(--s)); font-size: calc(13px * var(--s)); }
+.dm-pings-list { list-style: none; margin: 0; padding: 0; display: grid; gap: calc(8px * var(--s)); }
+.dm-ping { display: flex; align-items: center; gap: calc(12px * var(--s)); padding: calc(10px * var(--s)) calc(12px * var(--s)); border-radius: calc(14px * var(--s)); background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .12); }
+.dm-ping:first-child { border-color: rgba(255, 210, 63, .6); background: rgba(255, 210, 63, .1); }
+.dm-ping-n { flex: none; display: grid; place-items: center; width: calc(28px * var(--s)); height: calc(28px * var(--s)); border-radius: 50%; background: #fff; color: #0b0b0c; font-weight: 700; font-size: calc(14px * var(--s)); }
+.dm-ping-who { flex: 1; display: grid; min-width: 0; }
+.dm-ping-who strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dm-ping-who small { color: rgba(255, 255, 255, .55); font-size: calc(12px * var(--s)); }
+.dm-ping-done { flex: none; width: calc(34px * var(--s)); height: calc(34px * var(--s)); border-radius: 50%; border: 1px solid rgba(255, 255, 255, .25); background: transparent; color: #fff; cursor: pointer; }
+.dm-ping-done:hover { background: rgba(74, 222, 128, .25); border-color: #4ade80; }
+.dm-pings-empty { padding: calc(14px * var(--s)); color: rgba(255, 255, 255, .55); }
+
+/* the Whiteboard has no Quick Bag (the dice stay) */
+html:has(#mainView[data-view="planner"]) :is(#quickConsoleBtn, .quick-console-panel) { display: none !important; }
+.brand-logo[hidden] { display: none; }
+
+/* the tool bar keeps no blue ring after a tool is picked (by key or by click); Tab still shows where you are */
+.hub-toolbar .hub-tool:focus:not(:focus-visible) { outline: none; box-shadow: none; }

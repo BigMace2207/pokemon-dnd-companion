@@ -256,6 +256,13 @@ export async function getAllPlans(token) {
   const res = await getJSON(`/api/plans?token=${encodeURIComponent(token)}`);
   return res?.plans || null;
 }
+// --- Pinging the DM: a player presses it, the DM sees who in the order they pressed (PINGS pull tab). ---
+export function pingDm(id, name) { return postJSON("/api/dmping", { id, name }); }
+export async function getDmPings(token) {
+  const res = await getJSON(`/api/dmpings?token=${encodeURIComponent(token)}`);
+  return res?.pings || [];
+}
+export function clearDmPings(token, id = null) { return postJSON("/api/dmping/clear", { token, id }); }
 // The one map the DM shares with the table. Players get only the places the DM has revealed; the DM token gets all of them.
 // viewerId: who's looking (your own trainer id), for the fog of war: you see what you've uncovered.
 export async function getPartyMap(dmToken, viewerId = "") {

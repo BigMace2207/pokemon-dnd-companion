@@ -625,6 +625,22 @@ class CampaignAuthorization(ServerCase):
         status, out = self.post("/api/fullturn/playermove", {"networkId": "id-owner", "combatants": [], "token": "dmtok"}, self.member_tok)
         self.assertEqual(status, 200)
 
+    def test_pinging_the_dm_keeps_the_order_and_only_the_dm_reads_it(self):
+        dm = server.account_owning_network_id("id-owner")["id"]
+        server.DM_TOKENS["dmtok"] = {"cid": self.cid, "exp": time.time() + 60, "acc": dm}
+        self.assertEqual(self.post("/api/dmping", {"id": "id-owner", "name": "Not me"}, self.member_tok)[0], 403, "can't ping as someone else")
+        self.assertEqual(self.post("/api/dmping", {"id": "id-member", "name": "Ash"}, self.member_tok)[0], 200)
+        self.assertEqual(self.post("/api/dmping", {"id": "id-owner", "name": "Misty"}, self.owner_tok)[0], 200)
+        self.assertEqual(self.post("/api/dmping", {"id": "id-member", "name": "Ash again"}, self.member_tok)[0], 200, "pressing again keeps your place")
+        self.assertEqual(self.get("/api/dmpings?token=nope", self.member_tok)[0], 403, "players can't read the list")
+        status, out = self.get("/api/dmpings?token=dmtok", self.owner_tok)
+        self.assertEqual((status, [(p["id"], p["name"]) for p in out["pings"]]), (200, [("id-member", "Ash"), ("id-owner", "Misty")]), "first to press is first")
+        self.assertEqual(self.post("/api/dmping/clear", {"token": "nope", "id": "id-member"}, self.member_tok)[0], 403)
+        self.post("/api/dmping/clear", {"token": "dmtok", "id": "id-member"}, self.owner_tok)
+        self.assertEqual([p["id"] for p in self.get("/api/dmpings?token=dmtok", self.owner_tok)[1]["pings"]], ["id-owner"])
+        self.post("/api/dmping/clear", {"token": "dmtok"}, self.owner_tok)
+        self.assertEqual(self.get("/api/dmpings?token=dmtok", self.owner_tok)[1]["pings"], [])
+
     def test_oversized_and_malformed_requests(self):
         status, _ = call(self.base, "POST", "/api/auth/login", None, headers={"Content-Length": str(server.MAX_BODY + 1)})
         self.assertEqual(status, 413)

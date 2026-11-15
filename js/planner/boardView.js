@@ -35,6 +35,9 @@ import { currentEncounterLevel, relevelTeam, partyAverage, currentDndParty } fro
 import { askLevel } from "../levelAsk.js";
 import { wheelIntent } from "../wheelIntent.js";
 import { hubSound, nodeSound } from "../hubSound.js";
+import { createStarCanvas, HUB_STAR_LAYERS } from "../starCanvas.js";
+import { nebulaLayer } from "../nebula.js";
+import { constellation as makeConstellation, cycleConstellations } from "../constellation.js";
 
 // Whiteboard motion and sound: a new node blooms in, a removed one shrinks away, a picked-up node lifts and tilts a
 // little and settles when dropped, a re-roll fades the new result in, a re-levelled team pops, cards snap into slots,
@@ -106,8 +109,16 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
   const focusBar = el("div", { class: "pl-focusbar", hidden: "" });
   const bgPanel = el("div", { class: "pl-bgpanel", hidden: "" });
   const hint = el("div", { class: "pl-hint" });
+  // The cosmic background is the hub's own sky: the same star canvas, nebula, constellations and dot grid (hub.js), moving with the board
+  const starCv = createStarCanvas(HUB_STAR_LAYERS, "hub-star-canvas");
+  const skyStars = el("div", { class: "hub-stars" }, [nebulaLayer("hub-nebula"), starCv.canvas]);
+  const constellations = ["rayquaza", "charizard", "entei"].map((n) => makeConstellation(n, "hub-constellation"));
+  skyStars.append(...constellations);
+  cycleConstellations(constellations);
+  const skyDots = el("div", { class: "hub-dots" });
+  const sky = el("div", { class: "hub cosmic pl-hubsky", "aria-hidden": "true" }, [skyStars, skyDots]);
   stage.append(paper, sessLayer, nodeLayer, linkLayer, draw);
-  vp.append(stage, hint);
+  vp.append(sky, stage, hint);
   const shell = el("div", { class: `pl-wb${full ? " full" : " readonly"}` });
   if (full) shell.append(vp, topbar, rail, flyEl, legend, focusBar, bgPanel, drawer);
   else shell.append(topbar, el("div", { class: "pl-wb-frame" }, [vp, legend, focusBar]));
@@ -115,9 +126,27 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
 
   const view = () => board.view;
   const toWorld = (cx, cy) => { const r = vp.getBoundingClientRect(); return [(cx - r.left - view().x) / view().z, (cy - r.top - view().y) / view().z]; };
+  const starLayers = [0.72, 0.58, 0.85, 0.44];   // how much of a pan each star layer follows (parallax: the faintest slowest), as on the hub
+  const skyPos = starLayers.map(() => null);
+  let lastV = null, conPos = null;
+  function moveSky() {
+    if (sky.hidden) return;
+    const v = view(), f = lastV ? v.z / lastV.z : 1;
+    const follow = (pos, par) => (!pos || !lastV ? { x: v.x, y: v.y } : f === 1 ? { x: pos.x + (v.x - lastV.x) * par, y: pos.y + (v.y - lastV.y) * par } : { x: v.x + (pos.x - lastV.x) * f, y: v.y + (pos.y - lastV.y) * f });
+    starLayers.forEach((par, i) => { skyPos[i] = follow(skyPos[i], par); });
+    starCv.setOffsets(skyPos);
+    starCv.setScale(v.z);
+    conPos = !conPos || !lastV ? { x: 0, y: 0 } : f === 1 ? { x: conPos.x + (v.x - lastV.x) * 0.2, y: conPos.y + (v.y - lastV.y) * 0.2 } : conPos;
+    for (const c of constellations) c.style.transform = `translate3d(${conPos.x.toFixed(2)}px, ${conPos.y.toFixed(2)}px, 0)`;
+    const g = 28 * v.z, wrap = (n) => ((n % g) + g) % g - g;
+    skyDots.style.setProperty("--grid", `${g}px`);
+    skyDots.style.transform = `translate3d(${wrap(v.x).toFixed(2)}px, ${wrap(v.y).toFixed(2)}px, 0)`;
+    lastV = { x: v.x, y: v.y, z: v.z };
+  }
   function applyView() {
     stage.style.transform = `translate(${view().x}px, ${view().y}px) scale(${view().z})`;
     vp.style.setProperty("--z", String(view().z));
+    moveSky();
   }
   function setView(x, y, z) {
     const v = view();
@@ -134,21 +163,50 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     const keep = { x: v.x, y: v.y, z: v.z }, bounds = { ...board.bounds };
     saveView((bd) => { bd.view = keep; bd.bounds = union(bd.bounds, bounds); });
   }
-  function zoomAt(cx, cy, factor) {
+  // Zooming glides, as in Milanote: a wheel notch, a zoom button and Fit ease to where they are going over about 0.3s, keeping the
+  // point under the cursor still, and the stars and the board move together frame by frame. Notches pile up (each starts from the
+  // zoom the last one is heading for); a drag or a pinch takes over at once; a touchpad pinch follows the fingers directly.
+  let viewAnim = 0, zoomGoal = null;
+  function stopViewAnim() { if (viewAnim) cancelAnimationFrame(viewAnim); viewAnim = 0; zoomGoal = null; stage.style.willChange = ""; }
+  // the screen point (px, py) in the viewport ends up over world point (wx, wy), at zoom z1
+  function animateTo(px, py, wx, wy, z1, ms = 300) {
+    z1 = clamp(z1, 0.15, 2.5);
+    const v = view(), z0 = v.z, w0 = [(px - v.x) / z0, (py - v.y) / z0];
+    if (viewAnim) cancelAnimationFrame(viewAnim);
+    if (calm()) { setView(px - wx * z1, py - wy * z1, z1); viewAnim = 0; zoomGoal = null; return; }
+    const t0 = performance.now();
+    stage.style.willChange = "transform";   // (only while it moves: left on, the browser keeps a blurry bitmap of the board)
+    const step = (now) => {
+      const t = Math.min(1, (now - t0) / ms), e = 1 - Math.pow(1 - t, 3);
+      const z = z0 * Math.pow(z1 / z0, e);   // the zoom changes evenly to the eye
+      const x = w0[0] + (wx - w0[0]) * e, y = w0[1] + (wy - w0[1]) * e;
+      setView(px - x * z, py - y * z, z);
+      if (t < 1) viewAnim = requestAnimationFrame(step); else { viewAnim = 0; zoomGoal = null; stage.style.willChange = ""; }
+    };
+    viewAnim = requestAnimationFrame(step);
+  }
+  function zoomAt(cx, cy, factor, instant = false) {
     const r = vp.getBoundingClientRect();
     const px = cx - r.left, py = cy - r.top, v = view();
-    const z = clamp(v.z * factor, 0.15, 2.5);
-    setView(px - ((px - v.x) / v.z) * z, py - ((py - v.y) / v.z) * z, z);
+    if (instant) {
+      stopViewAnim();
+      const z = clamp(v.z * factor, 0.15, 2.5);
+      setView(px - ((px - v.x) / v.z) * z, py - ((py - v.y) / v.z) * z, z);
+      return;
+    }
+    const z1 = clamp((zoomGoal ?? v.z) * factor, 0.15, 2.5);
+    zoomGoal = z1;
+    animateTo(px, py, (px - v.x) / v.z, (py - v.y) / v.z, z1);
   }
   const zoomMid = (f) => { const r = vp.getBoundingClientRect(); zoomAt(r.left + vp.clientWidth / 2, r.top + vp.clientHeight / 2, f); };
   function fit(only = null) {
     const ns = only || board.nodes;
     const W = vp.clientWidth, H = vp.clientHeight;
-    if (!ns.length) { setView(W / 2, H / 2, 0.8); return; }
+    if (!ns.length) { animateTo(W / 2, H / 2, 0, 0, 0.8); return; }
     const x0 = Math.min(...ns.map((n) => n.x)), y0 = Math.min(...ns.map((n) => n.y));
     const x1 = Math.max(...ns.map((n) => n.x + n.w)), y1 = Math.max(...ns.map((n) => n.y + n.h));
     const z = clamp(Math.min((W - 200) / (x1 - x0), (H - 200) / (y1 - y0)), 0.15, 1.2);
-    setView(W / 2 - ((x0 + x1) / 2) * z, H / 2 - ((y0 + y1) / 2) * z, z);
+    animateTo(W / 2, H / 2, (x0 + x1) / 2, (y0 + y1) / 2, z);
   }
   function applyBounds() {
     const b = board.bounds;
@@ -158,6 +216,8 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     const bg = board.bg;
     const useImg = bg.kind === "image" && bgUrl;
     paper.className = `pl-paper ${useImg ? "pl-bg-image" : `pl-bg-${isPreset(bg.id) && bg.kind === "preset" ? bg.id : "parchment"}`}`;
+    const cosmic = !useImg && bg.kind === "preset" && bg.id === "cosmic";
+    sky.hidden = !cosmic; starCv.setActive(cosmic); lastV = null; if (cosmic) { moveSky(); starCv.start(); }
     paper.style.backgroundImage = useImg ? `url("${bgUrl}")` : "";
     paper.style.backgroundSize = useImg ? (bg.fit === "fill" ? "cover" : "900px auto") : "";
     paper.style.backgroundRepeat = useImg ? (bg.fit === "fill" ? "no-repeat" : "repeat") : "";
@@ -220,6 +280,11 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     const plug = n.type === "libmon" || n.type === "libtrainer" ? el("span", { class: "pl-plug", "aria-hidden": "true" }) : null;
     const e = el("div", { class: `pl-node type-${n.type}${n.expanded ? " open" : ""}${hasSlots(n) ? " has-slots" : ""}`, "data-id": n.id, "data-kind": kind }, [el("div", { class: "pl-session-tags" }), plug, head, body, handle]);
     place(e, n); paintSession(e, n);
+    if (!readonly) for (const side of ["n", "e", "s", "w"]) {   // hover a node and a dot shows on each side: drag one onto another node to connect them
+      const dot = el("span", { class: `pl-conn pl-conn-${side}`, title: "Drag onto another node to connect them", "aria-hidden": "true" });
+      dot.addEventListener("pointerdown", (ev) => { if (ev.button === 0) startConnect(ev, e, n, side, dot); });
+      e.append(dot);
+    }
     if (n.type === "text") e.style.setProperty("--sticky", n.color || "#f6e27a");
     e.addEventListener("pointerdown", () => { e.style.zIndex = String(++zTop); });
     if (!readonly) { dragNode(e, head, n); resizeNode(e, handle, n); }
@@ -718,10 +783,23 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     if (!readonly) acceptDrops(slot, n, () => 0);
     return slot;
   }
+  const openMons = new Set();   // which team members are opened up (node id : place in the team)
+  // everything the board knows about one Pokémon: types, level, ability, held item and all its moves
+  function monDetail(m) {
+    const line = (label, value) => (value ? el("p", { class: "pl-detail-line" }, [el("span", {}, label), el("strong", {}, value)]) : null);
+    return el("div", { class: "pl-team-detail" }, [
+      m.types?.length ? el("div", { class: "pl-pills" }, m.types.map((t) => el("span", { class: "pl-pill" }, t))) : null,
+      line("Level", String(m.level)), line("Ability", m.ability), line("Held item", m.item), line("Nickname", m.nickname ? `${m.nickname} (${m.name})` : ""),
+      m.moves?.length ? el("div", { class: "pl-detail-moves" }, [el("span", {}, "Moves"), el("div", { class: "pl-pills" }, m.moves.map((x) => el("span", { class: "pl-pill" }, x)))]) : el("p", { class: "pl-detail-line" }, [el("span", {}, "Moves"), el("strong", {}, "None set")]),
+    ].filter(Boolean));
+  }
   function teamSlot(n) {
     const mons = n.mons || [];
     const rows = mons.map((m, i) => {
-      const row = el("div", { class: "pl-team-row", draggable: readonly ? "false" : "true", "data-index": String(i) }, [
+      const key = `${n.id}:${i}`;
+      const detail = monDetail(m);
+      detail.hidden = !openMons.has(key);
+      const row = el("div", { class: `pl-team-row${openMons.has(key) ? " open" : ""}`, draggable: readonly ? "false" : "true", "data-index": String(i), title: "Click for its moves and details", "aria-expanded": String(openMons.has(key)) }, [
         readonly ? null : el("span", { class: "pl-grip", "aria-hidden": "true" }, "⋮⋮"),
         monSprite(m), el("span", { class: "pl-team-name" }, m.nickname || m.name), el("span", { class: "pl-mon-lv" }, `Lv ${m.level}`),
         readonly ? null : iconBtn("close", `Remove ${m.name}`, () => { takeFromTeam(n.id, i); }),
@@ -736,7 +814,14 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
         row.addEventListener("dragend", () => row.classList.remove("lifted"));
         row.addEventListener("pointerdown", (ev) => ev.stopPropagation());   // dragging a row isn't panning the board
       }
-      return row;
+      row.addEventListener("click", (ev) => {
+        if (ev.target.closest(".pl-ibtn")) return;
+        const open = detail.hidden;
+        detail.hidden = !open; row.classList.toggle("open", open); row.setAttribute("aria-expanded", String(open));
+        if (open) openMons.add(key); else openMons.delete(key);
+        fitNode(n.id);
+      });
+      return el("div", { class: "pl-team-item" }, [row, detail]);
     });
     const room = TEAM_MAX - mons.length;
     const slot = el("div", { class: "pl-slot pl-slot-team", "data-slot": "team", "data-node": n.id }, [
@@ -916,6 +1001,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     closeFly(); if (!bgPanel.hidden) bgPanel.hidden = true;
     capture(vp, ev.pointerId);
     pts.set(ev.pointerId, [ev.clientX, ev.clientY]);
+    stopViewAnim();
     if (pts.size === 2) { gesture = { kind: "pinch", d: dist(), z: view().z }; clearDraw(); return; }
     if (readonly || tool === "move") gesture = { kind: "pan", sx: ev.clientX, sy: ev.clientY, ox: view().x, oy: view().y };
     else gesture = { kind: tool, pts: [toWorld(ev.clientX, ev.clientY)] };
@@ -928,7 +1014,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     if (!gesture) return;
     if (gesture.kind === "pinch" && pts.size === 2) {
       const a = [...pts.values()];
-      zoomAt((a[0][0] + a[1][0]) / 2, (a[0][1] + a[1][1]) / 2, (dist() / gesture.d) * gesture.z / view().z);
+      zoomAt((a[0][0] + a[1][0]) / 2, (a[0][1] + a[1][1]) / 2, (dist() / gesture.d) * gesture.z / view().z, true);
     } else if (gesture.kind === "pan") setView(gesture.ox + ev.clientX - gesture.sx, gesture.oy + ev.clientY - gesture.sy, view().z);
     else if (gesture.kind === "box" || gesture.kind === "free") { gesture.pts.push(toWorld(ev.clientX, ev.clientY)); drawPreview(gesture); }
   });
@@ -968,8 +1054,8 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     if (!ev.ctrlKey && ev.target.closest(".pl-node-body")) return;   // let a node's text scroll
     ev.preventDefault();
     // a touchpad's two-finger scroll pans the board; a pinch or a mouse wheel zooms (js/wheelIntent.js)
-    if (wheelIntent(ev) === "pan") { const v = view(); setView(v.x - ev.deltaX, v.y - ev.deltaY, v.z); return; }
-    zoomAt(ev.clientX, ev.clientY, ev.ctrlKey ? Math.exp(-ev.deltaY * 0.01) : ev.deltaY < 0 ? 1.12 : 1 / 1.12);
+    if (wheelIntent(ev) === "pan") { stopViewAnim(); const v = view(); setView(v.x - ev.deltaX, v.y - ev.deltaY, v.z); return; }
+    zoomAt(ev.clientX, ev.clientY, ev.ctrlKey ? Math.exp(-ev.deltaY * 0.01) : ev.deltaY < 0 ? 1.18 : 1 / 1.18, ev.ctrlKey);
   }, { passive: false });
   shell.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { if (focusId) focusSession(null); closeFly(); if (!bgPanel.hidden) bgPanel.hidden = true; if (tool !== "move") setTool("move"); } });
 
@@ -1008,6 +1094,32 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     applyFocus();
   }
 
+  // dragging a side dot: a line follows the pointer; let go over another node to connect (the dialog asks how they relate)
+  function startConnect(ev, nodeEl_, n, side, dot) {
+    ev.preventDefault(); ev.stopPropagation();
+    stopViewAnim();
+    capture(dot, ev.pointerId);
+    nodeEl_.classList.add("connecting");
+    const a = side === "e" ? [n.x + n.w, n.y + n.h / 2] : side === "w" ? [n.x, n.y + n.h / 2] : side === "n" ? [n.x + n.w / 2, n.y] : [n.x + n.w / 2, n.y + n.h];
+    const line = svg("path", { class: "pl-link-temp" });
+    linkLayer.append(line);
+    let over = null;
+    const move = (e2) => {
+      const q = toWorld(e2.clientX, e2.clientY);
+      line.setAttribute("d", `M${a[0]} ${a[1]} L${q[0]} ${q[1]}`);
+      const hit = document.elementFromPoint(e2.clientX, e2.clientY)?.closest?.(".pl-node");
+      const target = hit && hit !== nodeEl_ ? hit : null;
+      if (target !== over) { over?.classList.remove("link-target"); over = target; over?.classList.add("link-target"); }
+    };
+    const done = (e2) => {
+      dot.removeEventListener("pointermove", move); dot.removeEventListener("pointerup", done); dot.removeEventListener("pointercancel", done);
+      line.remove(); nodeEl_.classList.remove("connecting"); over?.classList.remove("link-target");
+      const target = e2.type === "pointerup" ? over : null;
+      if (target) linkDialog({ from: n.id, to: target.dataset.id, rel: "", label: "", fromRoom: null, toRoom: null }, true);
+    };
+    dot.addEventListener("pointermove", move); dot.addEventListener("pointerup", done); dot.addEventListener("pointercancel", done);
+    move(ev);
+  }
   nodeLayer.addEventListener("pointerdown", (ev) => {
     if (tool !== "link") return;
     const e = ev.target.closest(".pl-node");
@@ -1132,7 +1244,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     const right = el("div", { class: "pl-group" });
     if (!readonly) {
       const seg = el("div", { class: "pl-seg" });
-      for (const [k, ico, label, tip] of [["move", "hand", "Move", "Pan around the board"], ["box", "box", "Box", "Session: drag a box round nodes to group them"], ["free", "lasso", "Freehand", "Session: draw any shape round nodes to group them"], ["link", "link", "Connect", "Connect two nodes with a labelled link"]]) {
+      for (const [k, ico, label, tip] of [["move", "hand", "Move", "Pan around the board"], ["box", "box", "Box", "Session: drag a box round nodes to group them"], ["free", "lasso", "Freehand", "Session: draw any shape round nodes to group them"]]) {
         const b = tbtn(ico, label, () => setTool(k), tool === k ? " active" : "");
         b.title = tip; b.setAttribute("aria-label", tip); b.setAttribute("aria-pressed", String(tool === k)); toolBtns[k] = b;
         seg.append(b);

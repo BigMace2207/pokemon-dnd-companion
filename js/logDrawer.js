@@ -48,6 +48,7 @@ export function mountLogDrawer(container, { tabs = [], state = null } = {}) {
     try { token = localStorage.getItem(DM_TOKEN_KEY); } catch { /* ignore */ }
     const ok = !!token && await checkDmToken(token);
     dmToken = ok ? token : null;
+    window.dispatchEvent(new CustomEvent("pkdnd-dm-changed", { detail: { isDm: ok } }));   // (the Ping button hides itself for the DM)
     dmStack.hidden = !ok;
     if (!ok && open && all.find((t) => t.id === open)?.dm) toggle(open);
   };

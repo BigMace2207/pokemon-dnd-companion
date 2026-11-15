@@ -28,8 +28,8 @@ export default {
   tagline: "Trainers, Pokémon, dice-based battles and catching.",
   status: "stable",
   brand: {
-    title: "Pokémon D&D Companion", logo: "assets/logo.png",
-    favicon: "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2245%22 fill=%22%23e3350d%22/><rect y=%2245%22 width=%22100%22 height=%2210%22 fill=%22%23222%22/><circle cx=%2250%22 cy=%2250%22 r=%2216%22 fill=%22white%22 stroke=%22%23222%22 stroke-width=%228%22/></svg>",
+    title: "Pokémon D&D Companion", logo: null,
+    favicon: "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22%2307070d%22/><path d=%22M50 16l9 24 25 2-19 16 6 25-21-14-21 14 6-25-19-16 25-2z%22 fill=%22%23cdbfff%22/></svg>",
   },
   credit: "All Pokémon art is provided by PokeAPI and originates from Nintendo, Game Freak and The Pokémon Company. This is an unofficial fan project and is not affiliated with or endorsed by them.",
   defaultView: "hub",
@@ -72,6 +72,7 @@ export default {
     { id: "tiers", label: "TIERS", title: "Move Tier Guide", render: (host, state) => renderTierGuide(host, state), wide: true },
     { id: "library", label: "LIBRARY", title: "Library", render: (host) => renderLibrary(host), wide: true },
     // the DM's own, lower down and only once the DM password is in: music and sound effects, and the party at a glance
+    { id: "pings", label: "PINGS", title: "Pings", render: (host) => import("../../dmPings.js").then((m) => m.renderPingsTab(host)), dm: true },
     { id: "sound", label: "SOUND", title: "Music and sound", render: (host, state, token) => renderSoundDrawer(host, token), dm: true },
     { id: "party", label: "PARTY", title: "The party", render: (host, state) => renderDmParty(host, state), dm: true, wide: true },
   ],

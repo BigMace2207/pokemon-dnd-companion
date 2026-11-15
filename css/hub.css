@@ -106,8 +106,8 @@ html.hub-full .topbar { display: none; }
 .hub-btn { position: absolute; display: flex; align-items: center; gap: 10px; font: 600 16px/1 "Space Grotesk", system-ui, sans-serif; color: #0b0b0c; background: #fafafa; border: 0; border-radius: 999px; padding: 10px 18px 10px 10px; cursor: pointer; box-shadow: 0 12px 34px rgba(0, 0, 0, .45), 0 0 0 1px rgba(255, 255, 255, .5) inset; transition: transform .15s var(--h-ease), box-shadow .15s; white-space: nowrap; }
 .hub-btn:hover { transform: translateY(-2px); box-shadow: 0 18px 44px rgba(0, 0, 0, .55), 0 0 0 1px #fff inset; }
 .hub-btn:active { transform: scale(.97); }
-.hub-btn-icon { width: 28px; height: 28px; border-radius: 50%; flex: none; position: relative; background: linear-gradient(#ff5a4e 0 46%, #18181b 46% 54%, #f4f4f5 54%); box-shadow: 0 0 0 2px #18181b inset; }
-.hub-btn-icon::after { content: ""; position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; margin: -4.5px; border-radius: 50%; background: #f4f4f5; box-shadow: 0 0 0 2px #18181b; }
+.hub-btn-icon { width: 28px; height: 28px; border-radius: 50%; flex: none; position: relative; background: radial-gradient(circle at 40% 32%, #5a4aa8, #14122b 75%); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .4); }   /* (no Poké Ball: crossed swords, as on the D&D hub) */
+.hub-btn-icon::after { content: "94"; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -52%); font-size: 15px; line-height: 1; color: #fff; }
 .kind-npc .hub-btn-icon { background: radial-gradient(circle at 50% 36%, #fafafa 0 22%, transparent 23%), radial-gradient(ellipse at 50% 100%, #fafafa 0 45%, transparent 46%), #4ea8ff; box-shadow: none; }
 .kind-npc .hub-btn-icon::after { display: none; }
 .hub-btn-live { display: none; font-size: 12px; font-weight: 700; color: #fff; background: var(--h-live); border-radius: 999px; padding: 4px 8px; }
@@ -1411,3 +1411,18 @@ html:not([data-gfx="low"]) .hub-save-box:not([hidden]) { animation: hub-save-in 
 .hub-mini-ring .hub-mini-frame:hover, .hub-mini-ring .hub-mini-frame:focus-visible { border-color: rgba(255, 255, 255, .42); }
 .hub-mini-area text, .hub.lava .hub-mini-area text { font: 600 10.5px "Space Grotesk", system-ui, sans-serif; letter-spacing: .24em; fill: rgba(255, 255, 255, .86); stroke: rgba(0, 0, 0, .5); stroke-width: 2.5px; }
 .hub.lava .hub-mini-area text { fill: rgba(250, 232, 200, .92); }
+
+/* the Weather and time widget's list of settings (js/hubKits/widgets.js) */
+.hub-wsettings { display: grid; gap: calc(8px * var(--s)); }
+.hub-wpresets { display: grid; gap: calc(4px * var(--s)); max-height: calc(220px * var(--s)); overflow-y: auto; }
+.hub-wpresets h6 { margin: calc(6px * var(--s)) 0 0; font-size: calc(12px * var(--s)); letter-spacing: .1em; text-transform: uppercase; color: var(--h-dim); }
+.hub-wpreset-row { display: flex; align-items: center; gap: 4px; }
+.hub-wpreset { display: flex; align-items: center; gap: calc(10px * var(--s)); flex: 1; min-width: 0; padding: calc(7px * var(--s)) calc(10px * var(--s)); border-radius: calc(12px * var(--s)); border: 1px solid var(--h-line); background: rgba(255, 255, 255, .04); color: var(--h-text); font: inherit; text-align: left; cursor: pointer; }
+.hub-wpreset:hover { background: rgba(255, 255, 255, .1); }
+.hub-wpreset-ico { font-size: calc(20px * var(--s)); }
+.hub-wpreset-main { display: grid; min-width: 0; }
+.hub-wpreset-main strong { font-size: calc(13px * var(--s)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-wpreset-main small { font-size: calc(12px * var(--s)); color: var(--h-dim); }
+.hub-wpreset-x { flex: none; width: calc(26px * var(--s)); height: calc(26px * var(--s)); border-radius: 50%; border: 0; background: transparent; color: var(--h-dim); cursor: pointer; }
+.hub-wpreset-x:hover { background: rgba(229, 72, 77, .25); color: #fff; }
+.hub-wform { display: grid; gap: calc(6px * var(--s)); }

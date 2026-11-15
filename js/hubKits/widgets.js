@@ -19,6 +19,8 @@ import { fetchPublicCombat, getCombat, mutateCombat, publishCombat } from "../sy
 import { orderedCombatants, currentCombatant, nextTurn, prevTurn } from "../systems/dnd5e/engine/encounter.js";
 import { roll, rollD20 } from "../systems/dnd5e/engine/dice.js";
 import { activeCharacter } from "../systems/dnd5e/store.js";
+import { getPlan } from "../planner/store.js";
+import { kindOf } from "../planner/kinds.js";
 
 const svg = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
 const ICONS = {
@@ -105,7 +107,82 @@ const skyIcon = (w, min) => {
   return (WEATHER.find(([k]) => k === w) || WEATHER[0])[1];
 };
 
+// The widget's list of settings: every weather on the DM's whiteboard (a Weather generator node), plus the weather-and-time
+// combos the DM has made and saved here (kept in the widget's own data, so they travel with it).
+const skyKey = (sky) => (/thunder|storm/i.test(sky) ? "storm" : /snow|flurr|sleet/i.test(sky) ? "snow" : /rain|drizzle/i.test(sky) ? "rain" : /fog|mist/i.test(sky) ? "fog"
+  : /heat|hot|scorch/i.test(sky) ? "heat" : /cold|freez|frost/i.test(sky) ? "cold" : /wind|gale|gust/i.test(sky) ? "wind" : /cloud|overcast/i.test(sky) ? "cloudy" : "clear");
+function whiteboardWeathers() {
+  const out = [];
+  try {
+    for (const b of getPlan().boards || []) {
+      for (const n of b.nodes || []) {
+        if (n.type !== "gen" || kindOf(n) !== "weather") continue;
+        const lines = (n.lines || []).filter((l) => !String(l).startsWith("#"));
+        const first = String(lines[0] || "");
+        const sky = first.split(",")[0].trim();
+        out.push({
+          id: `${b.id}:${n.id}`, name: n.title && n.title !== "Weather" ? n.title : (sky ? sky[0].toUpperCase() + sky.slice(1) : "Weather"),
+          weather: skyKey(sky), temp: (first.match(/-?\d+\s*°C/) || [""])[0].replace(/\s/g, ""), note: lines.join(" ").slice(0, 120), board: b.name || "",
+        });
+      }
+    }
+  } catch { /* no plan yet */ }
+  return out;
+}
+let settingsOpen = false, comboOpen = false, comboDraft = { name: "", weather: "clear", temp: "", time: 8 * 60, note: "" };
+
 // ---- the widgets ----------------------------------------------------------------------------------------------------
+// the list: whiteboard weathers, saved combos, and a form to make a new weather-and-time combo
+function settingsPanel(m, save) {
+  const apply = (p) => save({ weather: p.weather, temp: p.temp || "", note: p.note || "", ...(p.time != null ? { time: p.time } : {}) });
+  const icon = (k) => (WEATHER.find(([key]) => key === k) || WEATHER[0])[1];
+  const row = (p, sub, extra) => {
+    const b = el("button", { type: "button", class: "hub-wpreset", title: `Use ${p.name}` }, [el("span", { class: "hub-wpreset-ico", "aria-hidden": "true" }, icon(p.weather)), el("span", { class: "hub-wpreset-main" }, [el("strong", {}, p.name), el("small", {}, sub)])]);
+    b.addEventListener("click", () => apply(p));
+    return extra ? el("div", { class: "hub-wpreset-row" }, [b, extra]) : b;
+  };
+  const toggle = pill(settingsOpen ? "Settings ▴" : "Settings ▾", () => { settingsOpen = !settingsOpen; save({}); });
+  if (!settingsOpen) return toggle;
+  const combos = m.combos || [];
+  const list = el("div", { class: "hub-wpresets" }, [
+    el("h6", {}, "From your whiteboard"),
+    ...(m.boardWeathers.length ? m.boardWeathers.map((p) => row(p, [p.temp, p.board].filter(Boolean).join(" · ") || "Weather node")) : [el("p", { class: "hub-menu-note" }, "No Weather nodes on your whiteboard yet. Generate one there and it appears here.")]),
+    el("h6", {}, "Your combos"),
+    ...(combos.length ? combos.map((p, i) => {
+      const del = el("button", { type: "button", class: "hub-wpreset-x", "aria-label": `Delete ${p.name}`, title: "Delete" }, "×");
+      del.addEventListener("click", () => save({ combos: combos.filter((_, j) => j !== i) }));
+      return row(p, [fmtTime(p.time), p.temp].filter(Boolean).join(" · "), del);
+    }) : [el("p", { class: "hub-menu-note" }, "None yet.")]),
+  ]);
+  const form = comboOpen ? comboForm(m, save) : pill("+ New weather and time", () => { comboOpen = true; comboDraft = { name: "", weather: m.weather, temp: m.temp || "", time: m.time, note: "" }; save({}); });
+  return el("div", { class: "hub-wsettings" }, [toggle, list, form]);
+}
+function comboForm(m, save) {
+  const d = comboDraft;
+  const name = el("input", { type: "text", class: "hub-input", maxlength: "40", placeholder: "Name, e.g. Stormy dusk", value: d.name, "aria-label": "Combo name" });
+  name.addEventListener("input", () => { d.name = name.value; });
+  const picks = el("div", { class: "hub-wpicks", role: "group", "aria-label": "Weather" }, WEATHER.map(([k, icon, label]) => {
+    const b = el("button", { type: "button", class: `hub-wpick${d.weather === k ? " on" : ""}`, title: label, "aria-label": label, "aria-pressed": String(d.weather === k) }, icon);
+    b.addEventListener("click", () => { d.weather = k; picks.querySelectorAll(".hub-wpick").forEach((x) => { const on = x === b; x.classList.toggle("on", on); x.setAttribute("aria-pressed", String(on)); }); });
+    return b;
+  }));
+  const time = el("input", { type: "time", class: "hub-input", value: fmtTime(d.time), "aria-label": "Time of day" });
+  time.addEventListener("input", () => { const [h, mi] = time.value.split(":").map(Number); if (Number.isFinite(h)) d.time = h * 60 + (mi || 0); });
+  const temp = el("input", { type: "text", class: "hub-input", maxlength: "12", placeholder: "Temp", value: d.temp, "aria-label": "Temperature", style: "max-width:80px" });
+  temp.addEventListener("input", () => { d.temp = temp.value; });
+  const note = el("input", { type: "text", class: "hub-input", maxlength: "120", placeholder: "A note for the table", value: d.note, "aria-label": "Note" });
+  note.addEventListener("input", () => { d.note = note.value; });
+  return el("div", { class: "hub-wform" }, [name, picks, el("div", { class: "hub-wacts" }, [time, temp]), note, el("div", { class: "hub-wacts" }, [
+    pill("Save and use", () => {
+      const label = (WEATHER.find(([k]) => k === d.weather) || WEATHER[0])[2];
+      const combo = { name: (d.name || "").trim() || `${label} · ${fmtTime(d.time)}`, weather: d.weather, temp: (d.temp || "").trim(), time: d.time, note: (d.note || "").trim() };
+      comboOpen = false;
+      save({ weather: combo.weather, temp: combo.temp, time: combo.time, note: combo.note, combos: [...(m.combos || []), combo].slice(-12) });
+    }),
+    pill("Cancel", () => { comboOpen = false; save({}); }),
+  ])]);
+}
+
 export const WIDGETS = [
   {
     id: "positions", size: "1x2", title: "Where everyone is", blurb: "Each player's place on the map. Drag one onto a place to move them there.",
@@ -157,7 +234,7 @@ export const WIDGETS = [
   },
   {
     id: "weather", size: "1x2", title: "Weather and time", dm: true, every: 8000, blurb: "The day, the hour and the weather. The DM sets it; everyone sees it.",
-    load(ctx, getIt) { return { ...WEATHER_DEFAULT, ...(getIt()?.data || {}), dm: ctx.dm() }; },
+    load(ctx, getIt) { return { ...WEATHER_DEFAULT, ...(getIt()?.data || {}), dm: ctx.dm(), boardWeathers: ctx.dm() ? whiteboardWeathers() : [] }; },
     view(m, ctx, getIt, _st, size) {
       const lv = LV[size];
       const save = (patch) => ctx.update(getIt(), { data: { ...WEATHER_DEFAULT, ...(getIt().data || {}), ...patch } });
@@ -185,6 +262,7 @@ export const WIDGETS = [
           temp.addEventListener("change", () => save({ temp: temp.value.trim() }));
           out.push(el("div", { class: "hub-wacts" }, [pill("−1 h", () => advance(-60)), pill("+1 h", () => advance(60)), pill("+8 h", () => advance(480)), temp]), note);
         }
+        if (lv >= 1) out.push(settingsPanel(m, save));
       }
       return out.filter(Boolean);
     },

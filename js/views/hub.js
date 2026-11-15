@@ -2475,7 +2475,7 @@ export function renderHub(container, state) {
     }
     if (e.ctrlKey || e.altKey) return;
     const k = e.key.toLowerCase();
-    if (SHORTCUTS[k]) { setTool(SHORTCUTS[k]); e.preventDefault(); }
+    if (SHORTCUTS[k]) { setTool(SHORTCUTS[k]); e.preventDefault(); if (document.activeElement?.closest?.(".hub-toolbar")) document.activeElement.blur(); }   // (no focus ring left on the tool you clicked last)
     else if (k === "f") { fitAll(); e.preventDefault(); }
     else if (k === "escape") { closeMenu(); drawer.classList.remove("open"); hideHover(); closeDex(); }
   });

@@ -64,7 +64,7 @@ html.planner-full .main::after { display: none; }
 .pl-viewport[data-tool="box"], .pl-viewport[data-tool="free"] { cursor: crosshair; }
 .pl-viewport[data-tool="box"] .pl-node, .pl-viewport[data-tool="free"] .pl-node { pointer-events: none; }
 .pl-viewport.drop { outline: 4px dashed var(--gold); outline-offset: -6px; }
-.pl-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.pl-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }   /* (no will-change: it keeps a blurry bitmap of the board when zoomed in; boardView.js sets it only while a zoom glides) */
 .pl-paper { position: absolute; border: 3px dashed rgba(255, 255, 255, .3); box-shadow: 0 0 60px rgba(0, 0, 0, .6); }
 .pl-sessions, .pl-draw { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
 .pl-draw { z-index: 9999; }
@@ -251,7 +251,7 @@ html.planner-full .main::after { display: none; }
 .pl-mon-info { display: grid; gap: 3px; min-width: 0; }
 .pl-mon-info strong { font-size: 16px; }
 .pl-mon-sprite { width: 56px; height: 56px; object-fit: contain; image-rendering: pixelated; flex: none; }
-.pl-mon-ball { width: 22px; height: 22px; flex: none; border-radius: 50%; background: linear-gradient(#ff5a4e 0 46%, #222 46% 54%, #f4f4f5 54%); box-shadow: 0 0 0 2px #222 inset; }
+.pl-mon-ball { width: 22px; height: 22px; flex: none; border-radius: 50%; background: radial-gradient(circle at 40% 32%, #5a4aa8, #14122b 75%); box-shadow: 0 0 0 2px rgba(255, 255, 255, .35) inset; }
 .pl-mon-lv { font-size: 13px; font-weight: 700; opacity: .8; white-space: nowrap; }
 .pl-trainer-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .pl-trainer-top strong { font-size: 17px; }
@@ -310,3 +310,23 @@ html.planner-full .main::after { display: none; }
 :root[data-theme] .pl-node.type-text .pl-node-text { color: #1f1806; font-weight: 500; }
 :root[data-theme] .pl-node.type-text .pl-node-text::placeholder { color: rgba(31, 24, 6, .55); }
 :root[data-theme] .pl-node .pl-node-text.room-note { border: 2px dashed var(--border); border-radius: 6px; }
+
+/* connecting nodes: a dot on each side when you hover a node, dragged onto another node (boardView.js startConnect) */
+.pl-conn { position: absolute; z-index: 6; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 3px solid #7a62d6; cursor: crosshair; opacity: 0; transform: scale(.5); transition: opacity .15s, transform .15s cubic-bezier(.2, .9, .3, 1.2); touch-action: none; }
+.pl-conn-n { left: calc(50% - 8px); top: -9px; } .pl-conn-s { left: calc(50% - 8px); bottom: -9px; }
+.pl-conn-e { right: -9px; top: calc(50% - 8px); } .pl-conn-w { left: -9px; top: calc(50% - 8px); }
+.pl-node:hover > .pl-conn, .pl-node.connecting > .pl-conn { opacity: 1; transform: scale(1); }
+.pl-conn:hover { background: #cdbfff; transform: scale(1.25) !important; }
+.pl-node.link-target { outline: 4px solid #7a62d6; outline-offset: 4px; }
+.pl-link-temp { fill: none; stroke: #cdbfff; stroke-width: 5; stroke-dasharray: 12 9; stroke-linecap: round; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .pl-conn { transition: none; } }
+
+/* a team member opens up on click */
+.pl-team-item { display: grid; }
+.pl-team-row { cursor: pointer; }
+.pl-team-row.open { background: color-mix(in srgb, var(--panel-alt) 70%, #7a62d6); }
+.pl-team-detail { margin: -2px 4px 6px; padding: 8px 10px; border-radius: 0 0 8px 8px; background: color-mix(in srgb, var(--panel-alt) 85%, #000); display: grid; gap: 4px; font-size: 14px; }
+.pl-team-detail[hidden] { display: none; }
+.pl-detail-line { margin: 0; display: flex; justify-content: space-between; gap: 12px; }
+.pl-detail-line span, .pl-detail-moves > span { opacity: .6; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+.pl-detail-moves { display: grid; gap: 4px; }

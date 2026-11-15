@@ -9,7 +9,7 @@ function spriteIcon(path) {
 }
 
 export const NAV_ICONS = {
-  pokedex: spriteIcon("sprites/icons/ball/poke.png"),
+  pokedex: spriteIcon("sprites/icons/key-item/data-card.png"),
   moves: spriteIcon("sprites/icons/tm/normal.png"),
   statcalc: spriteIcon("sprites/icons/medicine/carbos.png"),
   battleview: spriteIcon("sprites/icons/storage/battle-pocket.png"),
@@ -17,7 +17,7 @@ export const NAV_ICONS = {
   bag: spriteIcon("sprites/icons/key-item/seal-bag.png"),
   trainer: spriteIcon("sprites/trainers/acetrainer.png"),
   trainersOnline: spriteIcon("sprites/trainers/acetrainercouple.png"),
-  controlcentre: spriteIcon("sprites/icons/ball/master.png"),
+  controlcentre: spriteIcon("sprites/icons/key-item/member-card.png"),
   typechart: spriteIcon("sprites/icons/plate/zap.png"),
   tierguide: spriteIcon("sprites/icons/exp-candy/m.png"),
   settings: spriteIcon("sprites/icons/key-item/rule-book.png"),

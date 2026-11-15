@@ -68,10 +68,16 @@ class Api:
         self._custom_frame = custom_frame   # no Windows title bar: the page draws its own minimise / maximise / close (js/windowControls.js)
         self._window = None
         self._form = None                   # the WinForms window, once it exists (see install_frame)
+        self._borderless = False            # the saved "Borderless" mode (the window has no frame at all)
         self._maxed = False                 # grown to the work area (see toggle_maximize)
         self._normal_rect = None            # where it was before, to shrink back to
         self._animating = False
         self._fullscreen = False
+
+    def _update_border(self):
+        """Windows 11 draws a thin line round a frameless window. In fullscreen and borderless it should have none."""
+        if sys.platform == "win32" and self._hwnd:
+            _set_border_hidden(self._hwnd, self._fullscreen or self._borderless)
 
     def set_window_mode(self, mode):
         if mode not in MODES:
@@ -81,6 +87,7 @@ class Api:
         if self._window is not None and want_fullscreen != self._fullscreen:
             self._window.toggle_fullscreen()
             self._fullscreen = want_fullscreen
+        self._update_border()
         return {"mode": mode, "needsRestart": mode == "borderless"}
 
     def get_window_mode(self):
@@ -91,6 +98,7 @@ class Api:
         if self._window is not None:
             self._window.toggle_fullscreen()
             self._fullscreen = not self._fullscreen
+            self._update_border()
         return {"fullscreen": self._fullscreen}
 
     def retry(self):
@@ -288,6 +296,16 @@ def _resize_loop(hwnd, edge, min_w=900, min_h=600):
         time.sleep(0.008)
 
 
+def _set_border_hidden(hwnd, hidden):
+    """DWMWA_BORDER_COLOR (Windows 11): DWMWA_COLOR_NONE takes the outline away, DWMWA_COLOR_DEFAULT puts it back. Older Windows: no effect."""
+    import ctypes
+    try:
+        value = ctypes.c_uint(0xFFFFFFFE if hidden else 0xFFFFFFFF)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(ctypes.c_void_p(hwnd), 34, ctypes.byref(value), 4)
+    except Exception:
+        pass
+
+
 def _window_rect(hwnd):
     import ctypes
     from ctypes import wintypes
@@ -345,6 +363,7 @@ def install_frame(window, api):
             def grab():
                 api._form = form
                 api._hwnd = int(form.Handle.ToInt64())
+                api._update_border()
             form.Invoke(Action(grab))
         except Exception as e:
             _f11_log(f"window frame not installed: {e}")
@@ -372,6 +391,7 @@ def run(url, title, data_dir, version="", custom_frame=False):
     )
     api._window = window
     api._fullscreen = mode == "fullscreen"
+    api._borderless = mode == "borderless"
 
     def remember_size():   # (not while fullscreen: that is the screen's size, not the window's)
         if api._fullscreen:

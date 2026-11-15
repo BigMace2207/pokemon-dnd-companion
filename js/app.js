@@ -14,6 +14,8 @@ import { checkSession } from "./account.js";
 import { mountAccountChip } from "./accountChip.js";
 import { mountLogDrawer } from "./logDrawer.js";
 import { mountDiceWidget } from "./diceWidget.js";
+import { mountAppMenus } from "./appMenus.js";
+import { mountPingWidget, startDmPings } from "./dmPings.js";
 import { startTrainerPresenceWatcher } from "./trainerPresence.js";
 import { mountShortcuts } from "./shortcuts.js";
 import { installTooltips } from "./tooltip.js";
@@ -184,7 +186,7 @@ function buildNav(system) {
   const brandText = document.querySelector(".brand-text");
   if (brandText && system.brand?.title) brandText.textContent = system.brand.title;
   const brandLogo = document.querySelector(".brand-logo");
-  if (brandLogo && system.brand?.logo) brandLogo.src = system.brand.logo;
+  if (brandLogo) { if (system.brand?.logo) brandLogo.src = system.brand.logo; brandLogo.hidden = !system.brand?.logo; }   // (the Pokémon side has no logo: no Poké Ball)
   if (system.brand?.title) document.title = system.brand.title;
   // each game can have its own tab icon (the page ships with the Pokéball)
   const icon = document.querySelector('link[rel="icon"]');
@@ -250,10 +252,7 @@ applyTheme();
 installTooltips();
 // No browser right-click menu anywhere in the app (it reads as a web page, and the board has its own menus). Text
 // boxes keep it, so copy and paste still work there.
-document.addEventListener("contextmenu", (e) => {
-  if (e.target.closest?.("input, textarea, [contenteditable=''], [contenteditable='true']")) return;
-  e.preventDefault();
-});
+mountAppMenus();   // right-click and Escape menus (js/appMenus.js); text boxes keep the browser's own right-click menu
 mountCosmicParallax();
 watchLayout();   // the phone layout follows the device (js/mobileMode.js)
 
@@ -375,6 +374,8 @@ async function startApp() {
   if (system?.id === "pokemon-dnd" || system?.id === "dnd5e") import("./ambience.js").then((m) => m.startAmbience(system.id === "dnd5e" ? "lava" : "cosmic")).catch(() => {});
   mountLogDrawer(document.body, { tabs: system.pullTabs || [], state });   // LOG plus the system's own pull tabs
   mountDiceWidget();
+  mountPingWidget();   // players only: ask the DM for attention
+  startDmPings();      // the DM only: the count on the PINGS tab
   mountShortcuts();
   startTrainerPresenceWatcher(loadSave().networkId);
   window.addEventListener("pokemon-dnd-save-changed", () => {

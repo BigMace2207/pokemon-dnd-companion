@@ -28,6 +28,15 @@ function closeFloatingPanels() {
 
 export function mountShortcuts() {
   window.addEventListener("keydown", (e) => {
+    // the ones the right-click menu lists (js/appMenus.js)
+    if (e.ctrlKey && e.key === ",") { e.preventDefault(); location.hash = "#settings"; return; }
+    if (e.altKey && !e.ctrlKey && !e.metaKey) {
+      const k = e.key.toLowerCase();
+      if (k === "d") { e.preventDefault(); document.getElementById("diceWidgetBtn")?.click(); }
+      else if (k === "p") { const b = document.getElementById("pingWidgetBtn"); if (b && !b.hidden) { e.preventDefault(); b.click(); } }
+      else if (k === "h") { e.preventDefault(); import("./appMenus.js").then((m) => m.goHome()); }
+      return;
+    }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === "Escape") {
       if (closeFloatingPanels()) e.preventDefault();
