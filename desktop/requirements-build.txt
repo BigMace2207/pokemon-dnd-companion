@@ -2,3 +2,4 @@
 # build_desktop.py -- not needed to just run it from source (that's
 # requirements-desktop.txt).
 pyinstaller
+pillow

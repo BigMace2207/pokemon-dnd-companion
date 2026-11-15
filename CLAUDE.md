@@ -23,7 +23,7 @@ touch real save data.
 Server environment variables: `PKDND_BIND` (listen address; `127.0.0.1` on a
 public server), `PKDND_TRUST_PROXY=1` (only safe when bound to loopback behind
 a proxy), `PKDND_BACKUP_DIR`, `PKDND_BACKUP_INTERVAL`, `PKDND_GOOGLE_CLIENT_ID`,
-`PKDND_APPLE_CLIENT_ID`, `PKDND_LEGACY_DM_PASSWORD`, `PKDND_UPLOAD_DIR` (map and book files), `PKDND_DOWNLOAD_DIR` (app zips for /download; default `<data dir>/downloads`, never overwritten by deploys; build with `desktop/build_app.py`),
+`PKDND_APPLE_CLIENT_ID`, `PKDND_LEGACY_DM_PASSWORD`, `PKDND_UPLOAD_DIR` (map and book files), `PKDND_DOWNLOAD_DIR` (the installer for /download; default `<data dir>/downloads`, never overwritten by deploys; build with `desktop/build_app.py`),
 `PKDND_ADMIN_EMAILS` (the site owner's address), `PKDND_MAIL_PROVIDER` / `PKDND_MAIL_API_KEY` /
 `PKDND_MAIL_FROM` (sign-in code emails; `mailer.py`). Keys and addresses go in the systemd drop-in, never the repo.
 

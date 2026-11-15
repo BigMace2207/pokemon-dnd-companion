@@ -194,7 +194,13 @@ body {
 }
 .main::after { content: ""; display: block; height: env(safe-area-inset-bottom, 0px); grid-column: 1 / -1; }
 
-.loading { color: var(--text-dim); padding: calc(40px * var(--s)); text-align: center; }
+/* The wait between pages: a slim ring and one quiet line, centred, with the empty side menu hidden until the page is ready. */
+.loading { display: grid; place-content: center; justify-items: center; gap: calc(16px * var(--s)); min-height: min(60vh, 520px); padding: calc(40px * var(--s)); color: var(--text-dim); font-size: calc(14px * var(--s)); letter-spacing: .04em; text-align: center; animation: loading-in .35s .12s ease-out both; }
+.loading::before { content: ""; width: calc(34px * var(--s)); height: calc(34px * var(--s)); border-radius: 50%; border: 2px solid rgba(128, 128, 128, .25); border-top-color: var(--text-dim); animation: loading-spin .8s linear infinite; }
+#app:has(#loading) .sidenav { visibility: hidden; }
+@keyframes loading-spin { to { transform: rotate(360deg); } }
+@keyframes loading-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .loading::before { animation: none; border-top-color: rgba(128, 128, 128, .25); } .loading { animation: none; } }
 
 h1.view-title {
   margin: 0 0 calc(5px * var(--s)); font-size: calc(34.5px * var(--s)); font-family: var(--font-display); font-weight: 700;

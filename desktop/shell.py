@@ -13,6 +13,8 @@ Nothing here needs the website's own code, so app.py can be packaged without bun
 """
 import json
 import sys
+import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -59,11 +61,13 @@ class Api:
     applied next launch, while Windowed and Fullscreen both switch at once via toggle_fullscreen(). `_window` is filled in right
     after create_window() returns; every real call from the page happens well after that, once the event loop is running."""
 
-    def __init__(self, data_dir, url, version=""):
+    def __init__(self, data_dir, url, version="", custom_frame=False):
         self._data_dir = data_dir
         self._url = url
         self._version = version
+        self._custom_frame = custom_frame   # no Windows title bar: the page draws its own minimise / maximise / close (js/windowControls.js)
         self._window = None
+        self._form = None                   # the WinForms window, once it exists (see install_frame)
         self._fullscreen = False
 
     def set_window_mode(self, mode):
@@ -94,6 +98,55 @@ class Api:
 
     def app_info(self):
         return {"version": self._version}
+
+    # ---- the window's own buttons, for a window without a title bar (called by js/windowControls.js)
+    def get_frame(self):
+        return {"custom": self._custom_frame, "maximized": self._is_maximized(), "fullscreen": self._fullscreen}
+
+    def _is_maximized(self):
+        try:
+            return bool(self._form is not None and int(self._form.WindowState) == 2)   # FormWindowState.Maximized
+        except Exception:
+            return False
+
+    def _on_ui_thread(self, fn):
+        if self._form is None:
+            return
+        from System import Action
+        self._form.Invoke(Action(fn))
+
+    def minimize(self):
+        if self._window is not None:
+            self._window.minimize()
+        return self.get_frame()
+
+    def toggle_maximize(self):
+        """Maximise to the work area (a window with no frame would otherwise cover the taskbar), or restore."""
+        if self._form is None:
+            return self.get_frame()
+
+        def toggle():
+            import System.Windows.Forms as WinForms
+            if int(self._form.WindowState) == 2:
+                self._form.WindowState = WinForms.FormWindowState.Normal
+            else:
+                self._form.MaximizedBounds = WinForms.Screen.FromControl(self._form).WorkingArea
+                self._form.WindowState = WinForms.FormWindowState.Maximized
+        self._on_ui_thread(toggle)
+        return self.get_frame()
+
+    def close(self):
+        if self._window is not None:
+            self._window.destroy()
+
+    def begin_resize(self, edge):
+        """A window with no frame has no edges to grab, so the page draws thin grips and asks for a resize here. Runs until the mouse
+        button is let go, moving the window with SetWindowPos on every step (smooth, and no round trip through the page per pixel)."""
+        if sys.platform == "win32" and self._hwnd and edge in ("n", "s", "e", "w", "ne", "nw", "se", "sw") and not self._is_maximized():
+            threading.Thread(target=_resize_loop, args=(self._hwnd, edge), daemon=True).start()
+        return True
+
+    _hwnd = 0
 
 
 # ---------------------------------------------------------------- the site isn't there
@@ -199,19 +252,69 @@ def install_f11_override(window, api, log_file):
     window.events.loaded += attach
 
 
+# ---------------------------------------------------------------- a window with no title bar (Windows)
+def _resize_loop(hwnd, edge, min_w=900, min_h=600):
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+    rect, pt = wintypes.RECT(), wintypes.POINT()
+    user32.GetWindowRect(hwnd, ctypes.byref(rect))
+    user32.GetCursorPos(ctypes.byref(pt))
+    left, top, right, bottom, x0, y0 = rect.left, rect.top, rect.right, rect.bottom, pt.x, pt.y
+    SWP = 0x0004 | 0x0010   # SWP_NOZORDER | SWP_NOACTIVATE
+    while user32.GetAsyncKeyState(0x01) & 0x8000:   # VK_LBUTTON: while the button is held
+        user32.GetCursorPos(ctypes.byref(pt))
+        dx, dy = pt.x - x0, pt.y - y0
+        l, t, r, b = left, top, right, bottom
+        if "w" in edge:
+            l = min(left + dx, right - min_w)
+        if "e" in edge:
+            r = max(right + dx, left + min_w)
+        if "n" in edge:
+            t = min(top + dy, bottom - min_h)
+        if "s" in edge:
+            b = max(bottom + dy, top + min_h)
+        user32.SetWindowPos(hwnd, 0, l, t, r - l, b - t, SWP)
+        time.sleep(0.008)
+
+
+def install_frame(window, api):
+    """Once the window exists, remember its WinForms form and handle (read on the UI thread, where WinForms allows it) for the
+    buttons and resize grips above."""
+    if sys.platform != "win32":
+        return
+
+    def attach():
+        try:
+            from webview.platforms.winforms import BrowserView
+            from System import Action
+            form = BrowserView.instances[window.uid]
+
+            def grab():
+                api._form = form
+                api._hwnd = int(form.Handle.ToInt64())
+            form.Invoke(Action(grab))
+        except Exception as e:
+            _f11_log(f"window frame not installed: {e}")
+
+    window.events.loaded += attach
+
+
 # ---------------------------------------------------------------- the window itself
-def run(url, title, data_dir, version=""):
+def run(url, title, data_dir, version="", custom_frame=False):
     """Open `url` in a native window and block until it is closed."""
     data_dir = Path(data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
     prefs = load_prefs(data_dir)
     mode = load_window_mode(data_dir)
-    api = Api(data_dir, url, version)
+    custom_frame = custom_frame and sys.platform == "win32"
+    api = Api(data_dir, url, version, custom_frame)
+    webview.settings["DRAG_REGION_DIRECT_TARGET_ONLY"] = True   # (a button inside the draggable top strip must still click)
     page = {"url": url} if reachable(url) else {"html": offline_html(url)}
     window = webview.create_window(
         title,
         width=max(900, int(prefs.get("width") or 1320)), height=max(600, int(prefs.get("height") or 880)), min_size=(900, 600),
-        frameless=(mode == "borderless"), fullscreen=(mode == "fullscreen"),
+        frameless=(custom_frame or mode == "borderless"), easy_drag=False, shadow=custom_frame, fullscreen=(mode == "fullscreen"),
         js_api=api, background_color=BACKGROUND, text_select=True,   # (text can be selected: invite codes, notes)
         **page,
     )
@@ -224,6 +327,7 @@ def run(url, title, data_dir, version=""):
 
     window.events.closing += remember_size
     install_f11_override(window, api, data_dir / "f11_debug.log")
+    install_frame(window, api)
     # private_mode defaults to True in pywebview, which runs the embedded browser as an incognito session, so anything the site keeps in
     # localStorage (js/storage.js: a local copy of "My Team") would never survive a restart. An explicit storage_path pins the profile
     # to this app's own data folder instead of a location that can drift between runs.

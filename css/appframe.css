@@ -1,0 +1,21 @@
+/* The desktop app's own window controls (js/windowControls.js): a glass pill at the top right, edge grips, a strip to drag by. */
+.wc-pill { position: fixed; top: 8px; right: 8px; z-index: 2147483000; display: flex; align-items: center; gap: 2px; height: 32px; padding: 0 3px; border-radius: 11px; background: rgba(12, 12, 16, .62); border: 1px solid rgba(255, 255, 255, .12); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); box-shadow: 0 6px 20px rgba(0, 0, 0, .35); }
+.wc-btn { appearance: none; display: grid; place-items: center; width: 32px; height: 26px; margin: 0; padding: 0; border: 0; border-radius: 8px; background: transparent; color: rgba(255, 255, 255, .72); cursor: default; transition: background-color .12s, color .12s; }
+.wc-btn svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+.wc-btn:hover { background: rgba(255, 255, 255, .12); color: #fff; }
+.wc-btn:active { background: rgba(255, 255, 255, .18); }
+.wc-close:hover { background: #e5484d; color: #fff; }
+.wc-btn:focus-visible { outline: 2px solid #ffd23f; outline-offset: -2px; }
+.wc-drag { position: fixed; top: 0; left: 0; right: 0; height: 8px; z-index: 2147482990; }
+.wc-grip { position: fixed; z-index: 2147482995; }
+.wc-grip-n, .wc-grip-s { left: 10px; right: 10px; height: 5px; cursor: ns-resize; }
+.wc-grip-e, .wc-grip-w { top: 10px; bottom: 10px; width: 5px; cursor: ew-resize; }
+.wc-grip-n { top: 0; } .wc-grip-s { bottom: 0; } .wc-grip-e { right: 0; } .wc-grip-w { left: 0; }
+.wc-grip-ne, .wc-grip-nw, .wc-grip-se, .wc-grip-sw { width: 10px; height: 10px; }
+.wc-grip-ne { top: 0; right: 0; cursor: nesw-resize; } .wc-grip-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.wc-grip-nw { top: 0; left: 0; cursor: nwse-resize; } .wc-grip-se { bottom: 0; right: 0; cursor: nwse-resize; }
+.app-max .wc-grip, .app-fs .wc-grip, .app-fs .wc-pill, .app-fs .wc-drag { display: none; }
+/* room for the pill beside the page's own top bar */
+html.in-app .topbar { padding-right: 132px; }
+@media (prefers-reduced-motion: reduce) { .wc-btn { transition: none; } }
+html.in-app .hub-top { right: calc(132px); }

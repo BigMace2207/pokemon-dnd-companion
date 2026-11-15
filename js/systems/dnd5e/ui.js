@@ -189,7 +189,7 @@ export const readText = (file) => new Promise((resolve, reject) => {
 // ---------------------------------------------------------------- misc
 
 export function loadingCard(text = "Loading rules data…") {
-  return el("div", { class: "card" }, el("p", { class: "view-sub" }, text));
+  return el("div", { class: "loading" }, text);
 }
 
 export function errorCard(err) {

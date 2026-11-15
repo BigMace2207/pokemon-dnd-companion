@@ -1,48 +1,55 @@
 """
-Builds the app people download from fluxdev.org/download (app.py): a small window onto the live site, no server and no data folders
-bundled. Output is a zip named the way server.py's download route expects (PokemonDnD-Companion-<version>-<platform>.zip).
+Builds what people download from fluxdev.org/download on Windows: one installer .exe ("D&D Companion Installer", installer.py) that
+carries the app (app.py: a small window onto the live site, no server or data folders) inside it.
 
 Setup (once):   python -m pip install -r desktop/requirements-build.txt
 Build:          python desktop/build_app.py [--publish <folder>]
 
-PyInstaller only builds for the OS it runs on: run this on Windows for the Windows zip, on a Mac for the Mac one.
-The version is desktop/VERSION. --publish copies the zip into that folder (the server's downloads folder: PKDND_DOWNLOAD_DIR, by
-default <data dir>/downloads; on the VM ~/pokemon-dnd/downloads). Deploys never touch that folder, so builds stay up.
+Steps: build the app folder (PyInstaller, --onedir), zip it as the installer's payload, then build installer.py (--onefile) with that
+zip packed in. Result: dist-app/DnD-Companion-Installer-<version>-windows.exe (the name server.py's download route expects; it is
+served to people as "D&D Companion Installer.exe"). The version is desktop/VERSION and the icon is desktop/icon.png.
+--publish copies the installer into that folder (the server's downloads folder: PKDND_DOWNLOAD_DIR, by default <data dir>/downloads;
+on the VM ~/pokemon-dnd/downloads). Deploys never touch that folder, so builds stay up.
+
+Windows only for now: PyInstaller builds for the OS it runs on, and a Mac installer (.dmg) would be built on a Mac.
 """
 import shutil
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-SEP = ";" if sys.platform == "win32" else ":"
-APP_NAME = "Pokemon D&D Companion"
-PLATFORM = {"win32": "windows", "darwin": "macos"}.get(sys.platform, "linux")
+OUT = ROOT / "dist-app"
+WORK = ROOT / "build-app"
+APP_NAME = "DnD Companion"                   # the app's folder and .exe: no "&" in anything on disk
+INSTALLER_NAME = "DnD Companion Installer"
 
 
-def make_icon():
-    """Best-effort .ico/.icns from assets/logo.png; a missing icon isn't worth failing the build."""
-    logo = ROOT / "assets" / "logo.png"
-    if not logo.exists():
-        return None
-    try:
-        from PIL import Image
-        img = Image.open(logo).convert("RGBA")
-        if sys.platform == "win32":
-            out = ROOT / "assets" / "app.ico"
-            img.save(out, sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
-            return str(out)
-        if sys.platform == "darwin":
-            out = ROOT / "assets" / "app.icns"
-            img.save(out, format="ICNS")
-            return str(out)
-    except Exception as e:
-        print(f"(skipping custom icon: {e})")
-    return None
+def make_icons():
+    """desktop/icon.png (the d20) -> icon.ico for the exes' icons; the png is also shown in the installer's window."""
+    from PIL import Image
+    WORK.mkdir(parents=True, exist_ok=True)
+    ico = WORK / "icon.ico"
+    Image.open(HERE / "icon.png").convert("RGBA").save(ico, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    # the picture shown in the installer's window: the same d20 with its edges faded out, so it sits on the window's dark background
+    from PIL import ImageDraw, ImageFilter
+    logo = Image.open(HERE / "icon.png").convert("RGBA")
+    mask = Image.new("L", logo.size, 0)
+    ImageDraw.Draw(mask).ellipse((10, 10, logo.width - 10, logo.height - 10), fill=255)
+    logo.putalpha(mask.filter(ImageFilter.GaussianBlur(34)))
+    logo.save(WORK / "logo.png")
+    return ico
+
+
+def pyinstaller(*args):
+    subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed", "--workpath", str(WORK / "pyi"),
+                    "--specpath", str(WORK), "--distpath", str(OUT), *map(str, args)], check=True)
 
 
 def zip_folder(src, dest):
+    dest.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         for path in sorted(src.rglob("*")):
             if path.is_file():
@@ -50,34 +57,35 @@ def zip_folder(src, dest):
 
 
 def main():
+    if sys.platform != "win32":
+        sys.exit("The installer is Windows-only for now.")
     try:
-        import PyInstaller.__main__
+        import PyInstaller  # noqa: F401
+        import PIL  # noqa: F401
     except ImportError:
-        print("PyInstaller isn't installed. Run:\n    python -m pip install -r desktop/requirements-build.txt")
-        sys.exit(1)
+        sys.exit("PyInstaller and Pillow are needed. Run:\n    python -m pip install -r desktop/requirements-build.txt")
     version = (HERE / "VERSION").read_text(encoding="utf-8").strip()
-    args = [
-        str(HERE / "app.py"), "--name", APP_NAME, "--onedir", "--windowed", "--noconfirm", "--clean",
-        "--paths", str(HERE), "--distpath", str(ROOT / "dist-app"), "--workpath", str(ROOT / "build-app"),
-        "--specpath", str(ROOT / "build-app"),
-        "--add-data", f"{HERE / 'VERSION'}{SEP}.",
-    ]
-    icon = make_icon()
-    if icon:
-        args += ["--icon", icon]
-    print("Running PyInstaller...")
-    PyInstaller.__main__.run(args)
+    ico = make_icons()
+    shutil.rmtree(OUT, ignore_errors=True)
 
-    built = ROOT / "dist-app" / APP_NAME
-    zip_path = ROOT / "dist-app" / f"PokemonDnD-Companion-{version}-{PLATFORM}.zip"
-    zip_path.unlink(missing_ok=True)
-    zip_folder(built, zip_path)
-    print(f"\nBuilt {zip_path} ({zip_path.stat().st_size / 1e6:.1f} MB)")
+    print("1/3  the app")
+    pyinstaller(HERE / "app.py", "--name", APP_NAME, "--onedir", "--paths", HERE, "--icon", ico, "--add-data", f"{HERE / 'VERSION'};.")
+    payload = WORK / "payload" / "app.zip"
+    zip_folder(OUT / APP_NAME, payload)
+
+    print("2/3  the installer")
+    pyinstaller(HERE / "installer.py", "--name", INSTALLER_NAME, "--onefile", "--icon", ico,
+                "--add-data", f"{payload};payload", "--add-data", f"{HERE / 'VERSION'};.",
+                "--add-data", f"{ico};.", "--add-data", f"{WORK / 'logo.png'};.")
+    final = OUT / f"DnD-Companion-Installer-{version}-windows.exe"
+    (OUT / f"{INSTALLER_NAME}.exe").replace(final)
+    shutil.rmtree(OUT / APP_NAME, ignore_errors=True)    # (it lives inside the installer now)
+    print(f"3/3  built {final} ({final.stat().st_size / 1e6:.1f} MB)")
 
     if "--publish" in sys.argv:
         dest = Path(sys.argv[sys.argv.index("--publish") + 1])
         dest.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(zip_path, dest / zip_path.name)
+        shutil.copy2(final, dest / final.name)
         print(f"Published to {dest}")
 
 

@@ -1,41 +1,49 @@
-// fluxdev.org/download: asks the server what builds exist (/api/downloads) and fills in each platform's card: the button, the
-// version and size, or "coming soon". The server hands out a file only by its exact name (server.py DOWNLOAD_NAME).
+// fluxdev.org/download: asks the server which builds exist (/api/downloads), then shows a big button for the visitor's own system
+// with its version and release date, and smaller buttons for the other systems. The server hands a file out only by its exact name.
 (function () {
-  var cards = document.querySelectorAll(".dl-card");
+  var NAMES = { windows: "Windows", macos: "Mac", linux: "Linux" };
+  var ORDER = ["windows", "macos", "linux"];
   var ua = navigator.userAgent;
-  var mine = /Windows/.test(ua) ? "windows" : /Mac OS X|Macintosh/.test(ua) && !/iPhone|iPad/.test(ua) ? "macos" : "";
+  var mine = /Android|iPhone|iPad|iPod/.test(ua) ? "" : /Windows/.test(ua) ? "windows" : /Mac OS X|Macintosh/.test(ua) ? "macos" : /Linux|X11/.test(ua) ? "linux" : "";
+  var main = mine || "windows";
 
-  function size(bytes) {
-    return bytes >= 1048576 ? (bytes / 1048576).toFixed(bytes >= 104857600 ? 0 : 1) + " MB" : Math.max(1, Math.round(bytes / 1024)) + " KB";
-  }
-  function soon(card, why) {
-    card.classList.add("soon");
-    card.querySelector("[data-meta]").textContent = why;
-    var b = card.querySelector("[data-btn]");
-    b.removeAttribute("href");
-    b.setAttribute("aria-disabled", "true");
-    b.textContent = "Coming soon";
-  }
-  function ready(card, f) {
-    card.classList.remove("soon");
-    var when = new Date(f.updated * 1000).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
-    card.querySelector("[data-meta]").textContent = "Version " + f.version + " · " + size(f.size) + " · " + when;
-    var b = card.querySelector("[data-btn]");
-    b.href = "/download/files/" + encodeURIComponent(f.name);
-    b.setAttribute("download", f.name);
-    b.removeAttribute("aria-disabled");
-  }
+  function link(f) { return "/download/files/" + encodeURIComponent(f.name); }
+  function date(f) { return new Date(f.updated * 1000).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }); }
 
-  cards.forEach(function (c) { if (c.dataset.platform === mine) c.classList.add("you"); });
   fetch("/api/downloads")
     .then(function (r) { return r.ok ? r.json() : { files: [] }; })
     .catch(function () { return { files: [] }; })
     .then(function (res) {
       var by = {};
       (res.files || []).forEach(function (f) { by[f.platform] = f; });
-      cards.forEach(function (c) {
-        var f = by[c.dataset.platform];
-        if (f) ready(c, f); else soon(c, c.dataset.platform === "macos" ? "A Mac build is on its way." : "Not available just yet.");
+
+      document.getElementById("title").textContent = mine ? "Download for " + NAMES[mine] : "Download the app";
+      var btn = document.getElementById("main");
+      var meta = document.getElementById("meta");
+      var f = by[main];
+      if (f) {
+        btn.href = link(f);
+        btn.removeAttribute("aria-disabled");
+        btn.textContent = "Download for " + NAMES[main];
+        meta.textContent = "Version " + f.version + " · Released " + date(f);
+      } else {
+        btn.textContent = "Coming soon";
+        meta.textContent = "";
+      }
+
+      var box = document.getElementById("otherBtns");
+      ORDER.filter(function (p) { return p !== main; }).forEach(function (p) {
+        var a = document.createElement("a");
+        a.className = "dl-btn";
+        if (by[p]) {
+          a.href = link(by[p]);
+          a.textContent = "Download for " + NAMES[p];
+        } else {
+          a.setAttribute("aria-disabled", "true");
+          a.textContent = NAMES[p] + " · coming soon";
+        }
+        box.appendChild(a);
       });
+      document.getElementById("others").hidden = false;
     });
 })();

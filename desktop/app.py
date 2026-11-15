@@ -38,7 +38,7 @@ def version():
 
 
 def main():
-    shell.run(SITE_URL, TITLE, data_dir(), version())
+    shell.run(SITE_URL, TITLE, data_dir(), version(), custom_frame=True)
 
 
 if __name__ == "__main__":

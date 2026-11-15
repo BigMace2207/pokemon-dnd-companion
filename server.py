@@ -203,7 +203,7 @@ def static_path_allowed(url_path):
 # PokemonDnD-Companion-<version>-<windows|macos|linux>.<zip|dmg>, so no other name (and no path) can reach anything else. Deploying the
 # app never touches this folder. The page (assets/download/) and the listing (/api/downloads) are public: they only describe these files.
 DOWNLOAD_DIR = Path(os.environ.get("PKDND_DOWNLOAD_DIR") or (DATA_DIR / "downloads"))
-DOWNLOAD_NAME = re.compile(r"^PokemonDnD-Companion-(?P<version>[0-9][0-9A-Za-z.]*)-(?P<platform>windows|macos|linux)\.(?P<ext>zip|dmg)$")
+DOWNLOAD_NAME = re.compile(r"^DnD-Companion-Installer-(?P<version>[0-9][0-9A-Za-z.]*)-(?P<platform>windows|macos|linux)\.(?P<ext>exe|dmg)$")
 
 
 def list_downloads():
@@ -1466,9 +1466,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return True
         size = file.stat().st_size
         self.send_response(200)
-        self.send_header("Content-Type", "application/zip" if name.endswith(".zip") else "application/octet-stream")
+        self.send_header("Content-Type", "application/octet-stream")
         self.send_header("Content-Length", str(size))
-        self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+        # saved under a plain versioned name; people get it as "D&D Companion Installer.exe"
+        self.send_header("Content-Disposition", f'attachment; filename="D&D Companion Installer.{DOWNLOAD_NAME.match(name)["ext"]}"')
         self.end_headers()
         if not head:
             try:
