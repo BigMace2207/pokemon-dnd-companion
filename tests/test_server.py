@@ -58,6 +58,7 @@ class ServerCase(unittest.TestCase):
         server.CAMPAIGNS, server.ACCOUNTS, server.SESSIONS, server.FILES, server.ARCHIVED = {}, {}, {}, {}, {}
         server.HUB_PINGS.clear()
         server.UPLOAD_DIR = tmp / "uploads"
+        server.DOWNLOAD_DIR = tmp / "downloads"
         server.CHALLENGES.clear()
         server.HUB_CURSORS.clear()
         server.mailer.PROVIDER, server.mailer.OUTBOX = "", ""   # no email codes unless a test turns them on
@@ -78,6 +79,58 @@ class ServerCase(unittest.TestCase):
         cid, entry = server.new_campaign_entry(name, owner_id)
         server.CAMPAIGNS[cid] = entry
         return cid, entry
+
+
+class AppDownloads(ServerCase):
+    """fluxdev.org/download: a public page, a public listing, and builds handed out only by their exact name."""
+    def put(self, name, data=b"PK-zip-bytes"):
+        server.DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        (server.DOWNLOAD_DIR / name).write_bytes(data)
+        return name
+
+    def test_the_page_and_an_empty_listing_need_no_login(self):
+        status, body = call(self.base, "GET", "/download")
+        self.assertEqual(status, 200)
+        self.assertIn(b"<title>", body)
+        self.assertEqual(call(self.base, "GET", "/download/")[0], 200)
+        self.assertEqual(call(self.base, "GET", "/api/downloads"), (200, {"files": []}))
+
+    def test_a_build_is_listed_and_downloads_as_an_attachment(self):
+        name = self.put("PokemonDnD-Companion-0.1.0-windows.zip", b"x" * 5000)
+        status, listing = call(self.base, "GET", "/api/downloads")
+        self.assertEqual(status, 200)
+        (f,) = listing["files"]
+        self.assertEqual((f["platform"], f["version"], f["name"], f["size"]), ("windows", "0.1.0", name, 5000))
+        with urllib.request.urlopen(self.base + f"/download/files/{name}") as r:
+            self.assertEqual(r.status, 200)
+            self.assertEqual(r.headers["Content-Type"], "application/zip")
+            self.assertEqual(r.headers["Content-Disposition"], f'attachment; filename="{name}"')
+            self.assertEqual(r.read(), b"x" * 5000)
+        req = urllib.request.Request(self.base + f"/download/files/{name}", method="HEAD")
+        with urllib.request.urlopen(req) as r:
+            self.assertEqual((r.status, r.headers["Content-Length"], r.read()), (200, "5000", b""))
+
+    def test_only_the_newest_build_of_a_platform_is_listed(self):
+        old = self.put("PokemonDnD-Companion-0.1.0-windows.zip")
+        os.utime(server.DOWNLOAD_DIR / old, (1000, 1000))
+        new = self.put("PokemonDnD-Companion-0.2.0-windows.zip")
+        self.put("PokemonDnD-Companion-0.1.0-macos.zip")
+        files = {f["platform"]: f["name"] for f in call(self.base, "GET", "/api/downloads")[1]["files"]}
+        self.assertEqual(files, {"windows": new, "macos": "PokemonDnD-Companion-0.1.0-macos.zip"})
+
+    def test_nothing_else_can_be_fetched_through_it(self):
+        self.put("PokemonDnD-Companion-0.1.0-windows.zip")
+        self.put("notes.txt", b"private")
+        self.put("PokemonDnD-Companion-0.1.0-windows.exe", b"nope")
+        (server.DOWNLOAD_DIR / ".server_state.dat").write_bytes(b"secret")
+        for bad in ["notes.txt", "PokemonDnD-Companion-0.1.0-windows.exe", "..%2fserver.py", "..%2f.server_state.dat", "%2e%2e/server.py",
+                    "PokemonDnD-Companion-0.1.0-windows.zip%00.png", "PokemonDnD-Companion-../x-windows.zip", "PokemonDnD-Companion-0.1.0-beos.zip",
+                    ".server_state.dat", "", "PokemonDnD-Companion-0.1.0-linux.zip"]:
+            self.assertEqual(call(self.base, "GET", f"/download/files/{bad}")[0], 404, bad)
+            self.assertEqual(call(self.base, "HEAD", f"/download/files/{bad}")[0], 404, "HEAD " + bad)
+        self.assertEqual([f["platform"] for f in call(self.base, "GET", "/api/downloads")[1]["files"]], ["windows"], "only exact names are listed")
+        for path in ["/downloads/PokemonDnD-Companion-0.1.0-windows.zip", "/download/PokemonDnD-Companion-0.1.0-windows.zip"]:
+            self.assertEqual(call(self.base, "GET", path)[0], 404, path)
 
 
 class StaticFileProtection(ServerCase):

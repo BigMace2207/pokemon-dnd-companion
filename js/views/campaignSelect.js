@@ -92,9 +92,16 @@ export async function renderCampaignSelect(container, networkId, onEnter) {
   const signOut = el("button", { type: "button", class: "start-link" }, "Sign out");
   signOut.addEventListener("click", async () => { await logout(); location.reload(); });
 
+  // "Download the app here", bottom right: a link to fluxdev.org/download. Not shown inside the app itself (it has a window.pywebview).
+  const getApp = el("p", { class: "start-app" }, ["Download the app ", el("a", { href: "/download" }, "here")]);
+  const inApp = () => typeof window.pywebview !== "undefined";
+  getApp.hidden = inApp();
+  window.addEventListener("pywebviewready", () => { getApp.hidden = true; }, { once: true });   // (the app's bridge arrives a moment after the page)
+
   container.appendChild(el("div", { class: "start-page" }, [
     el("div", { class: "start-panels" }, SIDES.map(sidePanel)),
     el("div", { class: "start-join" }, [codeInput, joinBtn, joinMsg, signOut]),
+    getApp,
   ]));
 
   // ---- fill in each side's campaigns

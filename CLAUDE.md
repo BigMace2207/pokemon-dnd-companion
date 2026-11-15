@@ -11,7 +11,7 @@ feature docs.
 
 ```
 python server.py [port]                    # default 8850; serves the app + /api
-python -m unittest discover -s tests -v    # ~60s, 108 tests, run before every commit
+python -m unittest discover -s tests -v    # ~60s, 112 tests, run before every commit
 python tools/test_server.py --admin you@example.com   # throwaway local copy on :8860; code emails go to an outbox folder
 node --test tests/js/*.test.mjs            # D&D rules engine, <1s (use the glob, not the folder)
 ```
@@ -23,7 +23,7 @@ touch real save data.
 Server environment variables: `PKDND_BIND` (listen address; `127.0.0.1` on a
 public server), `PKDND_TRUST_PROXY=1` (only safe when bound to loopback behind
 a proxy), `PKDND_BACKUP_DIR`, `PKDND_BACKUP_INTERVAL`, `PKDND_GOOGLE_CLIENT_ID`,
-`PKDND_APPLE_CLIENT_ID`, `PKDND_LEGACY_DM_PASSWORD`, `PKDND_UPLOAD_DIR` (map and book files),
+`PKDND_APPLE_CLIENT_ID`, `PKDND_LEGACY_DM_PASSWORD`, `PKDND_UPLOAD_DIR` (map and book files), `PKDND_DOWNLOAD_DIR` (app zips for /download; default `<data dir>/downloads`, never overwritten by deploys; build with `desktop/build_app.py`),
 `PKDND_ADMIN_EMAILS` (the site owner's address), `PKDND_MAIL_PROVIDER` / `PKDND_MAIL_API_KEY` /
 `PKDND_MAIL_FROM` (sign-in code emails; `mailer.py`). Keys and addresses go in the systemd drop-in, never the repo.
 

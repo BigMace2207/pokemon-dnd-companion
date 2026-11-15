@@ -197,6 +197,33 @@ def static_path_allowed(url_path):
     return parts[0] in STATIC_TOP_DIRS and Path(parts[-1]).suffix.lower() not in STATIC_BLOCKED_EXT
 
 
+# --- The desktop app's downloads (fluxdev.org/download) --------------------------------------------------------
+# The built app is one zip per platform, in downloads/ next to the save file (PKDND_DOWNLOAD_DIR moves it). It is NOT in the repo and NOT
+# one of the static folders above: a file is only ever handed out by /download/files/<name>, and only if <name> is exactly
+# PokemonDnD-Companion-<version>-<windows|macos|linux>.<zip|dmg>, so no other name (and no path) can reach anything else. Deploying the
+# app never touches this folder. The page (assets/download/) and the listing (/api/downloads) are public: they only describe these files.
+DOWNLOAD_DIR = Path(os.environ.get("PKDND_DOWNLOAD_DIR") or (DATA_DIR / "downloads"))
+DOWNLOAD_NAME = re.compile(r"^PokemonDnD-Companion-(?P<version>[0-9][0-9A-Za-z.]*)-(?P<platform>windows|macos|linux)\.(?P<ext>zip|dmg)$")
+
+
+def list_downloads():
+    """The newest download for each platform: {"files": [{platform, name, version, size, updated}]}."""
+    try:
+        found = [p for p in DOWNLOAD_DIR.iterdir() if p.is_file() and DOWNLOAD_NAME.match(p.name)]
+    except OSError:
+        found = []
+    found.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    out, seen = [], set()
+    for p in found:
+        m = DOWNLOAD_NAME.match(p.name)
+        if m["platform"] in seen:
+            continue
+        seen.add(m["platform"])
+        st = p.stat()
+        out.append({"platform": m["platform"], "name": p.name, "version": m["version"], "size": st.st_size, "updated": int(st.st_mtime)})
+    return {"files": out}
+
+
 # --- Persistence -----------------------------------------------------------
 STATE_FILE = DATA_DIR / ".server_state.dat"
 AUTOSAVE_INTERVAL = 5  # seconds between disk writes, only if something changed
@@ -1424,15 +1451,48 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     # ---------------- API ----------------
 
+    def _download_route(self, head=False):
+        """fluxdev.org/download (the page) and /download/files/<name> (a build). True if this request was one of them."""
+        path = unquote(self.path.split("?")[0])
+        if path in ("/download", "/download/"):
+            self.path = "/assets/download/index.html"   # the page is an ordinary static file under assets/
+            return False
+        if not path.startswith("/download/files/"):
+            return False
+        name = path[len("/download/files/"):]
+        file = DOWNLOAD_DIR / name
+        if not DOWNLOAD_NAME.match(name) or not file.is_file():
+            self.send_error(404)
+            return True
+        size = file.stat().st_size
+        self.send_response(200)
+        self.send_header("Content-Type", "application/zip" if name.endswith(".zip") else "application/octet-stream")
+        self.send_header("Content-Length", str(size))
+        self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+        self.end_headers()
+        if not head:
+            try:
+                with open(file, "rb") as f:
+                    shutil.copyfileobj(f, self.wfile, 256 * 1024)   # (streamed: a build is tens of megabytes)
+            except (BrokenPipeError, ConnectionResetError):
+                pass   # the browser gave up on it
+        return True
+
     def do_GET(self):
         if self.path.startswith("/api/"):
             return self._api_get()
+        if self._download_route():
+            return None
         if not static_path_allowed(self.path):
             return self.send_error(404)
         return super().do_GET()
 
     def do_HEAD(self):
-        if self.path.startswith("/api/") or not static_path_allowed(self.path):
+        if self.path.startswith("/api/"):
+            return self.send_error(404)
+        if self._download_route(head=True):
+            return None
+        if not static_path_allowed(self.path):
             return self.send_error(404)
         return super().do_HEAD()
 
@@ -2085,6 +2145,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         qs = parse_qs(urlparse(self.path).query)
         cid = qs.get("campaignId", [None])[0]
 
+        if parts[1:] == ["downloads"]:
+            return self._send_json(list_downloads())   # public: it only describes the app's downloads
         if len(parts) >= 2 and parts[1] == "auth":
             return self._auth_get(parts)
         if len(parts) >= 2 and parts[1] == "files":

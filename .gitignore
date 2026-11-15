@@ -19,3 +19,8 @@ backups/
 sfx/*
 !sfx/README.txt
 .dnd5e_cache/
+
+# The downloadable app: build output and published zips
+dist-app/
+build-app/
+downloads/
