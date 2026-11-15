@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sign in · D&amp;D Companion</title>
+<meta name="theme-color" content="#07070d">
+<link rel="icon" href="/assets/dnd-logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/download/download.css">
+<style>
+  .si-box { min-height: 52px; display: grid; place-items: center; margin-top: 4px; }
+  .si-msg { margin: 18px 0 0; min-height: 1.5em; color: var(--dl-dim); font-size: 16px; }
+  .si-msg.bad { color: #ff8a7a; }
+  .dl-main[hidden] { display: none; }
+</style>
+</head>
+<body>
+<div class="dl-sky" aria-hidden="true"><i class="dl-stars"></i><i class="dl-nebula"></i></div>
+<main class="dl">
+  <img class="dl-mark" src="/assets/icon-192.png" alt="" width="84" height="84">
+  <h1 id="title">Sign in to the app</h1>
+  <div class="si-box" id="box"></div>
+  <a class="dl-btn dl-main" id="go" role="button" tabindex="0" hidden>Continue to the app</a>
+  <p class="si-msg" id="msg" role="status"></p>
+</main>
+<script type="module" src="/assets/signin/signin.js"></script>
+</body>
+</html>

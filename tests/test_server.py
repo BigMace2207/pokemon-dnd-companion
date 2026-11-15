@@ -134,6 +134,51 @@ class AppDownloads(ServerCase):
             self.assertEqual(call(self.base, "GET", path)[0], 404, path)
 
 
+class AppSignIn(ServerCase):
+    """Google won't sign anyone in inside the desktop app's embedded window, so the app opens the browser: the browser says which
+    account a one-off code belongs to, and the app trades its secret for a session of its own."""
+    def setUp(self):
+        super().setUp()
+        server.APP_LINKS.clear()
+
+    def start(self):
+        status, link = call(self.base, "POST", "/api/auth/app-link-start", {})
+        self.assertEqual(status, 200)
+        return link["code"], link["secret"]
+
+    def browser_token(self):
+        return call(self.base, "POST", "/api/auth/register", {"email": "ash@example.com", "password": "pikachu123", "networkId": "browser-id"})[1]["token"]
+
+    def test_the_whole_hand_off(self):
+        code, secret = self.start()
+        poll = lambda sec=secret: call(self.base, "POST", "/api/auth/app-link-poll", {"code": code, "secret": sec, "networkId": "app-id", "deviceKey": "app-device"})
+        self.assertEqual(poll(), (200, {"pending": True}))
+        token = self.browser_token()
+        self.assertEqual(call(self.base, "POST", "/api/auth/app-link-complete", {"code": code})[0], 401, "the browser must be signed in")
+        self.assertEqual(call(self.base, "POST", "/api/auth/app-link-complete", {"code": code}, token)[0], 200)
+        self.assertEqual(poll("not-the-secret")[0], 410, "only the app that started it can collect it")
+        status, got = poll()
+        self.assertEqual(status, 200)
+        self.assertEqual(got["account"]["email"], "ash@example.com")
+        self.assertNotEqual(got["token"], token, "the app gets a session of its own, not the browser's")
+        self.assertEqual(call(self.base, "GET", "/api/auth/me", None, got["token"])[0], 200)
+        self.assertEqual(poll()[0], 410, "a code works once")
+
+    def test_a_wrong_or_expired_code_gets_nothing(self):
+        token = self.browser_token()
+        self.assertEqual(call(self.base, "POST", "/api/auth/app-link-complete", {"code": "nope"}, token)[0], 410)
+        code, secret = self.start()
+        server.APP_LINKS[code]["expires"] = 0
+        self.assertEqual(call(self.base, "POST", "/api/auth/app-link-complete", {"code": code}, token)[0], 410)
+        self.assertEqual(call(self.base, "POST", "/api/auth/app-link-poll", {"code": code, "secret": secret})[0], 410)
+        self.assertEqual(call(self.base, "POST", "/api/auth/app-link-poll", {"code": 5, "secret": []})[0], 400)
+
+    def test_the_browser_page_is_public(self):
+        status, body = call(self.base, "GET", "/app-signin?code=abc")
+        self.assertEqual(status, 200)
+        self.assertIn(b"Sign in", body)
+
+
 class StaticFileProtection(ServerCase):
     def test_save_file_and_source_are_not_downloadable(self):
         # The save file lives next to server.py by default; plant one.

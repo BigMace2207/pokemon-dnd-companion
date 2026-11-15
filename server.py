@@ -40,6 +40,7 @@ same Wi-Fi / router as this computer.
 """
 import copy
 import hashlib
+import hmac
 import http.server
 import json
 import mimetypes
@@ -928,6 +929,13 @@ def public_account(acc):
 MAX_DEVICES = 40
 CODE_TTL = 600
 CODE_TRIES = 5
+# Signing in to the desktop app with Google: Google refuses to sign anyone in inside an embedded browser window, so the app opens the
+# system browser on /app-signin?code=..., the person signs in there as usual, and the app collects the result by polling. The
+# browser never hands the app a token: it only says which account the code now belongs to (app-link-complete, signed in), and the
+# app trades its secret for a brand new session of its own (app-link-poll). A code lives ten minutes and works once.
+APP_LINKS = {}    # code -> {secretHash, expires, accountId}
+APP_LINK_TTL = 600
+APP_LINK_MAX = 500
 CHALLENGES = {}   # challengeId -> {accountId, codeHash, expires, tries, purpose, networkId, deviceHash, sentAt}
 
 
@@ -1454,6 +1462,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def _download_route(self, head=False):
         """fluxdev.org/download (the page) and /download/files/<name> (a build). True if this request was one of them."""
         path = unquote(self.path.split("?")[0])
+        if path in ("/app-signin", "/app-signin/"):
+            self.path = "/assets/signin/index.html" + ("?" + self.path.split("?", 1)[1] if "?" in self.path else "")
+            return False
         if path in ("/download", "/download/"):
             self.path = "/assets/download/index.html"   # the page is an ordinary static file under assets/
             return False
@@ -1745,6 +1756,54 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._send_json({"error": "Too many codes sent. Try again in a few minutes."}, 429)
             auth_note(f"code:{acc['id']}")
             return self._send_code(acc, "verify")
+
+        if action == "app-link-start":
+            if auth_blocked(f"link:{ip}", AUTH_LIMIT_IP):
+                return self._send_json({"error": "Too many attempts. Try again in a few minutes."}, 429)
+            auth_note(f"link:{ip}")
+            now = time.time()
+            with CAMPAIGNS_LOCK:
+                for k in [k for k, v in APP_LINKS.items() if v["expires"] < now]:
+                    del APP_LINKS[k]
+                if len(APP_LINKS) >= APP_LINK_MAX:
+                    return self._send_json({"error": "Busy. Try again in a minute."}, 503)
+                code, secret = secrets.token_urlsafe(18), secrets.token_urlsafe(32)
+                APP_LINKS[code] = {"secretHash": _hash_token(secret), "expires": now + APP_LINK_TTL, "accountId": None}
+            return self._send_json({"code": code, "secret": secret})
+
+        if action == "app-link-complete":
+            # called by the browser page, signed in: this code now belongs to the signed-in account
+            code = data.get("code")
+            with CAMPAIGNS_LOCK:
+                acc = account_from_token(self._bearer())
+                link = APP_LINKS.get(code) if isinstance(code, str) else None
+                if not acc:
+                    return self._send_json({"error": "Sign in first."}, 401)
+                if not link or link["expires"] < time.time():
+                    return self._send_json({"error": "That link has expired. Start again from the app."}, 410)
+                link["accountId"] = acc["id"]
+            return self._send_json({"ok": True})
+
+        if action == "app-link-poll":
+            code, secret = data.get("code"), data.get("secret")
+            if not isinstance(code, str) or not isinstance(secret, str):
+                return self._send_json({"error": "bad request"}, 400)
+            with CAMPAIGNS_LOCK:
+                link = APP_LINKS.get(code)
+                if link and link["expires"] < time.time():
+                    del APP_LINKS[code]
+                    link = None
+                if not link or not hmac.compare_digest(link["secretHash"], _hash_token(secret)):
+                    return self._send_json({"error": "expired"}, 410)
+                acc = ACCOUNTS.get(link["accountId"]) if link["accountId"] else None
+                if not acc:
+                    return self._send_json({"pending": True})
+                del APP_LINKS[code]       # works once
+                trust_device(acc, device_hash, self._device_label())
+                self._link_device(acc, network_id)
+                token = issue_session(acc["id"])
+                mark_dirty()
+                return self._send_json({"token": token, "account": public_account(acc)})
 
         if action in ("google", "apple"):
             provider, audience = (auth.GOOGLE, GOOGLE_CLIENT_ID) if action == "google" else (auth.APPLE, APPLE_CLIENT_ID)

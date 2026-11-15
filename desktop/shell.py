@@ -68,6 +68,9 @@ class Api:
         self._custom_frame = custom_frame   # no Windows title bar: the page draws its own minimise / maximise / close (js/windowControls.js)
         self._window = None
         self._form = None                   # the WinForms window, once it exists (see install_frame)
+        self._maxed = False                 # grown to the work area (see toggle_maximize)
+        self._normal_rect = None            # where it was before, to shrink back to
+        self._animating = False
         self._fullscreen = False
 
     def set_window_mode(self, mode):
@@ -96,6 +99,16 @@ class Api:
             self._window.load_url(self._url)
         return {"ok": True}
 
+    def open_signin(self, code):
+        """Google won't sign anyone in inside an embedded window, so the page asks for the system browser on the site's own sign-in page
+        (assets/signin). `code` is the one-off id the server just made; only that page on this site is ever opened."""
+        import re
+        import webbrowser
+        if not isinstance(code, str) or not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", code):
+            return {"error": "bad code"}
+        webbrowser.open(f"{self._url.rstrip('/')}/app-signin?code={code}")
+        return {"ok": True}
+
     def app_info(self):
         return {"version": self._version}
 
@@ -104,16 +117,7 @@ class Api:
         return {"custom": self._custom_frame, "maximized": self._is_maximized(), "fullscreen": self._fullscreen}
 
     def _is_maximized(self):
-        try:
-            return bool(self._form is not None and int(self._form.WindowState) == 2)   # FormWindowState.Maximized
-        except Exception:
-            return False
-
-    def _on_ui_thread(self, fn):
-        if self._form is None:
-            return
-        from System import Action
-        self._form.Invoke(Action(fn))
+        return self._maxed
 
     def minimize(self):
         if self._window is not None:
@@ -121,19 +125,25 @@ class Api:
         return self.get_frame()
 
     def toggle_maximize(self):
-        """Maximise to the work area (a window with no frame would otherwise cover the taskbar), or restore."""
-        if self._form is None:
+        """Grow to the work area (the screen minus the taskbar), or shrink back, with a short animation instead of a jump. The window
+        isn't put into Windows' own Maximised state (that snaps instantly and a frameless window would cover the taskbar): it is
+        simply moved to the work area, and remembers where it was."""
+        if sys.platform != "win32" or not self._hwnd or self._animating:
             return self.get_frame()
-
-        def toggle():
-            import System.Windows.Forms as WinForms
-            if int(self._form.WindowState) == 2:
-                self._form.WindowState = WinForms.FormWindowState.Normal
-            else:
-                self._form.MaximizedBounds = WinForms.Screen.FromControl(self._form).WorkingArea
-                self._form.WindowState = WinForms.FormWindowState.Maximized
-        self._on_ui_thread(toggle)
+        if self._maxed:
+            target, self._maxed = self._normal_rect, False
+        else:
+            self._normal_rect = _window_rect(self._hwnd)
+            target, self._maxed = _work_area(self._hwnd), True
+        threading.Thread(target=self._glide, args=(target,), daemon=True).start()
         return self.get_frame()
+
+    def _glide(self, target):
+        self._animating = True
+        try:
+            _animate_rect(self._hwnd, target)
+        finally:
+            self._animating = False
 
     def close(self):
         if self._window is not None:
@@ -278,6 +288,48 @@ def _resize_loop(hwnd, edge, min_w=900, min_h=600):
         time.sleep(0.008)
 
 
+def _window_rect(hwnd):
+    import ctypes
+    from ctypes import wintypes
+    r = wintypes.RECT()
+    ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(r))
+    return (r.left, r.top, r.right, r.bottom)
+
+
+def _work_area(hwnd):
+    """The screen the window is on, minus the taskbar."""
+    import ctypes
+    from ctypes import wintypes
+
+    class MONITORINFO(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT), ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+    user32 = ctypes.windll.user32
+    user32.MonitorFromWindow.restype = ctypes.c_void_p
+    user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
+    user32.GetMonitorInfoW.argtypes = [ctypes.c_void_p, ctypes.POINTER(MONITORINFO)]
+    info = MONITORINFO()
+    info.cbSize = ctypes.sizeof(MONITORINFO)
+    user32.GetMonitorInfoW(user32.MonitorFromWindow(hwnd, 2), ctypes.byref(info))   # 2 = nearest monitor
+    w = info.rcWork
+    return (w.left, w.top, w.right, w.bottom)
+
+
+def _animate_rect(hwnd, target, ms=240):
+    """Slide and stretch the window from where it is to `target`, easing out (fast at first, settling gently)."""
+    import ctypes
+    user32 = ctypes.windll.user32
+    start = _window_rect(hwnd)
+    t0 = time.perf_counter()
+    while True:
+        t = min(1.0, (time.perf_counter() - t0) * 1000 / ms)
+        k = 1 - (1 - t) ** 3
+        l, tp, r, b = (round(a + (z - a) * k) for a, z in zip(start, target))
+        user32.SetWindowPos(hwnd, 0, l, tp, r - l, b - tp, 0x0004 | 0x0010)   # SWP_NOZORDER | SWP_NOACTIVATE
+        if t >= 1.0:
+            break
+        time.sleep(0.008)
+
+
 def install_frame(window, api):
     """Once the window exists, remember its WinForms form and handle (read on the UI thread, where WinForms allows it) for the
     buttons and resize grips above."""
@@ -322,7 +374,12 @@ def run(url, title, data_dir, version="", custom_frame=False):
     api._fullscreen = mode == "fullscreen"
 
     def remember_size():   # (not while fullscreen: that is the screen's size, not the window's)
-        if not api._fullscreen:
+        if api._fullscreen:
+            return
+        if api._maxed and api._normal_rect:   # (what to open at next time is the window's own size, not the work area's)
+            l, t, r, b = api._normal_rect
+            save_prefs(data_dir, width=r - l, height=b - t)
+        else:
             save_prefs(data_dir, width=int(window.width), height=int(window.height))
 
     window.events.closing += remember_size

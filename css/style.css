@@ -194,13 +194,20 @@ body {
 }
 .main::after { content: ""; display: block; height: env(safe-area-inset-bottom, 0px); grid-column: 1 / -1; }
 
-/* The wait between pages: a slim ring and one quiet line, centred, with the empty side menu hidden until the page is ready. */
-.loading { display: grid; place-content: center; justify-items: center; gap: calc(16px * var(--s)); min-height: min(60vh, 520px); padding: calc(40px * var(--s)); color: var(--text-dim); font-size: calc(14px * var(--s)); letter-spacing: .04em; text-align: center; animation: loading-in .35s .12s ease-out both; }
-.loading::before { content: ""; width: calc(34px * var(--s)); height: calc(34px * var(--s)); border-radius: 50%; border: 2px solid rgba(128, 128, 128, .25); border-top-color: var(--text-dim); animation: loading-spin .8s linear infinite; }
-#app:has(#loading) .sidenav { visibility: hidden; }
+/* The wait between pages: a small night sky of its own, with a glowing orb inside a turning ring. The words are only for screen readers. */
+.loading { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; font-size: 0; color: transparent; overflow: hidden;
+  background:
+    radial-gradient(1.2px 1.2px at 12% 18%, #fff, transparent), radial-gradient(1px 1px at 33% 62%, #cfd8ff, transparent), radial-gradient(1.4px 1.4px at 58% 28%, #fff, transparent),
+    radial-gradient(1px 1px at 78% 74%, #ffe9b8, transparent), radial-gradient(1.2px 1.2px at 91% 40%, #fff, transparent), radial-gradient(1px 1px at 47% 90%, #cfd8ff, transparent),
+    radial-gradient(60% 50% at 70% 25%, rgba(98, 70, 190, .38), transparent 70%), radial-gradient(55% 45% at 20% 85%, rgba(40, 90, 190, .26), transparent 70%), #06060c;
+  background-size: 340px 340px, 340px 340px, 340px 340px, 340px 340px, 340px 340px, 340px 340px, auto, auto, auto;
+  animation: loading-in .4s .1s ease-out both; }
+.loading::before { content: ""; grid-area: 1 / 1; width: calc(76px * var(--s)); height: calc(76px * var(--s)); border-radius: 50%; border: 3px solid transparent; border-top-color: rgba(255, 255, 255, .92); border-left-color: rgba(190, 170, 255, .35); animation: loading-spin 1.1s cubic-bezier(.5, .1, .5, .9) infinite; }
+.loading::after { content: ""; grid-area: 1 / 1; width: calc(34px * var(--s)); height: calc(34px * var(--s)); border-radius: 50%; background: radial-gradient(circle at 36% 32%, #fff, #cdbfff 45%, #7a62d6 100%); box-shadow: 0 0 calc(34px * var(--s)) rgba(150, 120, 255, .55); animation: loading-pulse 1.8s ease-in-out infinite; }
 @keyframes loading-spin { to { transform: rotate(360deg); } }
+@keyframes loading-pulse { 50% { transform: scale(.88); box-shadow: 0 0 calc(22px * var(--s)) rgba(150, 120, 255, .4); } }
 @keyframes loading-in { from { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .loading::before { animation: none; border-top-color: rgba(128, 128, 128, .25); } .loading { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .loading, .loading::before, .loading::after { animation: none; } }
 
 h1.view-title {
   margin: 0 0 calc(5px * var(--s)); font-size: calc(34.5px * var(--s)); font-family: var(--font-display); font-weight: 700;

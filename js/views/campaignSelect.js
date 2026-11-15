@@ -40,13 +40,20 @@ export async function renderCampaignSelect(container, networkId, onEnter) {
     lists.set(side.id, list);
 
     const name = el("input", { type: "text", class: "start-input", placeholder: "Name your campaign", "aria-label": `${side.title} campaign name`, maxlength: "60" });
-    const edition = side.id === "dnd5e" ? el("select", { class: "start-input start-edition", "aria-label": "D&D rules version" }, [el("option", { value: "2014" }, "2014 rules (SRD 5.1)"), el("option", { value: "2024" }, "2024 rules (SRD 5.2)")]) : null;
+    // Which rules the new campaign uses: two themed pills (a radio group), the picked one lit like a coal
+    let chosen = "2014";
+    const pills = [["2014", "2014 rules", "SRD 5.1"], ["2024", "2024 rules", "SRD 5.2"]].map(([value, label, srd]) => {
+      const b = el("button", { type: "button", role: "radio", class: "start-ed", "aria-checked": String(value === chosen) }, [el("strong", {}, label), el("small", {}, srd)]);
+      b.addEventListener("click", () => { chosen = value; pills.forEach((p) => p.setAttribute("aria-checked", String(p === b))); });
+      return b;
+    });
+    const edition = side.id === "dnd5e" ? el("div", { class: "start-editions", role: "radiogroup", "aria-label": "D&D rules version" }, pills) : null;
     const go = el("button", { type: "button", class: "start-btn" }, "Create");
     const msg = el("p", { class: "start-msg", role: "status" });
     async function create() {
       if (!name.value.trim()) { msg.textContent = "Give it a name first."; return; }
       go.disabled = true; msg.textContent = "";
-      const result = await createCampaign(name.value.trim(), networkId, side.id, edition ? edition.value : "2014");
+      const result = await createCampaign(name.value.trim(), networkId, side.id, chosen);
       go.disabled = false;
       if (!result?.id) { msg.textContent = "Couldn't create the campaign. Check your connection and try again."; return; }
       onEnter(result.id);

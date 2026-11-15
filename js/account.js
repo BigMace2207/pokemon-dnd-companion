@@ -94,6 +94,25 @@ export async function signInWithProvider(provider, credential) {
   return finish(await api("POST", `/api/auth/${provider}`, { credential, ...device() }));
 }
 
+// Google refuses to sign anyone in inside the desktop app's embedded window, so the app hands that step to the system browser:
+// start -> the browser opens /app-signin?code=... (assets/signin) -> the person signs in there -> poll until the code has an
+// account, which comes back as a session of this app's own. Each resolves to { error }, { pending }, or { account, switched }.
+export const inDesktopApp = () => typeof window.pywebview !== "undefined";
+
+export async function startAppGoogleSignIn() {
+  const res = await api("POST", "/api/auth/app-link-start", {});
+  if (!res.ok) return { error: res.data?.error || "Couldn't start sign-in. Try again." };
+  try { await window.pywebview.api.open_signin(res.data.code); } catch { return { error: "Couldn't open your browser." }; }
+  return { code: res.data.code, secret: res.data.secret };
+}
+
+export async function pollAppGoogleSignIn(code, secret) {
+  const res = await api("POST", "/api/auth/app-link-poll", { code, secret, ...device() });
+  if (res.ok && res.data?.pending) return { pending: true };
+  if (res.status === 410) return { error: "That sign-in timed out. Try again." };
+  return finish(res);
+}
+
 // For a Google/Apple-created account with no password yet: lets it sign in
 // with email + password too (e.g. in the desktop app, where Google's popup
 // doesn't work). Resolves to { account } or { error }.

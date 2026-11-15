@@ -8,7 +8,7 @@
 import { el, field } from "./components.js";
 import {
   getAuthConfig, fetchMe, register, login, signInWithProvider, logout, setPassword,
-  mountGoogleButton, appleSignInToken, verifyCode, resendCode, startEmailVerify,
+  mountGoogleButton, appleSignInToken, verifyCode, resendCode, startEmailVerify, inDesktopApp, startAppGoogleSignIn, pollAppGoogleSignIn,
 } from "./account.js";
 
 const PROVIDER_LABEL = { google: "Google", apple: "Apple" };
@@ -41,15 +41,45 @@ export function renderAccountCard({ onAuthenticated } = {}) {
     return true;
   }
 
+  // In the desktop app Google's own button can't work (Google blocks embedded windows), so this one opens the browser and waits.
+  function appGoogleButton(msg) {
+    const btn = el("button", { class: "btn secondary auth-google-app", type: "button" }, "Continue with Google");
+    btn.addEventListener("click", async () => {
+      msg.textContent = "";
+      btn.disabled = true;
+      const started = await startAppGoogleSignIn();
+      if (started.error) { msg.textContent = started.error; btn.disabled = false; return; }
+      msg.textContent = "Finish signing in in your browser, then come back here…";
+      const until = Date.now() + 10 * 60 * 1000;
+      while (Date.now() < until && btn.isConnected) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const r = await pollAppGoogleSignIn(started.code, started.secret);
+        if (r.pending) continue;
+        if (r.error) { msg.textContent = r.error; break; }
+        msg.textContent = "";
+        afterAuth(r, msg);
+        return;
+      }
+      btn.disabled = false;
+    });
+    return btn;
+  }
+
   function providerButtons(config, msg, linkMode, account) {
     const wrap = el("div", { class: "auth-providers" });
     if (config.google && !(linkMode && account.providers.includes("google"))) {
       const slot = el("div", { class: "auth-google-slot" });
       wrap.appendChild(slot);
-      mountGoogleButton(slot, config.google, async (credential) => {
-        msg.textContent = "";
-        afterAuth(await signInWithProvider("google", credential), msg);
-      }).catch(() => { slot.remove(); });
+      const fill = () => {
+        slot.replaceChildren();
+        if (inDesktopApp()) { slot.appendChild(appGoogleButton(msg)); return; }
+        mountGoogleButton(slot, config.google, async (credential) => {
+          msg.textContent = "";
+          afterAuth(await signInWithProvider("google", credential), msg);
+        }).catch(() => { slot.remove(); });
+      };
+      fill();
+      window.addEventListener("pywebviewready", fill, { once: true });   // (the app's bridge arrives a moment after the page)
     }
     if (config.apple && !(linkMode && account.providers.includes("apple"))) {
       const btn = el("button", { class: "btn secondary auth-apple" }, "Continue with Apple");

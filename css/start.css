@@ -1,6 +1,6 @@
 /* The start screen (js/views/campaignSelect.js): two sides, Dungeons & Dragons in lava and Pokémon D&D in space with Rayquaza's constellation as its logo. */
 .start-page { position: fixed; inset: 0; z-index: 60; display: grid; grid-template-rows: minmax(0, 1fr) auto; background: #050507; color: #fff; overflow: hidden; font-family: var(--font-body, system-ui, sans-serif); }
-.start-panels { display: grid; grid-template-columns: 1fr 1fr; min-height: 0; overflow: auto; }
+.start-panels { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: minmax(min-content, 1fr); min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .28) transparent; }   /* (a long list scrolls the page, not each side) */
 .start-panel { position: relative; isolation: isolate; overflow: hidden; display: flex; flex-direction: column; align-items: center; padding: clamp(20px, 5vh, 56px) clamp(18px, 4vw, 56px) 28px; text-align: center; }
 .start-panel + .start-panel { border-left: 1px solid rgba(255, 255, 255, .1); }
 .start-bg { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
@@ -85,3 +85,15 @@ html:not([data-gfx="low"]) .start-panel.pokemon .start-nebula { animation: start
 .start-app a:hover, .start-app a:focus-visible { text-decoration-color: #fff; }
 .start-app a:focus-visible { outline: 2px solid #ffd23f; outline-offset: 3px; border-radius: 3px; }
 @media (max-width: 1340px) { .start-app { position: static; transform: none; flex-basis: 100%; text-align: center; white-space: normal; padding-top: 4px; } }
+
+/* the 2014 / 2024 rules choice: two pills, the picked one glowing like an ember */
+.start-editions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.start-ed { display: grid; gap: 1px; justify-items: center; padding: 10px 12px; border-radius: 16px; font: inherit; color: rgba(255, 255, 255, .72); cursor: pointer; background: rgba(0, 0, 0, .34); border: 1px solid rgba(233, 194, 122, .22); transition: background-color .15s, border-color .15s, color .15s, transform .12s cubic-bezier(.23, 1, .32, 1); }
+.start-ed strong { font-size: 15px; font-weight: 600; letter-spacing: .02em; }
+.start-ed small { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; opacity: .7; }
+.start-ed:hover { border-color: rgba(233, 194, 122, .55); color: #fff; }
+.start-ed:active { transform: scale(.97); }
+.start-ed:focus-visible { outline: 2px solid #ffd23f; outline-offset: 2px; }
+.start-ed[aria-checked="true"] { color: #fff; border-color: rgba(255, 170, 80, .85); background: linear-gradient(180deg, rgba(255, 140, 50, .34), rgba(190, 40, 10, .3)); }
+.start-ed[aria-checked="true"] small { opacity: 1; color: #ffd9a8; }
+@media (prefers-reduced-motion: reduce) { .start-ed { transition: none; } }
