@@ -25,6 +25,7 @@
 // the board highlights it and clicking it sends ripples round it for everyone.
 
 import { el, makeCombo } from "../components.js";
+import { confirmDialog, promptDialog } from "../systems/dnd5e/ui.js";
 import { loadSave, writeSave, addBagItem, useBagItem, bagEntries, newMon } from "../storage.js";
 import {
   hubSync, hubOp, getNpcs, getNpc, getWildList, getWildMon, listTrainers, getTrainerTeam, getFullTurn, dmAction,
@@ -38,7 +39,11 @@ import { addLogEntry } from "../log.js";
 import { describeItem } from "../itemDescriptions.js";
 import { itemIconSrc, MONEY } from "../bagIcon.js";
 import { myEggs, hatch, EGG_ICON } from "../eggs.js";
-import { hubSound, itemSound, playCry } from "../hubSound.js";
+import { hubSound, itemSound, playCry, nodeSound } from "../hubSound.js";
+// each kind of thing on the board, and each widget, has its own voice (hubSound.js NODE_VOICES)
+const voiceOfItem = (it) => (it?.type === "widget" ? `w-${it.widget}` : `hub-${it?.type}`);
+const sfx = (action, node, x = null) => nodeSound(action, voiceOfItem(node?.__item), x);
+const sfxCard = (card, x = null) => nodeSound("place", card?.type === "widget" ? `w-${card.widget}` : `hub-${card?.type}`, x);
 import { wheelIntent, wheelPx } from "../wheelIntent.js";
 import { constellation as makeConstellation, cycleConstellations } from "../constellation.js";
 import { nebulaLayer } from "../nebula.js";
@@ -266,12 +271,12 @@ export function renderHub(container, state) {
     if (!kind) { closeDex(); return; }
     const already = dexOpen;
     dexOpen = kind;
-    const onPlaceCard = (card) => { const r = stage.getBoundingClientRect(); hubSound("place"); placeCard(card, toWorld(r.left + r.width / 2, r.top + r.height / 2)); };
+    const onPlaceCard = (card) => { const r = stage.getBoundingClientRect(); sfxCard(card); placeCard(card, toWorld(r.left + r.width / 2, r.top + r.height / 2)); };
     const panel = WIDGET_KINDS.has(kind) ? dndKit.widgetsPanel(kind, { system: DND ? "dnd" : "pokemon", templates: TEMPLATES, CARD_MIME, onSwitch: (k) => toggleDex(k), onClose: closeDex, onPlace: onPlaceCard, dm: !!dmToken,
       saved: kind === "page" ? loadSavedPages().map((s) => ({ id: s.id, title: String(s.title || "Page"), count: (s.items || []).length })) : [],
       onDeleteSaved: (id) => { storeSavedPages(loadSavedPages().filter((s) => s.id !== id)); toggleDex("page"); } }) : DND ? dndKit.compendiumPanel(kind, {
       CARD_MIME, onSwitch: (k) => toggleDex(k), onClose: closeDex, openFull: (view) => { setViewState("dnd:compendium:tab", view); openFromHub("dndCompendium"); },
-      onPlace: (card) => { const r = stage.getBoundingClientRect(); hubSound("place"); placeCard(card, toWorld(r.left + r.width / 2, r.top + r.height / 2)); },
+      onPlace: (card) => { const r = stage.getBoundingClientRect(); sfxCard(card); placeCard(card, toWorld(r.left + r.width / 2, r.top + r.height / 2)); },
     }) : dexPanel(state, kind, {
       onSwitch: (k) => toggleDex(k),
       onClose: closeDex,
@@ -969,7 +974,10 @@ export function renderHub(container, state) {
   // the bar above the tools. Either way the brush size is one button showing the size you have, which opens out into
   // the three sizes when you press it.
   // a D&D campaign draws in parchment, gold, blood red, brown, dark green and ember
-  const PEN_COLORS = () => (DND ? [me.color, "#f3e6c8", "#d4a537", "#b3261e", "#7b4a2a", "#2e6b3c", "#e8652a"] : [me.color, "#f4f4f5", "#ff5a4e", "#ffd23f", "#6fdc6a", "#4ea8ff", "#e36bff"]);
+  // your own colour first, then the fixed ones: any fixed colour that is nearly the same as yours is left out (no two blues)
+  const rgbOf = (c) => { const m = /^#?([0-9a-f]{6})$/i.exec(String(c).trim()); if (!m) return null; const n = parseInt(m[1], 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  const nearColour = (a, b) => { const x = rgbOf(a), y = rgbOf(b); return !!x && !!y && Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]) < 110; };
+  const PEN_COLORS = () => [me.color, ...(DND ? ["#f3e6c8", "#d4a537", "#b3261e", "#7b4a2a", "#2e6b3c", "#e8652a"] : ["#f4f4f5", "#ff5a4e", "#ffd23f", "#6fdc6a", "#4ea8ff", "#e36bff"]).filter((c) => !nearColour(c, me.color))];
   let sizesOpen = false;
   const penArc = el("div", { class: "pen-arc", role: "toolbar", "aria-label": "Pen colour and size" });
   const phone = () => document.documentElement.classList.contains("m");
@@ -1110,7 +1118,7 @@ export function renderHub(container, state) {
     return res;
   }
 
-  // The DM turned the page: the board as it was swings away like the leaf of a book, and the clean page is already underneath.
+  // The DM turned the page: the board as it was fades away, and the clean page is already underneath.
   // (A copy of the board is the leaf's front; the real board is redrawn straight away behind it.)
   function turnPage() {
     if (calm() || document.documentElement.dataset.gfx === "low") return;
@@ -1120,7 +1128,7 @@ export function renderHub(container, state) {
     const leaf = el("div", { class: "hub-leaf" }, [el("div", { class: "hub-leaf-face front" }, copy), el("div", { class: "hub-leaf-face back" })]);
     const wrap = el("div", { class: "hub-leaf-wrap", "aria-hidden": "true" }, leaf);
     stage.append(wrap);
-    hubSound("place");
+    hubSound("close");
     leaf.addEventListener("animationend", (e) => { if (e.target === leaf) wrap.remove(); });
     setTimeout(() => wrap.remove(), 1800);
   }
@@ -1129,7 +1137,7 @@ export function renderHub(container, state) {
     menu.classList.remove("wide");
     menu.replaceChildren(
       el("p", { class: "hub-menu-title" }, "Turn the page"),
-      el("p", { class: "hub-menu-note" }, "Everyone sees the page turn to a clean one. What was on the hub (notes, drawings, cards, widgets, pages) is kept as the last page, so you can turn back to it."),
+      el("p", { class: "hub-menu-note" }, "Everyone sees the board fade to a clean page. What was on the hub (notes, drawings, cards, widgets, pages) is kept as the last page, so you can turn back to it."),
       row("Turn to a clean page", () => op({ op: "wipe" }), "primary"),
       ...(canTurnBack ? [row("Turn back to the last page", () => op({ op: "turnBack" }))] : []),   // (a null child would be written out as the word "null")
     );
@@ -2042,7 +2050,7 @@ export function renderHub(container, state) {
     if (DND) {
       say("Setting up the fight…");
       const fresh = await getFullTurn();
-      if (fresh?.combatants?.length && activeButton !== it.id && !confirm("A fight is already running. Replace it with this one?")) return;
+      if (fresh?.combatants?.length && activeButton !== it.id && !(await confirmDialog("A fight is already running at the table. Start this one in its place?", { title: "Replace the fight?", ok: "Start this one", cancel: "Keep the current fight", danger: true }))) return;
       let n = 0;
       try { n = await dndKit.startFight(it, { meId: me.id, dmToken }); } catch { n = 0; }
       if (!n) { say("That encounter has no monsters the Bestiary knows. Check it in the Encounter Builder."); return; }
@@ -2053,7 +2061,7 @@ export function renderHub(container, state) {
     }
     say("Setting up the battle…");
     const current = await getFullTurn();
-    if (current?.combatants?.length && activeButton !== it.id && !confirm("A battle is already set up. Replace it with this one?")) return;
+    if (current?.combatants?.length && activeButton !== it.id && !(await confirmDialog("A battle is already set up at the table. Start this one in its place?", { title: "Replace the battle?", ok: "Start this one", cancel: "Keep the current battle", danger: true }))) return;
     const enemies = await enemyCombatants(it);
     if (!enemies.length) { say("That encounter has no Pokémon. Add some in the DM's library or planner first."); return; }
     // every trainer who's online brings their lead Pokémon (the DM can change the line-up in Battle Control)
@@ -2095,9 +2103,13 @@ export function renderHub(container, state) {
     const [npcs, wild] = await Promise.all([getNpcs(), getWildList()]);
     const plan = [];
     for (const b of getPlan().boards) for (const n of b.nodes) if (n.type === "gen" && ["wild", "trainer", "gym"].includes(n.gen) && n.mons?.length) plan.push({ b, n });
-    const entry = (label, meta, kind, source) => {
+    // the picture beside each entry: the trainer's portrait, or the Pokémon's own sprite
+    const monIcon = (name, dex) => { const d = dex || state?.pokemonByName?.get(name)?.dex; return d ? spriteUrl(d) : ""; };
+    const entry = (label, meta, kind, source, icon = "") => {
+      const pic = el("span", { class: `hub-btn-icon${icon ? " img" : ""}`, "aria-hidden": "true" });
+      if (icon) pic.style.backgroundImage = `url("${icon}")`;
       const row = el("div", { class: `hub-src kind-${kind}`, draggable: "true", role: "button", tabindex: "0" }, [
-        el("span", { class: "hub-btn-icon", "aria-hidden": "true" }), el("span", { class: "hub-src-text" }, [el("strong", {}, label), el("span", {}, meta)]),
+        pic, el("span", { class: "hub-src-text" }, [el("strong", {}, label), el("span", {}, meta)]),
       ]);
       const payload = { label, source };
       row.addEventListener("dragstart", (e) => { e.dataTransfer.setData("application/x-hub-button", JSON.stringify(payload)); e.dataTransfer.effectAllowed = "copy"; });
@@ -2109,10 +2121,10 @@ export function renderHub(container, state) {
     const group = (title, rows, emptyText) => el("section", { class: "hub-drawer-group" }, [el("h3", {}, title), ...(rows.length ? rows : [el("p", { class: "hub-drawer-note" }, emptyText)])]);
     drawer.replaceChildren(
       el("div", { class: "hub-drawer-head" }, [el("strong", {}, "Encounters"), el("span", {}, "Drag one onto the board, or double-click it")]),
-      group("NPC trainers", npcs.map((n) => entry(n.name || "NPC", `${n.partyCount} Pokémon`, "npc", { kind: "npc", id: n.id })), "Add trainers in Control Centre → NPC Library."),
-      group("Wild Pokémon", wild.map((w) => entry(w.name || "Wild Pokémon", w.level ? `Lv. ${w.level}` : "", "wild", { kind: "wild", id: w.id })), "Add Pokémon in Control Centre → Wild Library."),
+      group("NPC trainers", npcs.map((n) => entry(n.name || "NPC", `${n.partyCount} Pokémon`, "npc", { kind: "npc", id: n.id }, trainerSpriteUrl(n.sprite) || "")), "Add trainers in Control Centre → NPC Library."),
+      group("Wild Pokémon", wild.map((w) => entry(w.name || "Wild Pokémon", w.level ? `Lv. ${w.level}` : "", "wild", { kind: "wild", id: w.id }, monIcon(w.species || w.name))), "Add Pokémon in Control Centre → Wild Library."),
       group("From your planner", plan.map(({ b, n }) => entry((n.identity?.name || n.title.replace(/^Wild encounter — /, "")).slice(0, 48), `${n.genLabel || "Encounter"} · ${n.mons.length} Pokémon`, n.gen === "wild" ? "wild" : "npc",
-        { kind: "plan", id: `${b.id}:${n.id}`, title: n.title, sprite: n.identity?.sprite || "", mons: n.mons.map((m) => ({ name: m.name, level: m.level })) })), "Roll a wild encounter, trainer or gym leader on the Whiteboard and it shows up here."),
+        { kind: "plan", id: `${b.id}:${n.id}`, title: n.title, sprite: n.identity?.sprite || "", mons: n.mons.map((m) => ({ name: m.name, level: m.level })) }, n.gen === "wild" ? monIcon(n.mons[0].name, n.mons[0].dex) : trainerSpriteUrl(n.identity?.sprite) || "")), "Roll a wild encounter, trainer or gym leader on the Whiteboard and it shows up here."),
     );
   }
   async function addButton(payload, at) {
@@ -2218,11 +2230,11 @@ export function renderHub(container, state) {
         }
       } catch { /* not ours */ }
     }
-    if (card) { e.preventDefault(); hubSound("place", e.clientX); try { placeCard(JSON.parse(card), toWorld(e.clientX, e.clientY), { x: e.clientX, y: e.clientY }); } catch { /* not ours */ } return; }
+    if (card) { e.preventDefault(); try { const dropped = JSON.parse(card); sfxCard(dropped, e.clientX); placeCard(dropped, toWorld(e.clientX, e.clientY), { x: e.clientX, y: e.clientY }); } catch { /* not ours */ } return; }
     const raw = e.dataTransfer.getData("application/x-hub-button");
     if (!raw || !dmToken) return;
     e.preventDefault();
-    hubSound("place", e.clientX);   // an encounter lands on the board
+    nodeSound("place", "hub-button", e.clientX);   // an encounter lands on the board
     addButton(JSON.parse(raw), toWorld(e.clientX, e.clientY));
   });
 
@@ -2304,7 +2316,7 @@ export function renderHub(container, state) {
     } else if (gesture.kind === "drag" && gesture.moved) {
       const node = gesture.node;
       node.style.left = `${gesture.ix + dx / view.k}px`; node.style.top = `${gesture.iy + dy / view.k}px`;
-      if (!node.classList.contains("dragging")) { node.classList.remove("pressed"); node.classList.add("dragging"); hubSound("pick", e.clientX); }
+      if (!node.classList.contains("dragging")) { node.classList.remove("pressed"); node.classList.add("dragging"); sfx("pick", node, e.clientX); }
       else hubSound("move", e.clientX);
       dragFx(gesture, e);
       if (node.__item?.type === "trainer") hotPlace(placeCardAt(e.clientX, e.clientY, node));
@@ -2439,7 +2451,7 @@ export function renderHub(container, state) {
       if (putAway && await savePageAway(g.it)) return;
       const nx = Math.round(g.ix + (e.clientX - g.sx) / view.k), ny = Math.round(g.iy + (e.clientY - g.sy) / view.k);
       g.node.style.left = `${nx}px`; g.node.style.top = `${ny}px`; g.node.style.translate = "";
-      hubSound("drop", e.clientX);
+      sfx("drop", g.node, e.clientX);
       await op({ op: "put", item: { ...g.it, x: nx, y: ny } });   // (the server moves what is attached by the same amount)
       return;
     }
@@ -2448,14 +2460,14 @@ export function renderHub(container, state) {
       g.ghost.remove(); n.classList.remove("resizing");
       n.style.width = ""; n.style.height = "";
       n.className = n.className.replace(/\bs-\S+/, `s-${size}`);
-      hubSound("drop", e.clientX);
+      sfx("drop", g.node, e.clientX);
       if (size !== (g.it.size || dndKit.defaultSize(g.it.widget))) { await op({ op: "put", item: { ...g.it, size } }); await pushAside(g.it.id, size); }
       return;
     }
     g.node?.classList?.remove("pressed");
     if ((g.kind === "drag" || g.kind === "click") && !g.moved) {
       if (g.node.matches(".hub-card, .hub-btn, .hub-prop")) tapFx(g.node, toWorld(e.clientX, e.clientY));
-      hubSound("click", e.clientX);
+      sfx("click", g.node, e.clientX);
       if (g.node.classList.contains("hub-btn")) buttonClicked(g.node);
       else if (g.node.classList.contains("hub-note")) g.node.querySelector("textarea").focus();
       else if (g.node.classList.contains("hub-text") && canEdit(g.node.__item)) {
@@ -2475,14 +2487,14 @@ export function renderHub(container, state) {
         if (place && (dmToken || it.owner === me.id)) {
           // the character card dissolves into the place, and their token goes there on the map
           if (await travelTo(place.__item, it.owner)) {
-            hubSound("drop", e.clientX);
+            sfx("drop", g.node, e.clientX);
             dissolveInto(place, null, "", "", g.node);
             await op({ op: "delete", itemId: it.id });
             return;
           }
         }
       }
-      hubSound("drop", e.clientX);
+      sfx("drop", g.node, e.clientX);
       landFx(g);
       const rx = Math.round(it.x + (e.clientX - g.sx) / view.k), ry = Math.round(it.y + (e.clientY - g.sy) / view.k);
       hideTextGhost();
@@ -2541,6 +2553,14 @@ export function renderHub(container, state) {
     const it = id && items.find((o) => o.id === id);
     if (!it) { if (clipItem) out.push({ label: "Paste", keys: "Ctrl+V", run: () => pasteClip(true) }); return; }
     select(id);
+    if (it.type === "button" && dmToken) {   // an encounter: what the DM can do with it, without opening its menu
+      const what = DND ? "monsters" : "Pokémon";
+      out.push(
+        { label: DND ? "Start this fight" : "Start this battle", run: () => startBattle(it) },
+        { label: it.reveal === "sprite" ? `Hide the ${what} on hover` : `Show the ${what} on hover`, run: () => op({ op: "put", item: { ...it, reveal: it.reveal === "sprite" ? "hidden" : "sprite" } }) },
+        { label: "Rename", run: async () => { const name = await promptDialog("Rename the encounter", "Button name", it.label); if (name && name.trim()) op({ op: "put", item: { ...it, label: name.trim().slice(0, 60) } }); } },
+        "-");
+    }
     const copyable = !(it.link || ["page", "stroke", "shape"].includes(it.type));
     if (copyable) out.push({ label: "Copy", keys: "Ctrl+C", run: () => copySelected() }, { label: "Duplicate", keys: "Ctrl+D", run: () => { if (copySelected()) pasteClip(true); } });
     if (clipItem) out.push({ label: "Paste", keys: "Ctrl+V", run: () => pasteClip() });

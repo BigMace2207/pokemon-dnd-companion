@@ -2328,7 +2328,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._send_json(n) if n else self._send_json({"error": "not found"}, 404)
 
             if parts[1:] == ["wild"]:
-                out = [{"id": wid, "name": w.get("nickname") or w.get("name"), "level": w.get("level")} for wid, w in state["wildPokemon"].items()]
+                out = [{"id": wid, "name": w.get("nickname") or w.get("name"), "species": w.get("name"), "level": w.get("level")} for wid, w in state["wildPokemon"].items()]
                 return self._send_json({"wild": out})
 
             if len(parts) == 3 and parts[1] == "wild":

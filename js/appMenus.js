@@ -73,7 +73,8 @@ function contextItems(target, x, y) {
   const ping = document.getElementById("pingWidgetBtn");
   if (ping && !ping.hidden) items.push({ label: "Ping the DM", keys: "Alt+P", run: () => ping.click() });
   if (items[items.length - 1] !== "-") items.push("-");
-  items.push({ label: document.fullscreenElement ? "Leave full screen" : "Full screen", keys: "F11", run: toggleFullscreen },
+  items.push({ label: "Hide the interface", keys: "F1", run: () => import("./shortcuts.js").then((m) => m.toggleUiHidden(true)) },
+    { label: document.fullscreenElement ? "Leave full screen" : "Full screen", keys: "F11", run: toggleFullscreen },
     { label: "Reload", keys: "Ctrl+R", run: () => location.reload() });
   return items;
 }
@@ -107,6 +108,7 @@ export function mountAppMenus() {
   window.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || e.ctrlKey || e.metaKey || e.altKey || current) return;
     if (isTyping(e.target) || dialogOpen()) return;
+    if (document.documentElement.classList.contains("ui-hidden") || performance.now() - (window.__uiShownAt || 0) < 200) return;
     if (!document.getElementById("mainView") || document.querySelector(".start-page")) return;   // only inside a campaign
     // did anything on the page react to this Esc? If nothing changes within a moment, nobody used it.
     // (only changes to things that open and close count: a board that keeps redrawing itself must not stop the menu from opening)

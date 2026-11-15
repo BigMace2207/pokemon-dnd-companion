@@ -523,6 +523,36 @@ const NODE_VOICES = {
   route: { base: 440, type: "sine", decay: 0.45, chord: [0, 7] },
   npc: { base: 349.23, type: "triangle", decay: 0.4, chord: [0, 4] },
   default: { base: 523.25, type: "sine", decay: 0.45 },
+  // ---- the shared hub: every kind of thing on the board, and every widget, has its own voice
+  "hub-note": { base: 392, type: "triangle", decay: 0.35 },                                   // a soft wooden knock
+  "hub-text": { base: 659.25, type: "sine", decay: 0.2, paper: true },                        // a light paper flick
+  "hub-button": { base: 164.81, type: "triangle", decay: 0.5, drum: true, chord: [0, 7] },    // an encounter: a low drum
+  "hub-mon": { base: 587.33, type: "sine", decay: 0.25, chirp: true },                        // a Pokémon: a chirp
+  "hub-trainer": { base: 293.66, type: "sine", decay: 0.6, chord: [0, 4, 7] },                // a trainer: a warm chord
+  "hub-item": { base: 880, type: "sine", decay: 0.18, tick: true },                           // a bag item: a bright double tick
+  "hub-prop": { base: 130.81, type: "triangle", decay: 0.3, stone: true },                    // a prop: a soft thud
+  "hub-place": { base: 246.94, type: "sine", decay: 0.8, chord: [0, 7, 12], bell: true },     // a place: a bell
+  "hub-page": { base: 1046.5, type: "sine", decay: 0.12, paper: true },                       // a page: a crisp flick
+  "hub-move": { base: 698.46, type: "triangle", decay: 0.14, tick: true },
+  "hub-monster": { base: 98, type: "triangle", decay: 0.6, drum: true, chirp: true },
+  "hub-spell": { base: 523.25, type: "sine", decay: 0.7, whoosh: true, bell: true, chord: [0, 7] },
+  "w-weather": { base: 440, type: "sine", decay: 0.6, whoosh: true, chord: [0, 5] },
+  "w-clock": { base: 987.77, type: "triangle", decay: 0.08, tock: true },
+  "w-dice": { base: 220, type: "triangle", decay: 0.1, rattle: true },
+  "w-money": { base: 1318.5, type: "sine", decay: 0.3, coin: true },
+  "w-purse": { base: 1174.66, type: "sine", decay: 0.3, coin: true },
+  "w-team": { base: 392, type: "sine", decay: 0.5, chord: [0, 4, 7, 12] },
+  "w-partyhp": { base: 349.23, type: "sine", decay: 0.5, chord: [0, 4, 9] },
+  "w-vitals": { base: 329.63, type: "sine", decay: 0.5, chord: [0, 3, 7] },
+  "w-battle": { base: 146.83, type: "triangle", decay: 0.5, drum: true, chord: [0, 7] },
+  "w-battles": { base: 196, type: "triangle", decay: 0.45, drum: true },
+  "w-turn": { base: 174.61, type: "triangle", decay: 0.4, drum: true, chord: [0, 5] },
+  "w-order": { base: 196, type: "triangle", decay: 0.4, drum: true, chord: [0, 4] },
+  "w-mine": { base: 261.63, type: "triangle", decay: 0.4, drum: true, chord: [0, 7, 12] },
+  "w-combatdm": { base: 130.81, type: "triangle", decay: 0.5, drum: true, chord: [0, 7] },
+  "w-online": { base: 523.25, type: "sine", decay: 0.4, chord: [0, 5, 9] },
+  "w-here": { base: 349.23, type: "sine", decay: 0.55, chord: [0, 7] },
+  "w-positions": { base: 293.66, type: "sine", decay: 0.55, chord: [0, 5, 10], bell: true },
 };
 /** action: "place" (a new node lands), "pick" (picked up) or "drop" (put down); kind: the node's kind (kinds.js). */
 export function nodeSound(action, kind, x = null) {
@@ -532,9 +562,50 @@ export function nodeSound(action, kind, x = null) {
   const g = action === "place" ? 1 : 0.65;
   if (v.paper) burst({ dur: 0.12, from: up ? 1800 : 2600, to: up ? 2600 : 1400, type: "bandpass", q: 1, gain: 0.04 * g, pan, attack: 0.01 });
   if (v.stone) burst({ dur: 0.25, from: 600, to: 150, gain: 0.07 * g, pan, verb: 0.4, attack: 0.008 });
-  if (v.tick) [0, 0.06].forEach((at, i) => voice({ freq: f * (i ? 1.25 : 1), at, attack: 0.004, decay: v.decay, type: v.type, gain: 0.05 * g, pan, verb: 0.4 }));
+  if (v.drum) { burst({ dur: 0.18, from: 260, to: 70, gain: 0.09 * g, pan, verb: 0.3, attack: 0.004 }); voice({ freq: v.base * (up ? 1.2 : 0.8), to: v.base * 0.5, attack: 0.004, decay: 0.3, type: "sine", gain: 0.09 * g, pan, verb: 0.3 }); }
+  if (v.rattle) [0, 0.05, 0.1].forEach((at, i) => burst({ at, dur: 0.05, from: 2400 + i * 500, to: 1200, type: "bandpass", q: 2, gain: 0.05 * g, pan, attack: 0.002 }));
+  if (v.whoosh) air({ dur: 0.45, from: up ? 900 : 300, to: up ? 300 : 1400, gain: 0.05 * g, pan });
+  if (v.tock) [0, 0.09].forEach((at, i) => voice({ freq: f * (i ? 0.7 : 1), at, attack: 0.002, decay: v.decay, type: v.type, gain: 0.06 * g, pan, verb: 0.2 }));
+  if (v.coin) [0, 0.07].forEach((at, i) => voice({ freq: f * (i ? 1.5 : 1), at, attack: 0.002, decay: v.decay, type: v.type, gain: 0.045 * g, pan, verb: 0.5 }));
+  if (v.drum || v.rattle || v.whoosh || v.tock || v.coin) { /* (voiced above) */ }
+  else if (v.tick) [0, 0.06].forEach((at, i) => voice({ freq: f * (i ? 1.25 : 1), at, attack: 0.004, decay: v.decay, type: v.type, gain: 0.05 * g, pan, verb: 0.4 }));
   else if (v.chirp) voice({ freq: f, to: f * (up ? 1.6 : 1.35), attack: 0.01, decay: v.decay, gain: 0.05 * g, pan, verb: 0.55 });
   else (v.chord || [0]).forEach((s, i) => voice({ freq: f * Math.pow(2, s / 12), at: i * (action === "place" ? 0.05 : 0.025), attack: 0.012, decay: v.decay, type: v.type, gain: (0.06 / (i + 1)) * g, pan, verb: v.bell ? 0.85 : 0.6 }));
   if (v.bell && action !== "pick") voice({ freq: f * 2.76, attack: 0.008, decay: v.decay * 0.6, gain: 0.02 * g, pan, verb: 0.85 });
   if (action === "place") air({ dur: 0.24, from: 500, to: 1600, gain: 0.02, pan });
+}
+
+/** Gathering nodes into a session on the whiteboard: "made" (a rising run, one note for each node caught), "focus" (a session on its own),
+ *  "remove" (it is dissolved). */
+export function sessionSound(kind, count = 0, x = null) {
+  if (!ready()) return;
+  const pan = panOf(x);
+  if (kind === "made") {
+    const n = Math.min(7, Math.max(1, count));
+    for (let i = 0; i < n; i++) voice({ freq: note(392, i), at: i * 0.075, attack: 0.004, decay: 0.28, type: "triangle", gain: 0.05, pan, verb: 0.5 });
+    voice({ freq: note(392, n + 2), at: n * 0.075 + 0.04, attack: 0.01, decay: 0.7, gain: 0.05, pan, verb: 0.85 });
+    air({ dur: 0.3, from: 600, to: 2400, gain: 0.02, pan });
+  } else if (kind === "focus") {
+    air({ dur: 0.35, from: 500, to: 1800, gain: 0.03, pan });
+    [0, 0.06].forEach((at, i) => voice({ freq: note(523.25, i * 2), at, attack: 0.006, decay: 0.3, gain: 0.05, pan, verb: 0.6 }));
+  } else if (kind === "remove") {
+    [0, 0.07].forEach((at, i) => voice({ freq: note(523.25, 3 - i * 2), at, attack: 0.006, decay: 0.25, type: "triangle", gain: 0.05, pan, verb: 0.4 }));
+  }
+}
+
+/** A die rolling: a quick scatter of clacks that spread out as it slows, then the clack where it lands (the larger the die, the lower
+ *  and the longer it rattles). A top roll adds a bright chime; a 1 a dull thud. `ms` is how long the roll animation lasts. */
+export function diceRollSound(sides = 20, result = null, ms = 550, x = null) {
+  if (!ready()) return;
+  const pan = panOf(x), dur = ms / 1000, clacks = Math.round(5 + Math.min(sides, 20) / 4);
+  for (let i = 0; i < clacks; i++) {
+    const t = Math.pow(i / clacks, 1.6) * (dur - 0.08);   // closer together at first, then further apart
+    const pitch = 1500 + Math.random() * 1400 - sides * 20;
+    burst({ at: t, dur: 0.035, from: pitch, to: pitch * 0.6, type: "bandpass", q: 3, gain: 0.05 * (1 - (i / clacks) * 0.5), pan: pan + (Math.random() - 0.5) * 0.3, attack: 0.002, verb: 0.25 });
+    voice({ freq: 320 + Math.random() * 120 - sides * 4, at: t, attack: 0.002, decay: 0.05, type: "triangle", gain: 0.025, pan, verb: 0.2 });
+  }
+  burst({ at: dur - 0.02, dur: 0.07, from: 900, to: 300, type: "bandpass", q: 2, gain: 0.08, pan, attack: 0.002, verb: 0.3 });   // where it lands
+  voice({ freq: 200 - Math.min(sides, 20) * 2, at: dur - 0.02, attack: 0.002, decay: 0.12, type: "triangle", gain: 0.07, pan, verb: 0.3 });
+  if (result === sides && sides > 2) [0, 0.07, 0.14].forEach((d, i) => voice({ freq: note(784, i * 2), at: dur + d, attack: 0.004, decay: 0.5, gain: 0.04, pan, verb: 0.8 }));
+  else if (result === 1 && sides > 2) voice({ freq: 110, to: 70, at: dur + 0.02, attack: 0.004, decay: 0.45, type: "sine", gain: 0.08, pan, verb: 0.4 });
 }

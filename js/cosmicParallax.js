@@ -29,7 +29,8 @@ export function mountCosmicParallax() {
     const l = document.createElement("div");
     l.className = "sky-layer";
     l.style.backgroundImage = bg;
-    l.style.backgroundSize = `${tile}px ${tile}px`;
+    const t = Math.round(tile * (window.devicePixelRatio || 1)) / (window.devicePixelRatio || 1);   // (a whole number of device pixels, so every dot is drawn the same)
+    l.style.backgroundSize = `${t}px ${t}px`;
     sky.append(l);
     return l;
   });
@@ -57,8 +58,11 @@ export function mountCosmicParallax() {
       const c = cur[i];
       c.x += (tx - c.x) * k; c.y += (ty - c.y) * k;
       if (Math.abs(tx - c.x) > 0.05 || Math.abs(ty - c.y) > 0.05) moving = true;
-      const wrapY = (((c.y % tile) + tile) % tile) - tile;   // the pattern repeats, so wrap by one tile
-      layers[i].style.transform = `translate3d(${c.x.toFixed(2)}px, ${wrapY.toFixed(2)}px, 0)`;
+      const dprT = window.devicePixelRatio || 1, tileD = Math.round(tile * dprT) / dprT;
+      const wrapY = (((c.y % tileD) + tileD) % tileD) - tileD;   // the pattern repeats, so wrap by one tile
+      // (whole device pixels only: a 1px dot moved by a fraction of a pixel is smeared across two, and the grid looks doubled)
+      const dpr = window.devicePixelRatio || 1, snap = (v) => Math.round(v * dpr) / dpr;
+      layers[i].style.transform = `translate3d(${snap(c.x)}px, ${snap(wrapY)}px, 0)`;
     });
     STAR_MOTION.forEach(([amp, rate], i) => {
       const tx = -mx * amp, ty = -my * amp - sc * rate, c = starAt[i];

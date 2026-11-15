@@ -44,3 +44,8 @@ html:has(#mainView[data-view="planner"]) :is(#quickConsoleBtn, .quick-console-pa
 .pull-tab[data-count]:not([data-count=""]) { border-color: rgba(255, 90, 78, .85); background: rgba(255, 90, 78, .22); color: #fff; animation: ping-tab-pulse 1.6s ease-out infinite; }
 @keyframes ping-tab-pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 90, 78, .65); } 70%, 100% { box-shadow: 0 0 0 12px rgba(255, 90, 78, 0); } }
 @media (prefers-reduced-motion: reduce) { .pull-tab[data-count]:not([data-count=""]) { animation: none; } }
+
+/* F1: the interface steps aside so the board can be seen on its own (js/shortcuts.js) */
+html.ui-hidden :is(.topbar, .sidenav, .pull-tabs, .pull-panel, .widget-dock, .dice-widget-panel, .quick-console-panel, .hub-top, .hub-toolbar, .hub-subbar, .hub-zoom, .hub-left-dock, .hub-drawer, .hub-team, .hub-mini, .hub-people-drop, .hub-bag-drop, .hub-sendto, .hub-empty, .pl-top, .pl-rail, .pl-fly, .pl-legend, .pl-focusbar, .pl-drawer, .pl-bgpanel, .ui-savebar) { opacity: 0 !important; pointer-events: none !important; }
+:is(.topbar, .sidenav, .pull-tabs, .pull-panel, .widget-dock, .hub-top, .hub-toolbar, .hub-subbar, .hub-zoom, .hub-left-dock, .hub-mini, .pl-top, .pl-rail, .pl-legend) { transition: opacity .25s ease; }
+html.ui-hidden { cursor: default; }

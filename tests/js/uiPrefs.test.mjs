@@ -14,9 +14,9 @@ test("sizes are rounded to the step and kept inside the range; junk is 100", () 
 });
 
 test("stored preferences are cleaned: unknown parts dropped, defaults left out, flags only when exactly on", () => {
-  assert.deepEqual(cleanUi(null), { sizes: {}, text: 100, glass: 100, dots: true, motion: "system", contrast: false, focus: false });
+  assert.deepEqual(cleanUi(null), { sizes: {}, text: 100, glass: 50, dots: true, motion: "system", contrast: false, focus: false });
   assert.deepEqual(cleanUi({ sizes: { minimap: 130, toolbar: 100, nonsense: 50, tabs: 9999 }, text: 115, motion: "on", contrast: true, focus: "yes" }),
-    { sizes: { minimap: 130, tabs: SIZE_RANGE.max }, text: 115, glass: 100, dots: true, motion: "on", contrast: true, focus: false });
+    { sizes: { minimap: 130, tabs: SIZE_RANGE.max }, text: 115, glass: 50, dots: true, motion: "on", contrast: true, focus: false });
   assert.equal(cleanUi({ glass: 5 }).glass, GLASS_RANGE.min, "never fully invisible");
   assert.equal(cleanUi({ glass: 60 }).glass, 60);
   assert.equal(cleanUi({ dots: false }).dots, false);
@@ -26,10 +26,10 @@ test("stored preferences are cleaned: unknown parts dropped, defaults left out, 
 });
 
 test("what is applied: one custom property per changed part, and the text size, nothing for the defaults", () => {
-  assert.deepEqual(cssVars(cleanUi({})), {});
-  assert.deepEqual(cssVars(cleanUi({ sizes: { minimap: 80, zoom: 125 }, text: 110 })), { "--ui-minimap": "0.8", "--ui-zoom": "1.25", "--ui-text": "1.1" });
+  assert.deepEqual(cssVars(cleanUi({})), { "--ui-glass": "0.5" }, "half see-through unless chosen");
+  assert.deepEqual(cssVars(cleanUi({ sizes: { minimap: 80, zoom: 125 }, text: 110 })), { "--ui-minimap": "0.8", "--ui-zoom": "1.25", "--ui-text": "1.1", "--ui-glass": "0.5" });
   assert.deepEqual(cssVars(cleanUi({ glass: 55 })), { "--ui-glass": "0.55" });
-  assert.deepEqual(cssVars(cleanUi({ glass: 100, dots: false })), {}, "the dots are an attribute, not a variable");
+  assert.deepEqual(cssVars(cleanUi({ glass: 100, glassSet: true, dots: false })), {}, "the dots are an attribute, not a variable");
 });
 
 test("every part has an id the stylesheet knows, a label and a hint, and ids are unique", () => {

@@ -116,6 +116,7 @@ function monFieldsRow(mon, state, onRemove) {
     options: state.pokemon.map((p) => p.name), initial: mon.name, placeholder: "Species…",
     onSelect: (n) => {
       mon.name = n; mon.dex = state.pokemonByName.get(n)?.dex ?? null; mon.ability = "";
+      if (typeof showMaxHp === "function") showMaxHp(true);
       const prev = abilitySelect.value;
       abilitySelect.innerHTML = "";
       abilitySelect.appendChild(el("option", { value: "" }, "None"));
@@ -126,14 +127,27 @@ function monFieldsRow(mon, state, onRemove) {
   const nicknameInput = el("input", { type: "text", value: mon.nickname || "", placeholder: "Nickname" });
   nicknameInput.addEventListener("input", () => { mon.nickname = nicknameInput.value; });
   const levelInput = el("input", { type: "number", min: "1", max: "100", value: String(mon.level || 5) });
-  levelInput.addEventListener("input", () => { mon.level = Number(levelInput.value) || 1; });
+  levelInput.addEventListener("input", () => { mon.level = Number(levelInput.value) || 1; showMaxHp(); });
   // Max HP shown right on the label — same "Current HP / Max HP" pattern as
   // My Team — so the DM can see at a glance how much health this NPC/Wild
   // Pokémon actually has instead of guessing from a bare number.
-  const maxHp = species ? calcAllStats(species, Math.min(100, Math.max(1, Number(mon.level) || 1)), 15, 0, 1).hp : null;
-  const hpLabel = el("span", {}, `Current HP${maxHp !== null ? ` / ${maxHp}` : ""}`);
+  const maxHpOf = () => { const sp = state.pokemonByName.get(mon.name); return sp ? calcAllStats(sp, Math.min(100, Math.max(1, Number(mon.level) || 1)), 15, 0, 1).hp : null; };
+  const hpLabel = el("span", {}, "Current HP");
   const hpInput = el("input", { type: "number", min: "0", value: mon.currentHp ?? "" });
+  // The label always shows the Pokémon's max HP once it has a species and a level, and the field fills itself with it when it is
+  // empty or was sitting at the old max (so a full-health Pokémon follows its level; a number someone typed is kept, trimmed to the max).
+  let lastMax = null;
+  function showMaxHp(speciesChanged = false) {
+    const max = maxHpOf();
+    hpLabel.textContent = `Current HP${max !== null ? ` / ${max}` : ""}`;
+    if (max === null) { lastMax = null; return; }
+    const cur = mon.currentHp;
+    if (speciesChanged || cur === null || cur === undefined || cur === "" || cur === lastMax || cur > max) { mon.currentHp = max; hpInput.value = String(max); }
+    lastMax = max;
+  }
   hpInput.addEventListener("input", () => { mon.currentHp = Number(hpInput.value) || 0; });
+  if (mon.currentHp === undefined || mon.currentHp === null || mon.currentHp === "") mon.currentHp = null;
+  showMaxHp();
   const itemCombo = makeCombo({ options: state.items.map((it) => it.name), initial: mon.item || "", placeholder: "Held item (optional)", onSelect: (n) => { mon.item = n; } });
   itemCombo.inputEl.addEventListener("input", () => { mon.item = itemCombo.inputEl.value; });
   const statusSelect = el("select", {}, STATUS_OPTIONS.map((s) => el("option", { value: s }, s)));

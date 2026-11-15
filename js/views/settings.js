@@ -14,7 +14,8 @@ import { fetchMe } from "../account.js";
 import { renderAdmin } from "./admin.js";
 import { getViewState, setViewState } from "../viewState.js";
 import { activeSystem } from "../systems/registry.js";
-import { SIZE_PARTS, SIZE_RANGE, TEXT_RANGE, GLASS_RANGE, clampPct, getUi, setUi, setPartSize, resetSizes } from "../uiPrefs.js";
+import { SIZE_PARTS, SIZE_RANGE, TEXT_RANGE, GLASS_RANGE, GLASS_DEFAULT, clampPct, getDraft as getUi, stageUi, hasDraft, commitUi, discardUi } from "../uiPrefs.js";
+import { confirmDialog } from "../systems/dnd5e/ui.js";
 
 // Same grouping the sidebar itself uses (the active game system's nav, see
 // js/systems/) -- shown in the same order so "which page is this" is obvious.
@@ -99,6 +100,7 @@ function renderFullscreenSection() {
   ]);
 }
 
+let askingToSave = false;   // (one question at a time, however many times Settings was drawn)
 export function renderSettings(container) {
   const save = loadSave();
   const cid = getSelectedCampaignId();
@@ -355,9 +357,9 @@ export function renderSettings(container) {
   }
   function sizesCard() {
     const ui = getUi();
-    const rows = SIZE_PARTS.map((p) => sizeRow({ label: p.label, hint: p.hint, range: SIZE_RANGE, value: ui.sizes[p.id] ?? 100, onChange: (pct) => setPartSize(p.id, pct) }));
+    const rows = SIZE_PARTS.map((p) => sizeRow({ label: p.label, hint: p.hint, range: SIZE_RANGE, value: ui.sizes[p.id] ?? 100, onChange: (pct) => stageUi({ sizes: { [p.id]: clampPct(pct, SIZE_RANGE) } }) }));
     const reset = el("button", { type: "button", class: "btn" }, "Reset all sizes");
-    reset.addEventListener("click", () => { resetSizes(); rows.forEach((r) => r.paint(100)); });
+    reset.addEventListener("click", () => { stageUi({ sizesAll: {} }); rows.forEach((r) => r.paint(100)); });
     return el("div", { class: "card" }, [
       el("h4", {}, "Sizes"),
       el("p", { class: "ui-note" }, "Make a part of the hub bigger or smaller. It changes as you slide, and is kept on this device. The phone layout has its own bars: a size applies wherever its bar is."),
@@ -369,11 +371,11 @@ export function renderSettings(container) {
   function backgroundCard() {
     const ui = getUi();
     // (shown as transparency, 0 to 80%: the stored value is how solid they are)
-    const glass = sizeRow({ label: "Transparency", hint: "Lets the board show through the bars and panels", neutral: 0,
-      range: { min: 0, max: 100 - GLASS_RANGE.min, step: GLASS_RANGE.step }, value: 100 - ui.glass, onChange: (pct) => setUi({ glass: 100 - pct }) });
+    const glass = sizeRow({ label: "Transparency", hint: "Lets the board show through the bars and panels", neutral: 100 - GLASS_DEFAULT,
+      range: { min: 0, max: 100 - GLASS_RANGE.min, step: GLASS_RANGE.step }, value: 100 - ui.glass, onChange: (pct) => stageUi({ glass: 100 - pct }) });
     const dots = el("div", { class: "settings-page-row" }, [
       el("span", {}, ["Dots on the board", el("br"), el("small", { class: "ui-note", style: "margin:0" }, "The faint grid of dots behind everything on the hub")]),
-      toggleSwitch(ui.dots, (v) => setUi({ dots: v })),
+      toggleSwitch(ui.dots, (v) => stageUi({ dots: v })),
     ]);
     return el("div", { class: "card" }, [el("h4", {}, "Hub look"), glass, dots]);
   }
@@ -381,11 +383,11 @@ export function renderSettings(container) {
   // ---------------- Accessibility ----------------
   function accessibilityCard() {
     const ui = getUi();
-    const text = sizeRow({ label: "Text size", hint: "Scales the text and spacing across the whole app", range: TEXT_RANGE, value: ui.text, onChange: (pct) => setUi({ text: pct }) });
-    const motion = pillGroup([["system", "Follow my device"], ["on", "Always reduce"]], ui.motion, (m) => setUi({ motion: m }));
+    const text = sizeRow({ label: "Text size", hint: "Scales the text and spacing across the whole app", range: TEXT_RANGE, value: ui.text, onChange: (pct) => stageUi({ text: pct }) });
+    const motion = pillGroup([["system", "Follow my device"], ["on", "Always reduce"]], ui.motion, (m) => stageUi({ motion: m }));
     const toggleRow = (label, hint, key, on) => el("div", { class: "settings-page-row" }, [
       el("span", {}, [label, el("br"), el("small", { class: "ui-note", style: "margin:0" }, hint)]),
-      toggleSwitch(on, (v) => setUi({ [key]: v })),
+      toggleSwitch(on, (v) => stageUi({ [key]: v })),
     ]);
     return el("div", { class: "card" }, [
       el("h4", {}, "Reading"), text,
@@ -480,10 +482,31 @@ export function renderSettings(container) {
     show(savedTab());
   }
 
+  // Looks (sizes, text size, transparency, motion...) are held back until saved: a bar at the bottom offers Save and Discard, and
+  // leaving Settings with unsaved changes asks first.
+  const saveText = el("span", {}, "You have unsaved changes to how things look.");
+  const saveBtn = el("button", { type: "button", class: "btn" }, "Save changes");
+  const discardBtn = el("button", { type: "button", class: "btn secondary" }, "Discard");
+  const saveBar = el("div", { class: "ui-savebar", role: "region", "aria-label": "Unsaved changes", hidden: "" }, [saveText, el("div", { class: "ui-savebar-btns" }, [discardBtn, saveBtn])]);
+  const syncBar = () => { saveBar.hidden = !hasDraft(); };
+  saveBtn.addEventListener("click", () => { commitUi(); show(savedTab()); });
+  discardBtn.addEventListener("click", () => { discardUi(); show(savedTab()); });
+  window.addEventListener("ui-draft-changed", syncBar);
+  window.addEventListener("hashchange", async function leaving() {
+    if (saveBar.isConnected && /^#settings/.test(location.hash)) return;
+    window.removeEventListener("hashchange", leaving);
+    window.removeEventListener("ui-draft-changed", syncBar);
+    if (!hasDraft() || askingToSave) return;
+    askingToSave = true;
+    const keep = await confirmDialog("You changed how things look but haven't saved. Save the changes?", { title: "Save your changes?", ok: "Save changes", cancel: "Discard" });
+    askingToSave = false;
+    if (keep) commitUi(); else discardUi();
+  });
   container.innerHTML = "";
   container.appendChild(el("h1", { class: "view-title" }, "Settings"));
-  container.append(tabBar, panel);
+  container.append(tabBar, panel, saveBar);
   show(savedTab());
+  syncBar();
   // The Members tab only exists for the campaign's owner; add it as soon as we know.
   loadInfo().then((info) => {
     // Only the tab bar is redrawn -- never the panel, which may have typing in it.

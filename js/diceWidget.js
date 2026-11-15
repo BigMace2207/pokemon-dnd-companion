@@ -4,6 +4,7 @@
 // just need a quick roll outside of an actual attack.
 
 import { el } from "./components.js";
+import { diceRollSound } from "./hubSound.js";
 import { widgetDock, dockIcon } from "./widgetDock.js";
 
 const DICE_SIDES = [4, 6, 8, 10, 12, 20];
@@ -35,9 +36,11 @@ export function mountDiceWidget() {
         if (die.classList.contains("rolling")) return;
         die.classList.add("rolling");
         resultEl.textContent = "";
+        const result = 1 + Math.floor(Math.random() * sides);
+        diceRollSound(sides, result, 550);
         setTimeout(() => {
           die.classList.remove("rolling");
-          resultEl.textContent = String(1 + Math.floor(Math.random() * sides));
+          resultEl.textContent = String(result);
         }, 550);
       });
       panel.appendChild(el("div", { class: "dice-widget-item" }, [die, resultEl]));

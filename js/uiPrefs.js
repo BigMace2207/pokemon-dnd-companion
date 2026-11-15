@@ -32,11 +32,12 @@ export function clampPct(v, range) {
   return Math.max(range.min, Math.min(range.max, Math.round(n / range.step) * range.step));
 }
 
-export const DEFAULTS = { sizes: {}, text: 100, glass: 100, dots: true, motion: "system", contrast: false, focus: false };
+export const GLASS_DEFAULT = 50;   // half see-through unless someone has chosen otherwise
+export const DEFAULTS = { sizes: {}, text: 100, glass: GLASS_DEFAULT, dots: true, motion: "system", contrast: false, focus: false };
 
 /** Anything that was stored (or typed) turned into safe preferences: unknown parts dropped, numbers clamped, defaults left out. */
 export function cleanUi(raw) {
-  const out = { sizes: {}, text: 100, glass: 100, dots: true, motion: "system", contrast: false, focus: false };
+  const out = { sizes: {}, text: 100, glass: GLASS_DEFAULT, dots: true, motion: "system", contrast: false, focus: false };
   const sizes = raw && typeof raw.sizes === "object" && raw.sizes ? raw.sizes : {};
   for (const id of Object.keys(sizes)) {
     if (!PART_IDS.has(id)) continue;
@@ -44,7 +45,9 @@ export function cleanUi(raw) {
     if (v !== 100) out.sizes[id] = v;
   }
   if (raw && raw.text != null) out.text = clampPct(raw.text, TEXT_RANGE);
-  if (raw && raw.glass != null) out.glass = clampPct(raw.glass, GLASS_RANGE);
+  // (the old default of 100 was never a choice: only a value someone moved the slider to, or one saved with the flag, is kept)
+  const chose = !!raw && raw.glass != null && (raw.glassSet === true || Number(raw.glass) !== 100);
+  if (chose) { out.glass = clampPct(raw.glass, GLASS_RANGE); out.glassSet = true; }
   out.dots = !raw || raw.dots !== false;   // (the dots are on unless they were switched off)
   if (raw && raw.motion === "on") out.motion = "on";
   out.contrast = !!raw && raw.contrast === true;
@@ -81,7 +84,7 @@ export function applyUi(ui = getUi(), root = document.documentElement) {
 
 /** Change some preferences, keep them on this device and apply them now. Returns the new preferences. */
 export function setUi(patch) {
-  const next = cleanUi({ ...getUi(), ...patch, sizes: { ...getUi().sizes, ...(patch.sizes || {}) } });
+  const next = cleanUi({ ...getUi(), ...patch, ...(patch.glass !== undefined ? { glassSet: true } : {}), sizes: { ...getUi().sizes, ...(patch.sizes || {}) } });
   try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* storage blocked: just this visit */ }
   applyUi(next);
   window.dispatchEvent(new CustomEvent("ui-prefs-changed", { detail: next }));
@@ -89,3 +92,29 @@ export function setUi(patch) {
 }
 export const setPartSize = (id, pct) => setUi({ sizes: { [id]: clampPct(pct, SIZE_RANGE) } });
 export const resetSizes = () => { const cur = getUi(); try { localStorage.setItem(KEY, JSON.stringify(cleanUi({ ...cur, sizes: {} }))); } catch { /* storage blocked */ } applyUi(getUi()); window.dispatchEvent(new CustomEvent("ui-prefs-changed", { detail: getUi() })); };
+
+// ---- Changes held back until they are saved (Settings): text size, transparency and the rest only change what is on screen once
+// they are saved, so the page doesn't move under the pointer while someone is still choosing.
+let draft = null;
+export const hasDraft = () => draft !== null;
+export const getDraft = () => (draft ? cleanUi(draft) : getUi());
+/** Hold a change: `sizes` merges part sizes, `sizesAll` replaces them all. Nothing on screen changes. */
+export function stageUi(patch) {
+  const base = draft ? cleanUi(draft) : getUi();
+  const { sizes, sizesAll, ...rest } = patch;
+  draft = cleanUi({ ...base, ...rest, ...(rest.glass !== undefined ? { glassSet: true } : {}), sizes: sizesAll || { ...base.sizes, ...(sizes || {}) } });
+  window.dispatchEvent(new CustomEvent("ui-draft-changed"));
+}
+/** Save what was held back and apply it. */
+export function commitUi() {
+  if (!draft) return getUi();
+  const next = cleanUi(draft);
+  draft = null;
+  try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* storage blocked: just this visit */ }
+  applyUi(next);
+  window.dispatchEvent(new CustomEvent("ui-prefs-changed", { detail: next }));
+  window.dispatchEvent(new CustomEvent("ui-draft-changed"));
+  return next;
+}
+/** Throw away what was held back. */
+export function discardUi() { draft = null; window.dispatchEvent(new CustomEvent("ui-draft-changed")); }

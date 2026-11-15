@@ -242,7 +242,7 @@ html.planner-full .main::after { display: none; }
 
 /* ---- Library cards and the Trainer / Team slots (boardView.js "Slots") ------------------------------------------- */
 .pl-node[data-kind="libmon"] { --k: #ff8a5c; border-radius: 22px 6px 22px 6px; }
-.pl-node[data-kind="libtrainer"] { --k: #8f7cf0; border-radius: 6px 22px 6px 22px; }
+.pl-node[data-kind="libtrainer"] { --k: #5f93e6; border-radius: 4px 20px 4px 20px; }   /* (the same as a generated trainer) */
 /* the plug on a card, like the notch on a Scratch block: it fits a slot's socket */
 .pl-plug { position: absolute; left: -11px; top: 34px; width: 20px; height: 26px; border-radius: 6px 0 0 6px; background: var(--k); border: 2px solid var(--text); border-right: 0; }
 .pl-plug::after { content: ""; position: absolute; left: 5px; top: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--ink, #111); opacity: .5; }
@@ -333,3 +333,4 @@ html.planner-full .main::after { display: none; }
 
 /* the selected node (what Ctrl+C copies) */
 .pl-node.selected { outline: 3px solid #cdbfff; outline-offset: 5px; }
+.pl-savebar { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }

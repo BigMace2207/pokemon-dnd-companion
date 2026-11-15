@@ -73,8 +73,8 @@ export default {
     { id: "library", label: "LIBRARY", title: "Library", render: (host) => renderLibrary(host), wide: true },
     // the DM's own, lower down and only once the DM password is in: music and sound effects, and the party at a glance
     { id: "pings", label: "PINGS", title: "Pings", render: (host) => import("../../dmPings.js").then((m) => m.renderPingsTab(host)), dm: true },
-    { id: "sound", label: "SOUND", title: "Music and sound", render: (host, state, token) => renderSoundDrawer(host, token), dm: true },
-    { id: "party", label: "PARTY", title: "The party", render: (host, state) => renderDmParty(host, state), dm: true, wide: true },
+    { id: "sound", label: "SOUND", title: "Music and Sound", render: (host, state, token) => renderSoundDrawer(host, token), dm: true },
+    { id: "party", label: "PARTY", title: "The Party", render: (host, state) => renderDmParty(host, state), dm: true, wide: true },
   ],
   // pages that aren't in the sidebar but can still be opened (the hub's Pokédex and Move Dex pull-outs link to them)
   hiddenViews: [{ id: "pokedex", label: "Pokédex", render: renderPokedex }, { id: "moves", label: "Move Dex", render: renderMoves }, { id: "mapeditor", label: "Map editor", render: renderMapEditor }],

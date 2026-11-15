@@ -65,7 +65,7 @@ export default {
   ],
   // pull tabs on the right edge, beside LOG: the dice roller, open over any page
   pullTabs: [
-    { id: "dice", label: "DICE", title: "Dice roller", render: (host, state) => import("./views/dice.js").then((m) => m.renderDice(host, state)) },
+    { id: "dice", label: "DICE", title: "Dice Roller", render: (host, state) => import("./views/dice.js").then((m) => m.renderDice(host, state)) },
     // the DM's own, lower down and only once DM access is on: who has pinged you, in order
     { id: "pings", label: "PINGS", title: "Pings", render: (host) => import("../../dmPings.js").then((m) => m.renderPingsTab(host)), dm: true },
   ],

@@ -18,6 +18,7 @@ import { gridRef, areaAt } from "../mapView.js";
 import { fetchPublicCombat, getCombat, mutateCombat, publishCombat } from "../systems/dnd5e/combatState.js";
 import { orderedCombatants, currentCombatant, nextTurn, prevTurn } from "../systems/dnd5e/engine/encounter.js";
 import { roll, rollD20 } from "../systems/dnd5e/engine/dice.js";
+import { diceRollSound } from "../hubSound.js";
 import { activeCharacter } from "../systems/dnd5e/store.js";
 import { getPlan } from "../planner/store.js";
 import { kindOf } from "../planner/kinds.js";
@@ -455,6 +456,7 @@ export const WIDGETS = [
         let entry;
         if (sides === 20) { const r = rollD20({ mode: st.mode }); entry = { total: r.total, text: `d20${st.mode === "normal" ? "" : st.mode === "adv" ? " advantage" : " disadvantage"}: ${r.rolls.join(", ")}${r.crit ? " (natural 20!)" : r.fumble ? " (natural 1)" : ""}` }; }
         else { const r = roll(`1d${sides}`); entry = { total: r.total, text: `d${sides}` }; }
+        diceRollSound(sides, entry.total, 450);
         st.log.unshift(entry); st.log.length = Math.min(st.log.length, 4); showLog();
       };
       const dieBtn = (n, cls = "") => { const b = el("button", { type: "button", class: `hub-die${cls}` }, `d${n}`); b.addEventListener("click", () => rollIt(n)); return b; };

@@ -107,7 +107,9 @@ html.hub-full .topbar { display: none; }
 .hub-btn:hover { transform: translateY(-2px); box-shadow: 0 18px 44px rgba(0, 0, 0, .55), 0 0 0 1px #fff inset; }
 .hub-btn:active { transform: scale(.97); }
 .hub-btn-icon { width: 28px; height: 28px; border-radius: 50%; flex: none; position: relative; background: radial-gradient(circle at 40% 32%, #5a4aa8, #14122b 75%); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .4); }   /* (no Poké Ball: crossed swords, as on the D&D hub) */
-.hub-btn-icon::after { content: "94"; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -52%); font-size: 15px; line-height: 1; color: #fff; }
+.hub-btn-icon.img { background: #e4e4e7 center 20% / 150% no-repeat; box-shadow: 0 0 0 2px #18181b inset; image-rendering: pixelated; }
+.hub-btn-icon.img::after { display: none; }
+.hub-btn-icon::after { content: "\2694"; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -52%); font-size: 15px; line-height: 1; color: #fff; }
 .kind-npc .hub-btn-icon { background: radial-gradient(circle at 50% 36%, #fafafa 0 22%, transparent 23%), radial-gradient(ellipse at 50% 100%, #fafafa 0 45%, transparent 46%), #4ea8ff; box-shadow: none; }
 .kind-npc .hub-btn-icon::after { display: none; }
 .hub-btn-live { display: none; font-size: 12px; font-weight: 700; color: #fff; background: var(--h-live); border-radius: 999px; padding: 4px 8px; }
@@ -1382,13 +1384,13 @@ html:not([data-gfx="low"]) .hub-save-box:not([hidden]) { animation: hub-save-in 
 /* the DM turns the page: the board swings away like the leaf of a book (hub.js turnPage) */
 .hub-leaf-wrap { position: absolute; inset: 0; pointer-events: none;   /* (no z-index: the board's own layer, so the bars stay on top of the turning page) */
   overflow: hidden; perspective: 2600px; perspective-origin: 14% 50%; }
-.hub-leaf { position: absolute; inset: 0; transform-origin: 0 50%; transform-style: preserve-3d; will-change: transform; animation: hub-leaf-turn 1.2s cubic-bezier(.5, .05, .3, 1) both; }
+.hub-leaf { position: absolute; inset: 0; will-change: opacity; animation: hub-leaf-turn 1s cubic-bezier(.4, 0, .6, 1) both; }
 .hub-leaf-face { position: absolute; inset: 0; overflow: hidden; backface-visibility: hidden; -webkit-backface-visibility: hidden; background: #0d0a0a; }
 .hub:not(.lava) .hub-leaf-face { background: #09090c; }
 .hub-leaf-face.back { transform: rotateY(180deg); background: repeating-linear-gradient(to bottom, transparent 0 35px, rgba(255, 255, 255, .06) 35px 36px), linear-gradient(90deg, #1a1311, #0d0a0a); }
 .hub:not(.lava) .hub-leaf-face.back { background: repeating-linear-gradient(to bottom, transparent 0 35px, rgba(255, 255, 255, .06) 35px 36px), linear-gradient(90deg, #17171d, #09090c); }
-.hub-leaf-face::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0, 0, 0, .6), rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, .4)); opacity: 0; animation: hub-leaf-shade 1.2s cubic-bezier(.5, .05, .3, 1) both; }
-@keyframes hub-leaf-turn { 0% { transform: rotateY(0deg); opacity: 1; } 45% { transform: rotateY(-88deg); } 90% { transform: rotateY(-170deg); opacity: 1; } 100% { transform: rotateY(-178deg); opacity: 0; } }
+.hub-leaf-face.back { display: none; }   /* (the old board simply fades away: no turning leaf) */
+@keyframes hub-leaf-turn { 0% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes hub-leaf-shade { 0%, 100% { opacity: 0; } 45% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .hub-leaf-wrap { display: none; } .hub-text.on-page.hub-enter, .hub-text.on-page.hub-enter::after, .hub-save-box { animation: none !important; } }
 

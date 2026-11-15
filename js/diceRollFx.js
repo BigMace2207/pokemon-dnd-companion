@@ -5,6 +5,7 @@
 // the time this is called, this just narrates it.
 
 import { el } from "./components.js";
+import { diceRollSound } from "./hubSound.js";
 
 let activeCard = null;
 let hideTimer = null;
@@ -24,6 +25,7 @@ export function showDiceRollFx({ label, d20, hit, resultText }) {
   ]);
   document.body.appendChild(card);
   activeCard = card;
+  diceRollSound(20, d20, 600);
 
   settleTimer = setTimeout(() => {
     die.textContent = String(d20);

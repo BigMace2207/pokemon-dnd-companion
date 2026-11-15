@@ -30,7 +30,7 @@
   });
   var t = Number(ui.text);
   if (t >= 85 && t <= 150) root.style.setProperty("--ui-text", String(t / 100));
-  var g = Number(ui.glass);
+  var g = (ui.glass != null && (ui.glassSet === true || Number(ui.glass) !== 100)) ? Number(ui.glass) : 50;   // (half see-through unless chosen; js/uiPrefs.js)
   if (g >= 20 && g < 100) { root.style.setProperty("--ui-glass", String(g / 100)); root.setAttribute("data-glass", "on"); }
   if (ui.dots === false) root.setAttribute("data-hub-dots", "off");
   if (ui.motion === "on") root.setAttribute("data-reduce-motion", "on");

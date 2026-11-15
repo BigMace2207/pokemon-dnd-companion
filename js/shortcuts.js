@@ -26,8 +26,18 @@ function closeFloatingPanels() {
   return closed;
 }
 
+export function toggleUiHidden(on) {
+  const root = document.documentElement;
+  const hide = on === undefined ? !root.classList.contains("ui-hidden") : on;
+  root.classList.toggle("ui-hidden", hide);
+  if (!hide) window.__uiShownAt = performance.now();   // (so the Esc that brought it back doesn't also open the pause menu)
+}
+
 export function mountShortcuts() {
   window.addEventListener("keydown", (e) => {
+    // F1: hide the interface to see the board on its own; press it again (or Esc) to bring it back
+    if (e.key === "F1" && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); toggleUiHidden(); return; }
+    if (e.key === "Escape" && document.documentElement.classList.contains("ui-hidden")) { toggleUiHidden(false); return; }
     // the ones the right-click menu lists (js/appMenus.js)
     if (e.ctrlKey && e.key === ",") { e.preventDefault(); location.hash = "#settings"; return; }
     if (e.altKey && !e.ctrlKey && !e.metaKey) {

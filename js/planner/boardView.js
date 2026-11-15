@@ -25,7 +25,8 @@ import { placeTypesFor, placeOnMaps } from "./places.js";
 import { syncPlacePins } from "./placeSync.js";
 import { gridRef } from "../mapView.js";
 import { cleanMon, TEAM_MAX } from "./board.js";
-import { getNpcs, getNpc, getWildList, getWildMon } from "../network.js";
+import { getNpcs, getNpc, getWildList, getWildMon, dmAction } from "../network.js";
+import { ensureDmToken } from "../systems/dnd5e/dmAccess.js";
 import { spriteUrl } from "../sprites.js";
 import { trainerSpriteUrl, openTrainerPortraitPicker } from "../trainerSpritePicker.js";
 import { dexPanel, CARD_MIME } from "../hubDex.js";
@@ -34,7 +35,7 @@ import { generateMon } from "./pokeGenerators.js";
 import { currentEncounterLevel, relevelTeam, partyAverage, currentDndParty } from "./partyLevel.js";
 import { askLevel } from "../levelAsk.js";
 import { wheelIntent } from "../wheelIntent.js";
-import { hubSound, nodeSound } from "../hubSound.js";
+import { hubSound, nodeSound, sessionSound } from "../hubSound.js";
 import { createStarCanvas, HUB_STAR_LAYERS } from "../starCanvas.js";
 import { nebulaLayer } from "../nebula.js";
 import { constellation as makeConstellation, cycleConstellations } from "../constellation.js";
@@ -52,7 +53,7 @@ function play(e, frames, ms = 220, easing = "cubic-bezier(.2,.9,.3,1.15)") {
 const screenX = (e) => { const r = e?.getBoundingClientRect?.(); return r ? r.left + r.width / 2 : null; };
 
 let nodeClip = null;   // the copied node, kept across boards (module level)
-const SIZE = { note: [300, 240], list: [280, 300], gen: [320, 260], text: [210, 150], dungeon: [380, 320], libmon: [230, 190], libtrainer: [260, 240], place: [320, 500] };
+const SIZE = { note: [300, 240], list: [280, 300], gen: [320, 260], text: [210, 150], dungeon: [380, 320], libmon: [230, 190], libtrainer: [320, 300], place: [320, 500] };
 const SLOT_KINDS = new Set(["trainer", "gym", "wildmon"]);
 const MON_LINE = /^[A-Z][^()]*\(Lv \d+/;   // a generated "Pidgey (Lv 6, Normal/Flying) — ..." line, shown as a team row instead
 const DUNGEON_OPEN = [820, 640];
@@ -367,13 +368,15 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     } else if (n.type === "place") {
       body.append(...placeBody(n));
     } else if (n.type === "libmon") {
-      body.append(...[monCard(n.mon), readonly ? null : el("p", { class: "pl-plug-hint" }, "Drag me into a trainer's Team slot")].filter(Boolean));
+      body.append(...[monCard(n.mon), readonly ? null : el("p", { class: "pl-plug-hint" }, "Drag me into a trainer's Team slot"), saveBar(n)].filter(Boolean));
     } else if (n.type === "libtrainer") {
-      body.append(...[trainerCard(n), n.mons?.length ? levelBox(n) : null, readonly ? null : el("p", { class: "pl-plug-hint" }, "Drag me into a trainer or gym leader's Trainer slot")].filter(Boolean));
+      // the same card as a generated trainer: a Trainer slot and a Team slot (and still draggable into another trainer's slot)
+      body.append(...[slotsEl(asTrainer(n)), readonly ? null : el("p", { class: "pl-plug-hint" }, "Drag my title bar into a trainer or gym leader's Trainer slot"), saveBar(n)].filter(Boolean));
     } else if (n.type === "gen") {
       const kind = kindOf(n);
       const slots = hasSlots(n);
       if (slots) body.append(slotsEl(n));
+      if (slots && SLOT_KINDS.has(kind)) body.append(...[saveBar(n)].filter(Boolean));
       // the slots show the team (and who the trainer is), so the generated text doesn't repeat or contradict them
       const shown = (n.lines || []).filter((l) => !(slots && n.mons?.length && (MON_LINE.test(l) || /^#.*team/i.test(l))) && !(n.identity && /^Leader:/.test(l)));
       const lines = shown.map((l) => (l.startsWith("#") ? el("h5", {}, l.replace(/^#\s?/, "")) : el("p", {}, l)));
@@ -782,6 +785,43 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
       ].filter(Boolean)),
     ]);
   }
+  // a library trainer shows its own name and portrait in the Trainer slot until one is chosen
+  const asTrainer = (n) => (n.identity ? n : { ...n, identity: { name: n.title || "Trainer", npcId: n.npcId || "", sprite: n.sprite || "" } });
+  // ---- save to the DM's libraries (trainers to the NPC library, wild Pokémon to the Wild library). Only what is on the card is saved:
+  // a trainer's Pokémon stay with the trainer and never turn up in the Wild library by themselves.
+  const libMon = (m) => ({ id: uid(), dex: m.dex || null, name: m.name, nickname: m.nickname || "", level: m.level || 5, currentHp: null, item: m.item || "", ability: m.ability || "", status: "None", moves: [...(m.moves || []), "", "", "", ""].slice(0, 4) });
+  function saveBar(n) {
+    if (readonly || !isDmMode()) return null;
+    const kind = kindOf(n);
+    const trainerish = n.type === "libtrainer" || kind === "trainer" || kind === "gym";
+    const wildish = n.type === "libmon" || kind === "wildmon";
+    if (!trainerish && !wildish) return null;
+    const known = trainerish ? (n.npcId || n.identity?.npcId) : (n.type === "libmon" ? n.source?.id : "");
+    const label = trainerish ? (known ? "Update in NPC library" : "Save to NPC library") : (n.type === "libmon" ? (known ? "Update in Wild library" : "Save to Wild library") : "Save to Wild library");
+    const b = btn(label, async () => {
+      const token = await ensureDmToken();
+      if (!token) { toast("Only the campaign's DMs can save to the libraries.", "bad"); return; }
+      try {
+        if (trainerish) {
+          const name = (n.identity?.name || n.title || "Trainer").replace(/^Gym Leader /i, "");
+          const res = await dmAction(token, "npcSave", { npcId: known || null, name, sprite: n.identity?.sprite || n.sprite || "", team: { party: (n.mons || []).map(libMon) } });
+          if (!res?.ok) throw new Error("not saved");
+          if (res.npcId && res.npcId !== known) edit((bd) => { const x = nodeOf(bd, n.id); if (!x) return; if (x.type === "libtrainer") x.npcId = res.npcId; else x.identity = { name: x.identity?.name || name, npcId: res.npcId, sprite: x.identity?.sprite || "" }; });
+          toast(`${name} is in the NPC library.`, "good");
+        } else {
+          const mons = n.type === "libmon" ? [n.mon] : (n.mons || []);
+          if (!mons.length) { toast("There is no Pokémon on this card to save.", "bad"); return; }
+          let last = "";
+          for (const m of mons) { const r = await dmAction(token, "wildSave", { wildId: n.type === "libmon" && known ? known : null, mon: libMon(m) }); if (!r?.ok) throw new Error("not saved"); last = r.wildId; }
+          if (n.type === "libmon" && last && last !== known) edit((bd) => { const x = nodeOf(bd, n.id); if (x) x.source = { kind: "wild", id: last }; });
+          toast(mons.length > 1 ? `${mons.length} Pokémon are in the Wild library.` : `${mons[0].name} is in the Wild library.`, "good");
+        }
+        hubSound("snap", screenX(nodeEls.get(n.id)));
+        drawNodes();
+      } catch { toast("That couldn't be saved. Try again in a moment.", "bad"); }
+    }, "btn secondary tiny");
+    return el("div", { class: "pl-savebar" }, [b]);
+  }
   function trainerCard(n) {
     return el("div", { class: "pl-trainer-card" }, [
       el("div", { class: "pl-trainer-top" }, [n.sprite ? el("img", { class: "pl-trainer-sprite", src: trainerSpriteUrl(n.sprite), alt: "" }) : el("span", { class: "pl-avatar" }, (n.title || "?")[0].toUpperCase()), el("strong", {}, n.title)]),
@@ -1000,8 +1040,8 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     legend.replaceChildren(...board.sessions.map((s) => {
       const count = board.nodes.filter((n) => (n.sessions || []).includes(s.id)).length;
       const row = el("div", { class: "pl-legend-row" }, [el("span", { class: "pl-swatch", style: `background:${s.color}` }), el("span", {}, `Session ${s.n}`), el("span", { class: "dnd-muted" }, `${count}`)]);
-      row.append(iconBtn("eye", `View only session ${s.n}`, () => focusSession(focusId === s.id ? null : s.id)));
-      if (!readonly) row.append(iconBtn("close", `Remove session ${s.n} (keeps the nodes)`, () => { if (focusId === s.id) focusId = null; edit((b) => removeSession(b, s.id)); drawSessions(); }));
+      row.append(iconBtn("eye", `View only session ${s.n}`, () => { sessionSound("focus"); focusSession(focusId === s.id ? null : s.id); }));
+      if (!readonly) row.append(iconBtn("close", `Remove session ${s.n} (keeps the nodes)`, () => { sessionSound("remove"); if (focusId === s.id) focusId = null; edit((b) => removeSession(b, s.id)); drawSessions(); }));
       return row;
     }));
     legend.hidden = !board.sessions.length;
@@ -1082,7 +1122,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     edit((b) => { made = addSession(b, shape); });
     setTool("move");
     drawSessions();
-    if (made) toast(`Session ${made.n} created.`, "good");
+    if (made) { toast(`Session ${made.n} created.`, "good"); sessionSound("made", nodesInShape(board.nodes, shape).length); }
   }
 
   vp.addEventListener("wheel", (ev) => {
