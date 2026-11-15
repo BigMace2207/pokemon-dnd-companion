@@ -1440,3 +1440,7 @@ html:not([data-gfx="low"]) .hub-save-box:not([hidden]) { animation: hub-save-in 
 
 /* a copied-and-pasted item shows what is selected */
 .hub-selected { outline: 2px solid rgba(205, 191, 255, .85); outline-offset: 4px; border-radius: 6px; }
+
+/* the weather buttons stay on one line whatever the widget's width, so nothing below them is pushed out of the widget */
+.hub-wpicks { flex-wrap: nowrap; }
+.hub-wpick { flex: 1 1 0; min-width: 0; max-width: calc(40px * var(--s)); height: auto; aspect-ratio: 1; }

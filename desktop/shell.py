@@ -68,11 +68,25 @@ class Api:
         self._custom_frame = custom_frame   # no Windows title bar: the page draws its own minimise / maximise / close (js/windowControls.js)
         self._window = None
         self._form = None                   # the WinForms window, once it exists (see install_frame)
+        self._start_fullscreen = False      # the saved mode is Fullscreen: switched on once the window exists (see install_frame)
         self._borderless = False            # the saved "Borderless" mode (the window has no frame at all)
         self._maxed = False                 # grown to the work area (see toggle_maximize)
         self._normal_rect = None            # where it was before, to shrink back to
         self._animating = False
         self._fullscreen = False
+
+    def _frameless_again(self):
+        """Back to no frame at all. (pywebview restores the border it noted when fullscreen began, and for a window that started
+        fullscreen that was Windows' own, so a title bar came back when you left fullscreen.)"""
+        if self._custom_frame and self._form is not None and sys.platform == "win32":
+            def fix():
+                import System.Windows.Forms as WinForms
+                self._form.FormBorderStyle = getattr(WinForms.FormBorderStyle, "None")
+            try:
+                from System import Action
+                self._form.Invoke(Action(fix))
+            except Exception:
+                pass
 
     def _update_border(self):
         """Windows 11 draws a thin line round a frameless window. In fullscreen and borderless it should have none."""
@@ -87,6 +101,8 @@ class Api:
         if self._window is not None and want_fullscreen != self._fullscreen:
             self._window.toggle_fullscreen()
             self._fullscreen = want_fullscreen
+            if not want_fullscreen:
+                self._frameless_again()
         self._update_border()
         return {"mode": mode, "needsRestart": mode == "borderless"}
 
@@ -98,6 +114,8 @@ class Api:
         if self._window is not None:
             self._window.toggle_fullscreen()
             self._fullscreen = not self._fullscreen
+            if not self._fullscreen:
+                self._frameless_again()
             self._update_border()
         return {"fullscreen": self._fullscreen}
 
@@ -365,6 +383,9 @@ def install_frame(window, api):
                 api._hwnd = int(form.Handle.ToInt64())
                 api._update_border()
             form.Invoke(Action(grab))
+            if api._start_fullscreen:   # the saved mode is Fullscreen: now that the window exists and has no frame, go fullscreen
+                api._start_fullscreen = False
+                api.toggle_fullscreen()
         except Exception as e:
             _f11_log(f"window frame not installed: {e}")
 
@@ -385,12 +406,13 @@ def run(url, title, data_dir, version="", custom_frame=False):
     window = webview.create_window(
         title,
         width=max(900, int(prefs.get("width") or 1320)), height=max(600, int(prefs.get("height") or 880)), min_size=(900, 600),
-        frameless=(custom_frame or mode == "borderless"), easy_drag=False, shadow=custom_frame, fullscreen=(mode == "fullscreen"),
+        frameless=(custom_frame or mode == "borderless"), easy_drag=False, shadow=custom_frame, fullscreen=(mode == "fullscreen" and not custom_frame),
         js_api=api, background_color=BACKGROUND, text_select=True,   # (text can be selected: invite codes, notes)
         **page,
     )
     api._window = window
-    api._fullscreen = mode == "fullscreen"
+    api._fullscreen = mode == "fullscreen" and not custom_frame
+    api._start_fullscreen = mode == "fullscreen" and custom_frame
     api._borderless = mode == "borderless"
 
     def remember_size():   # (not while fullscreen: that is the screen's size, not the window's)

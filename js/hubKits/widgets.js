@@ -112,7 +112,7 @@ const SKY = {
   heat: '<path d="M10 4.5a2 2 0 0 1 4 0v8.7a4 4 0 1 1-4 0zM12 9v6"/><path d="M17.5 5l1.6-1.6M18.5 8.5H21M17.5 12l1.6 1.6"/>',
   cold: '<path d="M10 4.5a2 2 0 0 1 4 0v8.7a4 4 0 1 1-4 0zM12 14v2.5"/>',
 };
-const WEATHER = [["clear", "sun", "Clear"], ["cloudy", "cloudy", "Cloudy"], ["rain", "rain", "Rain"], ["storm", "storm", "Storm"], ["snow", "snow", "Snow"], ["fog", "fog", "Fog"], ["wind", "wind", "Windy"], ["heat", "heat", "Hot"], ["cold", "cold", "Cold"]];
+const WEATHER = [["clear", "sun", "Clear"], ["cloudy", "cloudy", "Cloudy"], ["rain", "rain", "Rain"], ["storm", "storm", "Storm"], ["snow", "snow", "Snow"], ["fog", "fog", "Fog"], ["heat", "heat", "Hot"], ["cold", "cold", "Cold"]];
 const wicon = (name, cls = "hub-wi") => { const n = el("span", { class: cls, "aria-hidden": "true" }); n.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${SKY[name] || SKY.sun}</svg>`; return n; };
 export const WEATHER_DEFAULT = { weather: "clear", temp: "", time: 8 * 60, day: 1, note: "" };
 const phaseOf = (min) => (min < 300 ? "Night" : min < 420 ? "Dawn" : min < 690 ? "Morning" : min < 810 ? "Midday" : min < 1020 ? "Afternoon" : min < 1140 ? "Dusk" : min < 1260 ? "Evening" : "Night");
@@ -126,7 +126,7 @@ const skyIcon = (w, min) => {
 // The widget's list of settings: every weather on the DM's whiteboard (a Weather generator node), plus the weather-and-time
 // combos the DM has made and saved here (kept in the widget's own data, so they travel with it).
 const skyKey = (sky) => (/thunder|storm/i.test(sky) ? "storm" : /snow|flurr|sleet/i.test(sky) ? "snow" : /rain|drizzle/i.test(sky) ? "rain" : /fog|mist/i.test(sky) ? "fog"
-  : /heat|hot|scorch/i.test(sky) ? "heat" : /cold|freez|frost/i.test(sky) ? "cold" : /wind|gale|gust/i.test(sky) ? "wind" : /cloud|overcast/i.test(sky) ? "cloudy" : "clear");
+  : /heat|hot|scorch/i.test(sky) ? "heat" : /cold|freez|frost|bitter/i.test(sky) ? "cold" : /wind|gale|gust|cloud|overcast/i.test(sky) ? "cloudy" : "clear");
 function whiteboardWeathers() {
   const out = [];
   try {
@@ -273,7 +273,7 @@ export const WIDGETS = [
   },
   {
     id: "weather", size: "1x2", title: "Weather and time", dm: true, every: 8000, blurb: "The day, the hour and the weather. The DM sets it; everyone sees it.",
-    load(ctx, getIt) { return { ...WEATHER_DEFAULT, ...(getIt()?.data || {}), dm: ctx.dm(), boardWeathers: ctx.dm() ? whiteboardWeathers() : [] }; },
+    load(ctx, getIt) { const d = { ...WEATHER_DEFAULT, ...(getIt()?.data || {}) }; if (!WEATHER.some(([k]) => k === d.weather)) d.weather = "cloudy"; return { ...d, dm: ctx.dm(), boardWeathers: ctx.dm() ? whiteboardWeathers() : [] }; },
     view(m, ctx, getIt, _st, size) {
       const lv = LV[size];
       const save = (patch) => ctx.update(getIt(), { data: { ...WEATHER_DEFAULT, ...(getIt().data || {}), ...patch } });
@@ -301,7 +301,8 @@ export const WIDGETS = [
         note.addEventListener("change", () => save({ note: note.value.trim() }));
         const temp = el("input", { type: "text", class: "hub-input", maxlength: "12", placeholder: "Temp", value: m.temp, "aria-label": "Temperature", style: "max-width:80px" });
         temp.addEventListener("change", () => save({ temp: temp.value.trim() }));
-        out.push(picks, el("div", { class: "hub-wacts" }, [pill("−1 h", () => advance(-60)), pill("+1 h", () => advance(60)), pill("+8 h", () => advance(480)), temp]), note, forecasts);
+        note.style.cssText = "flex:1;min-width:0";
+        out.push(picks, el("div", { class: "hub-wacts" }, [pill("−1 h", () => advance(-60)), pill("+1 h", () => advance(60)), pill("+8 h", () => advance(480)), temp]), el("div", { class: "hub-wacts" }, [note, forecasts]));
       }
       return out.filter(Boolean);
     },
