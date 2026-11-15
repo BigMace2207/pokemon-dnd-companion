@@ -774,7 +774,12 @@ export function renderHub(container, state) {
     bounds = b;
   }
 
+  // (a layer of its own while the board moves, none when it rests: left on, the browser keeps a bitmap of the board and the text
+  // on pages looks soft once you zoom in)
+  let layerTimer = 0;
+  function liftWorld() { world.style.willChange = "transform"; clearTimeout(layerTimer); layerTimer = setTimeout(() => { world.style.willChange = ""; }, 260); }
   function applyView(gesture = false) {
+    liftWorld();
     const hit = clampView();
     if (gesture) bump(hit);
     updateMist();
@@ -873,7 +878,19 @@ export function renderHub(container, state) {
     applyView();
   }
   // a touchpad's two-finger scroll pans; a pinch (or a mouse wheel) zooms, about the pointer (js/wheelIntent.js)
+  // the wheel scrolls whatever is under the pointer that can scroll that way (a widget with more in it than it shows), else the board
+  function scrollsHere(target, dy) {
+    for (let n = target; n && n !== stage; n = n.parentElement) {
+      if (!(n instanceof HTMLElement)) continue;
+      const oy = getComputedStyle(n).overflowY;
+      if ((oy === "auto" || oy === "scroll") && n.scrollHeight > n.clientHeight + 1) {
+        if (dy < 0 ? n.scrollTop > 0 : n.scrollTop + n.clientHeight < n.scrollHeight - 1) return true;
+      }
+    }
+    return false;
+  }
   stage.addEventListener("wheel", (e) => {
+    if (!e.ctrlKey && scrollsHere(e.target, e.deltaY)) return;   // (native scrolling)
     e.preventDefault();
     if (wheelIntent(e) === "pan") { stopViewAnim(); view.x -= e.deltaX; view.y -= e.deltaY; applyView(true); return; }
     const r = stage.getBoundingClientRect();
@@ -1400,6 +1417,30 @@ export function renderHub(container, state) {
   const cardRects = (exceptId) => items.filter((o) => o.id !== exceptId && (o.type === "widget" || o.type === "place"))
     .map((o) => { const n = itemEls.get(o.id); return n && { x: o.x, y: o.y, w: n.offsetWidth, h: n.offsetHeight }; }).filter(Boolean);
   const cellSnapFor = (pg) => (pg ? (c) => { const s = snapToCell(pg, c.x, c.y); return { x: s.x, y: s.y }; } : null);
+  // A card, widget or place dropped near another one settles right beside it (its side, a gap apart, lined up with it or where you
+  // let go), not inside it and not on a grid cell far away. Nothing near: the page's grid, as before.
+  const CARDLIKE = (o) => o.type === "widget" || o.type === "place" || CARD_TYPES.has(o.type);
+  function edgeSnap(it, x, y, w, h) {
+    if (!CARDLIKE(it)) return null;
+    const others = items.filter((o) => o.id !== it.id && CARDLIKE(o)).map((o) => { const n = itemEls.get(o.id); return n && { x: o.x, y: o.y, w: n.offsetWidth, h: n.offsetHeight }; }).filter(Boolean);
+    const reach = 150;   // board units: how close it has to be to a card to settle beside it
+    const near = others.filter((o) => x < o.x + o.w + reach && x + w > o.x - reach && y < o.y + o.h + reach && y + h > o.y - reach);
+    if (!near.length) return null;
+    const clash = (r) => others.some((o) => overlaps(r, o));
+    let best = null, bd = Infinity;
+    for (const o of near) {
+      for (const c of [
+        { x: o.x + o.w + GAP, y }, { x: o.x - w - GAP, y }, { x, y: o.y + o.h + GAP }, { x, y: o.y - h - GAP },
+        { x: o.x + o.w + GAP, y: o.y }, { x: o.x - w - GAP, y: o.y }, { x: o.x, y: o.y + o.h + GAP }, { x: o.x, y: o.y - h - GAP },
+        { x: o.x + o.w + GAP, y: o.y + o.h - h }, { x: o.x - w - GAP, y: o.y + o.h - h },
+      ]) {
+        if (clash({ x: c.x, y: c.y, w, h })) continue;
+        const d = Math.hypot(c.x - x, c.y - y);
+        if (d < bd) { bd = d; best = c; }
+      }
+    }
+    return best ? { x: Math.round(best.x), y: Math.round(best.y) } : null;
+  }
   function spotFor(it, x, y, w, h) {
     if (it.type !== "widget" && it.type !== "place") return { x, y };
     return resolveOverlap({ x, y, w, h }, cardRects(it.id), GAP, cellSnapFor(pageAt(pagesList(), x + w / 2, y + Math.min(h, 140) / 2)));
@@ -2445,8 +2486,9 @@ export function renderHub(container, state) {
       landFx(g);
       const rx = Math.round(it.x + (e.clientX - g.sx) / view.k), ry = Math.round(it.y + (e.clientY - g.sy) / view.k);
       hideTextGhost();
-      let to = it.type === "text" ? snapDraggedText(it, rx, ry) : pageSnap(g.node, rx, ry);
-      to = spotFor(it, to.x, to.y, g.node.offsetWidth, g.node.offsetHeight);
+      const edge = it.type === "text" ? null : edgeSnap(it, rx, ry, g.node.offsetWidth, g.node.offsetHeight);
+      let to = edge || (it.type === "text" ? snapDraggedText(it, rx, ry) : pageSnap(g.node, rx, ry));
+      if (!edge) to = spotFor(it, to.x, to.y, g.node.offsetWidth, g.node.offsetHeight);
       g.node.classList.add("settling"); setTimeout(() => g.node.classList.remove("settling"), 450);   // (it glides to its spot)
       g.node.style.left = `${to.x}px`; g.node.style.top = `${to.y}px`;
       await op({ op: "put", item: { ...it, x: to.x, y: to.y } });

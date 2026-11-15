@@ -440,6 +440,15 @@ class Hub(Base):
         self.assertEqual(put("comic-sans")[0], 200)
         self.assertNotIn("style", {i["id"]: i for i in self.sync(self.member, "id-member", since=-1)[1]["items"]}["t1"], "any other style is dropped")
 
+    def test_removing_a_page_removes_what_is_on_it(self):
+        items = lambda: {i["id"]: i for i in self.dm_sync()[1]["items"]}
+        self.op(self.member, "id-member", op="put", item={"type": "page", "id": "pg", "x": 0, "y": 0})
+        self.op(self.member, "id-member", op="put", item={"type": "note", "id": "on", "x": 100, "y": 200, "text": "on the page", "color": "#fde68a"})
+        self.op(self.member, "id-member", op="put", item={"type": "note", "id": "off", "x": 5000, "y": 5000, "text": "off the page", "color": "#fde68a"})
+        self.assertEqual(items()["on"].get("page"), "pg", "attached to the page by where it is")
+        self.assertEqual(self.op(self.member, "id-member", op="delete", itemId="pg")[0], 200)
+        self.assertEqual(set(items()), {"off"}, "the page and what was on it are gone; what was elsewhere stays")
+
     def test_the_dm_can_turn_to_a_clean_page_and_back(self):
         items = lambda: {i["id"]: i for i in self.dm_sync()[1]["items"]}
         self.op(self.member, "id-member", op="put", item={"type": "note", "id": "n1", "x": 5, "y": 5, "text": "kept", "color": "#fde68a"})
@@ -504,12 +513,11 @@ class Hub(Base):
         # only the page's owner (or the DM) moves it
         self.assertEqual(self.op(self.owner, "id-owner", op="put", item={**got["pg"], "x": 0, "y": 0})[0], 403)
         self.assertEqual(self.op(self.owner, "id-owner", op="put", item={**got["pg"], "x": 1400, "y": 900}, token=self.dm)[0], 200)
-        # taking the page off the board leaves what was on it where it was
+        # removing the page removes what was on it too (see test_removing_a_page_removes_what_is_on_it)
         self.op(self.member, "id-member", op="delete", itemId="pg")
         got = items()
         self.assertNotIn("pg", got)
-        self.assertNotIn("page", got["w1"])
-        self.assertEqual((got["w1"]["x"], got["w1"]["y"]), (1700, 1000))
+        self.assertNotIn("w1", got)
 
     def test_the_hub_holds_a_limited_number_of_pages(self):
         for i in range(12):

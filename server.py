@@ -2814,9 +2814,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     if not is_dm and (old["owner"] not in mine or old["type"] == "button"):
                         return self._send_json({"error": "not yours"}, 403)
                     hub["items"] = [it for it in hub["items"] if it["id"] != item_id]
-                    for it in hub["items"]:   # what was on a page that's gone stays where it is, on the bare board
-                        if it.get("page") == item_id:
-                            it.pop("page", None)
+                    if old["type"] == "page":   # a page that is removed takes what is on it with it
+                        hub["items"] = [it for it in hub["items"] if it.get("page") != item_id]
                     if hub.get("activeButton") == item_id:
                         hub["activeButton"] = None
                 elif op == "clearDrawings":

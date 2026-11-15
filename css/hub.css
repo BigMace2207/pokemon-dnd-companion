@@ -21,7 +21,7 @@ html.hub-full .topbar { display: none; }
 }
 .hub-stage { position: absolute; inset: 0; outline: none; touch-action: none; }
 .hub-stage[data-tool="move"] { cursor: inherit; }
-.hub-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.hub-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }   /* (will-change is set by hub.js only while the board moves: left on, text goes soft when zoomed in) */
 .hub-ink { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; }
 .hub-ink path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .hub-stage[data-tool="erase"] .hub-ink path { pointer-events: stroke; cursor: pointer; }
@@ -1242,8 +1242,7 @@ html.m .hub-place-card { bottom: calc(10px * var(--s)); max-height: 46%; }
 .hub-widget-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 0; border: 0; flex: none; }
 .hub-widget-icon { flex: none; display: grid; place-items: center; width: 24px; height: 24px; min-width: 24px; min-height: 24px; padding: 4px; border-radius: 8px; color: var(--tc); background: color-mix(in srgb, var(--tc) 20%, rgba(0, 0, 0, .35)); }
 .hub-widget-head strong { min-width: 0; font-size: 12px; font-weight: 600; line-height: 1.2; letter-spacing: .06em; text-transform: uppercase; color: var(--h-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hub-widget-body { flex: 1; min-height: 0; max-height: none; display: grid; align-content: start; gap: 6px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; cursor: default; }
-.hub-widget-body::-webkit-scrollbar { display: none; }
+.hub-widget-body { flex: 1; min-height: 0; max-height: none; display: grid; align-content: start; gap: 6px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .28) transparent; cursor: default; }   /* (scrolls with the wheel; the thin bar shows there is more) */
 .hub-card.kind-widget.s-1x1 .hub-widget-body { align-content: center; justify-items: center; text-align: center; }
 .hub-widget-empty { margin: 0; font-size: 12px; line-height: 1.4; color: var(--h-faint); }
 .hub-big { display: grid; justify-items: center; gap: 2px; min-width: 0; max-width: 100%; }
