@@ -1,22 +1,24 @@
 """
-Builds what people download from fluxdev.org/download on Windows: one installer .exe ("D&D Companion Installer", installer.py) that
-carries the app (app.py: a small window onto the live site, no server or data folders) inside it.
+Builds what people download from fluxdev.org/download on Windows: a standard Windows installer wizard ("D&D Companion Installer",
+built by Inno Setup from installer.iss) that carries the app (app.py: a small window onto the live site, no server or data folders).
 
-Setup (once):   python -m pip install -r desktop/requirements-build.txt
-Build:          python desktop/build_app.py [--publish <folder>]
+Setup (once):
+    python -m pip install -r desktop/requirements-build.txt
+    winget install JRSoftware.InnoSetup          (the installer compiler; this script finds ISCC.exe, or set the ISCC environment variable)
+Build:
+    python desktop/build_app.py [--publish <folder>]
 
-Steps: build the app folder (PyInstaller, --onedir), zip it as the installer's payload, then build installer.py (--onefile) with that
-zip packed in. Result: dist-app/DnD-Companion-Installer-<version>-windows.exe (the name server.py's download route expects; it is
-served to people as "D&D Companion Installer.exe"). The version is desktop/VERSION and the icon is desktop/icon.png.
---publish copies the installer into that folder (the server's downloads folder: PKDND_DOWNLOAD_DIR, by default <data dir>/downloads;
-on the VM ~/pokemon-dnd/downloads). Deploys never touch that folder, so builds stay up.
+Steps: build the app folder (PyInstaller --onedir), draw the wizard's images from desktop/icon.png, run Inno Setup. Result:
+dist-app/DnD-Companion-Installer-<version>-windows.exe (the name server.py's download route expects; people receive it as
+"D&D Companion Installer.exe"). The version is desktop/VERSION. --publish copies the installer into that folder (the server's
+downloads folder: PKDND_DOWNLOAD_DIR, by default <data dir>/downloads; on the VM ~/pokemon-dnd/downloads). Deploys never touch it.
 
 Windows only for now: PyInstaller builds for the OS it runs on, and a Mac installer (.dmg) would be built on a Mac.
 """
+import os
 import shutil
 import subprocess
 import sys
-import zipfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -24,36 +26,37 @@ ROOT = HERE.parent
 OUT = ROOT / "dist-app"
 WORK = ROOT / "build-app"
 APP_NAME = "DnD Companion"                   # the app's folder and .exe: no "&" in anything on disk
-INSTALLER_NAME = "DnD Companion Installer"
 
 
-def make_icons():
-    """desktop/icon.png (the d20) -> icon.ico for the exes' icons; the png is also shown in the installer's window."""
-    from PIL import Image
+def find_iscc():
+    candidates = [os.environ.get("ISCC"), shutil.which("ISCC"),
+                  Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Inno Setup 6" / "ISCC.exe",
+                  Path(os.environ.get("ProgramFiles(x86)", "")) / "Inno Setup 6" / "ISCC.exe",
+                  Path(os.environ.get("ProgramFiles", "")) / "Inno Setup 6" / "ISCC.exe"]
+    for c in candidates:
+        if c and Path(c).is_file():
+            return str(c)
+    sys.exit("Inno Setup isn't installed. Run:\n    winget install JRSoftware.InnoSetup")
+
+
+def make_assets():
+    """From desktop/icon.png (the d20): icon.ico for the exes and the installer, and the wizard's two pictures (side panel, corner)."""
+    from PIL import Image, ImageDraw, ImageFilter
     WORK.mkdir(parents=True, exist_ok=True)
-    ico = WORK / "icon.ico"
-    Image.open(HERE / "icon.png").convert("RGBA").save(ico, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
-    # the picture shown in the installer's window: the same d20 with its edges faded out, so it sits on the window's dark background
-    from PIL import ImageDraw, ImageFilter
-    logo = Image.open(HERE / "icon.png").convert("RGBA")
-    mask = Image.new("L", logo.size, 0)
-    ImageDraw.Draw(mask).ellipse((10, 10, logo.width - 10, logo.height - 10), fill=255)
-    logo.putalpha(mask.filter(ImageFilter.GaussianBlur(34)))
-    logo.save(WORK / "logo.png")
-    return ico
-
-
-def pyinstaller(*args):
-    subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed", "--workpath", str(WORK / "pyi"),
-                    "--specpath", str(WORK), "--distpath", str(OUT), *map(str, args)], check=True)
-
-
-def zip_folder(src, dest):
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
-        for path in sorted(src.rglob("*")):
-            if path.is_file():
-                z.write(path, Path(src.name) / path.relative_to(src))
+    src = Image.open(HERE / "icon.png").convert("RGBA")
+    src.save(WORK / "icon.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    bg = tuple(src.getpixel((4, 4))[:3])
+    # the side panel at three scales (Windows picks the one that fits the screen's DPI)
+    for scale in (1, 1.5, 2):
+        w, h = int(164 * scale), int(314 * scale)
+        panel = Image.new("RGB", (w, h), bg)
+        logo = src.resize((w, w), Image.LANCZOS)
+        fade = Image.new("L", logo.size, 0)
+        ImageDraw.Draw(fade).ellipse((w * .02, w * .02, w * .98, w * .98), fill=255)
+        logo.putalpha(fade.filter(ImageFilter.GaussianBlur(w * .07)))
+        panel.paste(logo, (0, int(h * .28)), logo)
+        panel.save(WORK / f"wizard-large-{int(scale * 100)}.bmp")
+    src.convert("RGB").resize((55, 55), Image.LANCZOS).save(WORK / "wizard-small.bmp")
 
 
 def main():
@@ -64,23 +67,23 @@ def main():
         import PIL  # noqa: F401
     except ImportError:
         sys.exit("PyInstaller and Pillow are needed. Run:\n    python -m pip install -r desktop/requirements-build.txt")
+    iscc = find_iscc()
     version = (HERE / "VERSION").read_text(encoding="utf-8").strip()
-    ico = make_icons()
     shutil.rmtree(OUT, ignore_errors=True)
+    shutil.rmtree(WORK, ignore_errors=True)
+    make_assets()
 
-    print("1/3  the app")
-    pyinstaller(HERE / "app.py", "--name", APP_NAME, "--onedir", "--paths", HERE, "--icon", ico, "--add-data", f"{HERE / 'VERSION'};.")
-    payload = WORK / "payload" / "app.zip"
-    zip_folder(OUT / APP_NAME, payload)
+    print("1/2  the app")
+    subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed", "--workpath", str(WORK / "pyi"),
+                    "--specpath", str(WORK), "--distpath", str(WORK / "app"), str(HERE / "app.py"), "--name", APP_NAME, "--onedir",
+                    "--paths", str(HERE), "--icon", str(WORK / "icon.ico"), "--add-data", f"{HERE / 'VERSION'};."], check=True)
 
-    print("2/3  the installer")
-    pyinstaller(HERE / "installer.py", "--name", INSTALLER_NAME, "--onefile", "--icon", ico,
-                "--add-data", f"{payload};payload", "--add-data", f"{HERE / 'VERSION'};.",
-                "--add-data", f"{ico};.", "--add-data", f"{WORK / 'logo.png'};.")
+    print("2/2  the installer")
+    OUT.mkdir(parents=True, exist_ok=True)
+    subprocess.run([iscc, "/Qp", f"/DAppDir={WORK / 'app' / APP_NAME}", f"/DAppVersion={version}", f"/DBuildDir={WORK}",
+                    f"/DOutDir={OUT}", str(HERE / "installer.iss")], check=True)
     final = OUT / f"DnD-Companion-Installer-{version}-windows.exe"
-    (OUT / f"{INSTALLER_NAME}.exe").replace(final)
-    shutil.rmtree(OUT / APP_NAME, ignore_errors=True)    # (it lives inside the installer now)
-    print(f"3/3  built {final} ({final.stat().st_size / 1e6:.1f} MB)")
+    print(f"built {final} ({final.stat().st_size / 1e6:.1f} MB)")
 
     if "--publish" in sys.argv:
         dest = Path(sys.argv[sys.argv.index("--publish") + 1])
