@@ -98,13 +98,29 @@ const placeLink = (at, mapId, ctx) => {
 };
 
 // weather and time
-const WEATHER = [["clear", "☀️", "Clear"], ["cloudy", "☁️", "Cloudy"], ["rain", "🌧️", "Rain"], ["storm", "⛈️", "Storm"], ["snow", "❄️", "Snow"], ["fog", "🌫️", "Fog"], ["wind", "💨", "Windy"], ["heat", "🥵", "Hot"], ["cold", "🥶", "Cold"]];
+// weather and time: a line icon for each sky (no emoji)
+const SKY = {
+  sun: '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M18.7 5.3l-1.8 1.8M7.1 16.9l-1.8 1.8"/>',
+  moon: '<path d="M20 14.6A8.2 8.2 0 1 1 9.4 4a6.6 6.6 0 0 0 10.6 10.6z"/>',
+  dawn: '<path d="M3 18h18M7.2 14a4.8 4.8 0 0 1 9.6 0M12 4.5v3M5 8l1.7 1.7M19 8l-1.7 1.7"/>',
+  cloudy: '<path d="M7 18h10a4 4 0 0 0 .6-7.9A5.5 5.5 0 0 0 7 9.5 4.3 4.3 0 0 0 7 18z"/>',
+  rain: '<path d="M7 14.5h10a4 4 0 0 0 .6-7.9A5.5 5.5 0 0 0 7 6 4.3 4.3 0 0 0 7 14.5zM8.5 17.5l-1 2.5M12.5 17.5l-1 2.5M16.5 17.5l-1 2.5"/>',
+  storm: '<path d="M7 14h10a4 4 0 0 0 .6-7.9A5.5 5.5 0 0 0 7 5.5 4.3 4.3 0 0 0 7 14zM12.5 14l-2.8 4.2h3.4L10.3 22"/>',
+  snow: '<path d="M12 3v18M4.6 7.5l14.8 9M19.4 7.5l-14.8 9M9.5 4.5L12 7l2.5-2.5M9.5 19.5L12 17l2.5 2.5"/>',
+  fog: '<path d="M4 8h16M3 12h18M5 16h14M8 20h8"/>',
+  wind: '<path d="M3 9h11a3 3 0 1 0-3-3M3 14h15a3 3 0 1 1-3 3M3 19h7"/>',
+  heat: '<path d="M10 4.5a2 2 0 0 1 4 0v8.7a4 4 0 1 1-4 0zM12 9v6"/><path d="M17.5 5l1.6-1.6M18.5 8.5H21M17.5 12l1.6 1.6"/>',
+  cold: '<path d="M10 4.5a2 2 0 0 1 4 0v8.7a4 4 0 1 1-4 0zM12 14v2.5"/>',
+};
+const WEATHER = [["clear", "sun", "Clear"], ["cloudy", "cloudy", "Cloudy"], ["rain", "rain", "Rain"], ["storm", "storm", "Storm"], ["snow", "snow", "Snow"], ["fog", "fog", "Fog"], ["wind", "wind", "Windy"], ["heat", "heat", "Hot"], ["cold", "cold", "Cold"]];
+const wicon = (name, cls = "hub-wi") => { const n = el("span", { class: cls, "aria-hidden": "true" }); n.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${SKY[name] || SKY.sun}</svg>`; return n; };
 export const WEATHER_DEFAULT = { weather: "clear", temp: "", time: 8 * 60, day: 1, note: "" };
 const phaseOf = (min) => (min < 300 ? "Night" : min < 420 ? "Dawn" : min < 690 ? "Morning" : min < 810 ? "Midday" : min < 1020 ? "Afternoon" : min < 1140 ? "Dusk" : min < 1260 ? "Evening" : "Night");
+// the big sky icon: a clear sky changes with the hour (night, dawn and dusk, day); anything else is its weather
 const skyIcon = (w, min) => {
   const night = min < 330 || min >= 1230;
-  if (w === "clear") return night ? "🌙" : min < 420 || (min >= 1050 && min < 1230) ? "🌅" : "☀️";
-  return (WEATHER.find(([k]) => k === w) || WEATHER[0])[1];
+  if (w === "clear") return wicon(night ? "moon" : min < 420 || (min >= 1050 && min < 1230) ? "dawn" : "sun", "hub-wi big");
+  return wicon((WEATHER.find(([k]) => k === w) || WEATHER[0])[1], "hub-wi big");
 };
 
 // The widget's list of settings: every weather on the DM's whiteboard (a Weather generator node), plus the weather-and-time
@@ -129,58 +145,81 @@ function whiteboardWeathers() {
   } catch { /* no plan yet */ }
   return out;
 }
-let settingsOpen = false, comboOpen = false, comboDraft = { name: "", weather: "clear", temp: "", time: 8 * 60, note: "" };
+let comboDraft = { name: "", weather: "clear", temp: "", time: 8 * 60, note: "" };
 
 // ---- the widgets ----------------------------------------------------------------------------------------------------
-// the list: whiteboard weathers, saved combos, and a form to make a new weather-and-time combo
-function settingsPanel(m, save) {
-  const apply = (p) => save({ weather: p.weather, temp: p.temp || "", note: p.note || "", ...(p.time != null ? { time: p.time } : {}) });
-  const icon = (k) => (WEATHER.find(([key]) => key === k) || WEATHER[0])[1];
+// Forecasts: a pop-up beside the widget. The weathers on your whiteboard, the combos you have saved, and a form for a new
+// weather-and-time combo. (Inside the widget it would never fit: the widget is only one or two cells big.)
+let forecastsEl = null;
+function closeForecasts() {
+  forecastsEl?.remove(); forecastsEl = null;
+  document.removeEventListener("pointerdown", forecastsOutside, true);
+  document.removeEventListener("keydown", forecastsKey, true);
+}
+const forecastsOutside = (e) => { if (forecastsEl && !forecastsEl.contains(e.target) && !e.target.closest?.(".hub-forecasts-btn")) closeForecasts(); };
+const forecastsKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); closeForecasts(); } };
+
+function openForecasts(anchor, m, save) {
+  closeForecasts();
+  const host = anchor.closest(".hub") || document.body;
+  const combos = m.combos || [];
+  const body = el("div", { class: "hub-forecasts-body" });
+  const pop = el("div", { class: "hub-forecasts", role: "dialog", "aria-label": "Forecasts" });
+  const x = el("button", { type: "button", class: "hub-forecasts-x", "aria-label": "Close", title: "Close" }, "×");
+  x.addEventListener("click", closeForecasts);
+  pop.append(el("div", { class: "hub-forecasts-head" }, [el("strong", {}, "Forecasts"), x]), body);
+
+  const use = (p) => { save({ weather: p.weather, temp: p.temp || "", note: p.note || "", ...(p.time != null ? { time: p.time } : {}) }); closeForecasts(); };
   const row = (p, sub, extra) => {
-    const b = el("button", { type: "button", class: "hub-wpreset", title: `Use ${p.name}` }, [el("span", { class: "hub-wpreset-ico", "aria-hidden": "true" }, icon(p.weather)), el("span", { class: "hub-wpreset-main" }, [el("strong", {}, p.name), el("small", {}, sub)])]);
-    b.addEventListener("click", () => apply(p));
+    const b = el("button", { type: "button", class: "hub-wpreset", title: `Use ${p.name}` }, [wicon((WEATHER.find(([k]) => k === p.weather) || WEATHER[0])[1], "hub-wi"), el("span", { class: "hub-wpreset-main" }, [el("strong", {}, p.name), el("small", {}, sub)])]);
+    b.addEventListener("click", () => use(p));
     return extra ? el("div", { class: "hub-wpreset-row" }, [b, extra]) : b;
   };
-  const toggle = pill(settingsOpen ? "Settings ▴" : "Settings ▾", () => { settingsOpen = !settingsOpen; save({}); });
-  if (!settingsOpen) return toggle;
-  const combos = m.combos || [];
-  const list = el("div", { class: "hub-wpresets" }, [
-    el("h6", {}, "From your whiteboard"),
-    ...(m.boardWeathers.length ? m.boardWeathers.map((p) => row(p, [p.temp, p.board].filter(Boolean).join(" · ") || "Weather node")) : [el("p", { class: "hub-menu-note" }, "No Weather nodes on your whiteboard yet. Generate one there and it appears here.")]),
-    el("h6", {}, "Your combos"),
-    ...(combos.length ? combos.map((p, i) => {
-      const del = el("button", { type: "button", class: "hub-wpreset-x", "aria-label": `Delete ${p.name}`, title: "Delete" }, "×");
-      del.addEventListener("click", () => save({ combos: combos.filter((_, j) => j !== i) }));
-      return row(p, [fmtTime(p.time), p.temp].filter(Boolean).join(" · "), del);
-    }) : [el("p", { class: "hub-menu-note" }, "None yet.")]),
-  ]);
-  const form = comboOpen ? comboForm(m, save) : pill("+ New weather and time", () => { comboOpen = true; comboDraft = { name: "", weather: m.weather, temp: m.temp || "", time: m.time, note: "" }; save({}); });
-  return el("div", { class: "hub-wsettings" }, [toggle, list, form]);
-}
-function comboForm(m, save) {
-  const d = comboDraft;
-  const name = el("input", { type: "text", class: "hub-input", maxlength: "40", placeholder: "Name, e.g. Stormy dusk", value: d.name, "aria-label": "Combo name" });
-  name.addEventListener("input", () => { d.name = name.value; });
-  const picks = el("div", { class: "hub-wpicks", role: "group", "aria-label": "Weather" }, WEATHER.map(([k, icon, label]) => {
-    const b = el("button", { type: "button", class: `hub-wpick${d.weather === k ? " on" : ""}`, title: label, "aria-label": label, "aria-pressed": String(d.weather === k) }, icon);
-    b.addEventListener("click", () => { d.weather = k; picks.querySelectorAll(".hub-wpick").forEach((x) => { const on = x === b; x.classList.toggle("on", on); x.setAttribute("aria-pressed", String(on)); }); });
-    return b;
-  }));
-  const time = el("input", { type: "time", class: "hub-input", value: fmtTime(d.time), "aria-label": "Time of day" });
-  time.addEventListener("input", () => { const [h, mi] = time.value.split(":").map(Number); if (Number.isFinite(h)) d.time = h * 60 + (mi || 0); });
-  const temp = el("input", { type: "text", class: "hub-input", maxlength: "12", placeholder: "Temp", value: d.temp, "aria-label": "Temperature", style: "max-width:80px" });
-  temp.addEventListener("input", () => { d.temp = temp.value; });
-  const note = el("input", { type: "text", class: "hub-input", maxlength: "120", placeholder: "A note for the table", value: d.note, "aria-label": "Note" });
-  note.addEventListener("input", () => { d.note = note.value; });
-  return el("div", { class: "hub-wform" }, [name, picks, el("div", { class: "hub-wacts" }, [time, temp]), note, el("div", { class: "hub-wacts" }, [
-    pill("Save and use", () => {
-      const label = (WEATHER.find(([k]) => k === d.weather) || WEATHER[0])[2];
-      const combo = { name: (d.name || "").trim() || `${label} · ${fmtTime(d.time)}`, weather: d.weather, temp: (d.temp || "").trim(), time: d.time, note: (d.note || "").trim() };
-      comboOpen = false;
-      save({ weather: combo.weather, temp: combo.temp, time: combo.time, note: combo.note, combos: [...(m.combos || []), combo].slice(-12) });
-    }),
-    pill("Cancel", () => { comboOpen = false; save({}); }),
-  ])]);
+  const showList = () => {
+    body.replaceChildren(
+      el("h6", {}, "From your whiteboard"),
+      ...(m.boardWeathers.length ? m.boardWeathers.map((p) => row(p, [p.temp, p.board].filter(Boolean).join(" · ") || "Weather node")) : [el("p", { class: "hub-menu-note" }, "No Weather nodes on your whiteboard yet. Generate one there and it appears here.")]),
+      el("h6", {}, "Your combos"),
+      ...(combos.length ? combos.map((p, i) => {
+        const del = el("button", { type: "button", class: "hub-wpreset-x", "aria-label": `Delete ${p.name}`, title: "Delete" }, "×");
+        del.addEventListener("click", () => { save({ combos: combos.filter((_, j) => j !== i) }); closeForecasts(); });
+        return row(p, [fmtTime(p.time), p.temp].filter(Boolean).join(" · "), del);
+      }) : [el("p", { class: "hub-menu-note" }, "None yet.")]),
+      pill("+ New weather and time", () => { comboDraft = { name: "", weather: m.weather, temp: m.temp || "", time: m.time, note: "" }; showForm(); }),
+    );
+  };
+  const showForm = () => {
+    const d = comboDraft;
+    const name = el("input", { type: "text", class: "hub-input", maxlength: "40", placeholder: "Name, e.g. Stormy dusk", value: d.name, "aria-label": "Combo name" });
+    name.addEventListener("input", () => { d.name = name.value; });
+    const picks = el("div", { class: "hub-wpicks", role: "group", "aria-label": "Weather" }, WEATHER.map(([k, ic, label]) => {
+      const b = el("button", { type: "button", class: `hub-wpick${d.weather === k ? " on" : ""}`, title: label, "aria-label": label, "aria-pressed": String(d.weather === k) }, wicon(ic));
+      b.addEventListener("click", () => { d.weather = k; picks.querySelectorAll(".hub-wpick").forEach((y) => { const on = y === b; y.classList.toggle("on", on); y.setAttribute("aria-pressed", String(on)); }); });
+      return b;
+    }));
+    const time = el("input", { type: "time", class: "hub-input", value: fmtTime(d.time), "aria-label": "Time of day" });
+    time.addEventListener("input", () => { const [h, mi] = time.value.split(":").map(Number); if (Number.isFinite(h)) d.time = h * 60 + (mi || 0); });
+    const temp = el("input", { type: "text", class: "hub-input", maxlength: "12", placeholder: "Temp", value: d.temp, "aria-label": "Temperature", style: "max-width:90px" });
+    temp.addEventListener("input", () => { d.temp = temp.value; });
+    const note = el("input", { type: "text", class: "hub-input", maxlength: "120", placeholder: "A note for the table", value: d.note, "aria-label": "Note" });
+    note.addEventListener("input", () => { d.note = note.value; });
+    body.replaceChildren(el("h6", {}, "New weather and time"), name, picks, el("div", { class: "hub-wacts" }, [time, temp]), note, el("div", { class: "hub-wacts" }, [
+      pill("Save and use", () => {
+        const label = (WEATHER.find(([k]) => k === d.weather) || WEATHER[0])[2];
+        const combo = { name: (d.name || "").trim() || `${label} · ${fmtTime(d.time)}`, weather: d.weather, temp: (d.temp || "").trim(), time: d.time, note: (d.note || "").trim() };
+        save({ weather: combo.weather, temp: combo.temp, time: combo.time, note: combo.note, combos: [...(m.combos || []), combo].slice(-12) });
+        closeForecasts();
+      }),
+      pill("Back", showList),
+    ]));
+  };
+  showList();
+  host.append(pop);
+  const r = anchor.getBoundingClientRect(), hr = host.getBoundingClientRect(), pw = pop.offsetWidth || 300, ph = pop.offsetHeight || 300;
+  pop.style.left = `${Math.max(8, Math.min(r.left - hr.left, hr.width - pw - 8))}px`;
+  pop.style.top = `${Math.max(8, Math.min(r.bottom - hr.top + 8, hr.height - ph - 8))}px`;
+  document.addEventListener("pointerdown", forecastsOutside, true);
+  document.addEventListener("keydown", forecastsKey, true);
 }
 
 export const WIDGETS = [
@@ -240,29 +279,29 @@ export const WIDGETS = [
       const save = (patch) => ctx.update(getIt(), { data: { ...WEATHER_DEFAULT, ...(getIt().data || {}), ...patch } });
       const advance = (mins) => { const d = { ...WEATHER_DEFAULT, ...(getIt().data || {}) }; const t = d.time + mins; save({ time: ((t % 1440) + 1440) % 1440, day: Math.max(1, d.day + Math.floor(t / 1440)) }); };
       const label = WEATHER.find(([k]) => k === m.weather) || WEATHER[0];
+      // 1 cell: the sky, the hour, the weather: nothing to press
       if (lv === 0) return el("div", { class: "hub-sky one" }, [el("span", { class: "hub-sky-icon", "aria-hidden": "true" }, skyIcon(m.weather, m.time)), el("strong", { class: "hub-sky-time" }, fmtTime(m.time)), el("small", {}, label[2])]);
-      const out = [
-        el("div", { class: "hub-sky" }, [
-          el("span", { class: "hub-sky-icon", "aria-hidden": "true" }, skyIcon(m.weather, m.time)),
-          el("div", {}, [el("strong", { class: "hub-sky-time" }, fmtTime(m.time)), el("small", {}, `Day ${m.day} · ${phaseOf(m.time)}`)]),
-          el("div", { class: "hub-sky-now" }, [el("strong", {}, label[2]), m.temp ? el("small", {}, m.temp) : null].filter(Boolean)),
-        ]),
-        lv === 2 && m.note ? el("p", { class: "hub-sky-note" }, m.note) : null,
-      ];
+      const header = el("div", { class: "hub-sky" }, [
+        el("span", { class: "hub-sky-icon", "aria-hidden": "true" }, skyIcon(m.weather, m.time)),
+        el("div", {}, [el("strong", { class: "hub-sky-time" }, fmtTime(m.time)), el("small", {}, `Day ${m.day} · ${phaseOf(m.time)}`)]),
+        el("div", { class: "hub-sky-now" }, [el("strong", {}, label[2]), m.temp ? el("small", {}, m.temp) : null].filter(Boolean)),
+      ]);
+      const picks = m.dm ? el("div", { class: "hub-wpicks", role: "group", "aria-label": "Weather" }, WEATHER.map(([k, ic, name]) => {
+        const b = el("button", { type: "button", class: `hub-wpick${m.weather === k ? " on" : ""}`, title: name, "aria-label": name, "aria-pressed": String(m.weather === k) }, wicon(ic));
+        b.addEventListener("click", () => save({ weather: k }));
+        return b;
+      })) : null;
+      const forecasts = m.dm ? pill("Forecasts", function () { openForecasts(this, m, save); }, " hub-forecasts-btn") : null;
+      // 2 cells wide: the header, one row of weather buttons and the Forecasts button
+      if (lv === 1) return [header, m.dm ? el("div", { class: "hub-wrow-ctl" }, [picks, forecasts]) : null].filter(Boolean);
+      // 2 by 2: everything: the note, the buttons, the time controls, the temperature, a note to the table and Forecasts
+      const out = [header, m.note || !m.dm ? el("p", { class: "hub-sky-note" }, m.note || "No note.") : null];
       if (m.dm) {
-        out.push(el("div", { class: "hub-wpicks", role: "group", "aria-label": "Weather" }, WEATHER.map(([k, icon, name]) => {
-          const b = el("button", { type: "button", class: `hub-wpick${m.weather === k ? " on" : ""}`, title: name, "aria-label": name, "aria-pressed": String(m.weather === k) }, icon);
-          b.addEventListener("click", () => save({ weather: k }));
-          return b;
-        })));
-        if (lv === 2) {
-          const note = el("input", { type: "text", class: "hub-input", maxlength: "120", placeholder: "A note for the table", value: m.note, "aria-label": "Weather note" });
-          note.addEventListener("change", () => save({ note: note.value.trim() }));
-          const temp = el("input", { type: "text", class: "hub-input", maxlength: "12", placeholder: "Temp", value: m.temp, "aria-label": "Temperature", style: "max-width:80px" });
-          temp.addEventListener("change", () => save({ temp: temp.value.trim() }));
-          out.push(el("div", { class: "hub-wacts" }, [pill("−1 h", () => advance(-60)), pill("+1 h", () => advance(60)), pill("+8 h", () => advance(480)), temp]), note);
-        }
-        if (lv >= 1) out.push(settingsPanel(m, save));
+        const note = el("input", { type: "text", class: "hub-input", maxlength: "120", placeholder: "A note for the table", value: m.note, "aria-label": "Weather note" });
+        note.addEventListener("change", () => save({ note: note.value.trim() }));
+        const temp = el("input", { type: "text", class: "hub-input", maxlength: "12", placeholder: "Temp", value: m.temp, "aria-label": "Temperature", style: "max-width:80px" });
+        temp.addEventListener("change", () => save({ temp: temp.value.trim() }));
+        out.push(picks, el("div", { class: "hub-wacts" }, [pill("−1 h", () => advance(-60)), pill("+1 h", () => advance(60)), pill("+8 h", () => advance(480)), temp]), note, forecasts);
       }
       return out.filter(Boolean);
     },

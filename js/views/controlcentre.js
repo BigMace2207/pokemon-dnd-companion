@@ -69,12 +69,17 @@ function renderMain(container, state, token) {
   const body = el("div", { class: "cc-body" });
   container.appendChild(body);
 
+  // moving between pages fades the new one in (and what loads a moment later fades in too); never on a refresh of the same page
+  let swapTimer = 0;
+  const swapIn = () => { body.classList.remove("cc-swap"); void body.offsetWidth; body.classList.add("cc-swap"); clearTimeout(swapTimer); swapTimer = setTimeout(() => body.classList.remove("cc-swap"), 1500); };
   function open(name) {
     tabBtns.forEach((b, i) => { const on = tabNames[i] === name; b.classList.toggle("active", on); b.setAttribute("aria-selected", String(on)); });
     setViewState("controlcentre:tab", name);
+    swapIn();
     tabs[name](body);
   }
   tabBtns.forEach((btn, i) => btn.addEventListener("click", () => open(tabNames[i])));
+  swapIn();
   tabs[activeTabName](body);
 }
 

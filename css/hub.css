@@ -487,7 +487,7 @@ html.no-sidebar .nav-toggle { display: inline-grid; place-items: center; }
 .hub-team-hp > span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: linear-gradient(90deg, #22c55e, #4ade80); }
 .hub-team-empty { font: inherit; font-size: 13px; color: var(--h-dim); background: transparent; border: 0; padding: 8px 12px; cursor: pointer; }
 /* the zoom controls move beside the dice and bag buttons, out of the team's way */
-.hub-zoom { left: auto !important; top: auto !important; bottom: calc(max(var(--dock-edge, 20px), env(safe-area-inset-bottom)) + 7px) !important; right: calc(max(var(--dock-edge, 20px), env(safe-area-inset-right)) + 2 * var(--dock-size, 54px) + var(--dock-gap, 10px) + 12px); }
+.hub-zoom { left: auto !important; top: auto !important; bottom: calc(max(var(--dock-edge, 20px), env(safe-area-inset-bottom)) + 7px) !important; right: calc(max(var(--dock-edge, 20px), env(safe-area-inset-right)) + var(--dock-w, 118px) + 12px); }
 
 /* --- shapes and props --- */
 .hub-ink .hub-shape { stroke-linecap: round; stroke-linejoin: round; }
@@ -1412,17 +1412,31 @@ html:not([data-gfx="low"]) .hub-save-box:not([hidden]) { animation: hub-save-in 
 .hub-mini-area text, .hub.lava .hub-mini-area text { font: 600 10.5px "Space Grotesk", system-ui, sans-serif; letter-spacing: .24em; fill: rgba(255, 255, 255, .86); stroke: rgba(0, 0, 0, .5); stroke-width: 2.5px; }
 .hub.lava .hub-mini-area text { fill: rgba(250, 232, 200, .92); }
 
-/* the Weather and time widget's list of settings (js/hubKits/widgets.js) */
-.hub-wsettings { display: grid; gap: calc(8px * var(--s)); }
-.hub-wpresets { display: grid; gap: calc(4px * var(--s)); max-height: calc(220px * var(--s)); overflow-y: auto; }
-.hub-wpresets h6 { margin: calc(6px * var(--s)) 0 0; font-size: calc(12px * var(--s)); letter-spacing: .1em; text-transform: uppercase; color: var(--h-dim); }
+/* Weather and time: line icons instead of emoji, and the Forecasts pop-up (js/hubKits/widgets.js) */
+.hub-wi { display: inline-grid; place-items: center; width: 1.2em; height: 1.2em; flex: none; line-height: 0; }
+.hub-wi svg { width: 100%; height: 100%; }
+.hub-wi.big { width: calc(44px * var(--s)); height: calc(44px * var(--s)); }
+.hub-sky.one .hub-sky-icon .hub-wi.big { width: 32px; height: 32px; }
+.hub-wpick { display: inline-grid; place-items: center; }
+.hub-wpick .hub-wi { font-size: calc(17px * var(--s)); }
+.hub-wrow-ctl { display: flex; align-items: center; gap: calc(8px * var(--s)); flex-wrap: wrap; }
+.hub-forecasts { position: absolute; z-index: 60; width: min(340px, calc(100% - 16px)); max-height: min(70vh, 560px); overflow-y: auto; padding: calc(12px * var(--s)); border-radius: calc(18px * var(--s)); background: var(--h-glass); border: 1px solid var(--h-line-2); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); box-shadow: 0 20px 60px rgba(0, 0, 0, .55); color: var(--h-text); display: grid; gap: calc(8px * var(--s)); align-content: start; animation: hub-forecasts-in .16s cubic-bezier(.2, .9, .3, 1.05); }
+@keyframes hub-forecasts-in { from { opacity: 0; transform: translateY(6px) scale(.98); } }
+.hub-forecasts-head { display: flex; align-items: center; justify-content: space-between; font-size: calc(16px * var(--s)); }
+.hub-forecasts-x { width: calc(28px * var(--s)); height: calc(28px * var(--s)); border-radius: 50%; border: 0; background: transparent; color: var(--h-dim); font-size: 20px; cursor: pointer; }
+.hub-forecasts-x:hover { background: rgba(255, 255, 255, .1); color: #fff; }
+.hub-forecasts-body { display: grid; gap: calc(6px * var(--s)); }
+.hub-forecasts h6 { margin: calc(6px * var(--s)) 0 0; font-size: calc(12px * var(--s)); letter-spacing: .1em; text-transform: uppercase; color: var(--h-dim); }
 .hub-wpreset-row { display: flex; align-items: center; gap: 4px; }
-.hub-wpreset { display: flex; align-items: center; gap: calc(10px * var(--s)); flex: 1; min-width: 0; padding: calc(7px * var(--s)) calc(10px * var(--s)); border-radius: calc(12px * var(--s)); border: 1px solid var(--h-line); background: rgba(255, 255, 255, .04); color: var(--h-text); font: inherit; text-align: left; cursor: pointer; }
+.hub-wpreset { display: flex; align-items: center; gap: calc(10px * var(--s)); flex: 1; min-width: 0; padding: calc(8px * var(--s)) calc(10px * var(--s)); border-radius: calc(12px * var(--s)); border: 1px solid var(--h-line); background: rgba(255, 255, 255, .04); color: var(--h-text); font: inherit; text-align: left; cursor: pointer; }
 .hub-wpreset:hover { background: rgba(255, 255, 255, .1); }
-.hub-wpreset-ico { font-size: calc(20px * var(--s)); }
+.hub-wpreset .hub-wi { font-size: calc(20px * var(--s)); }
 .hub-wpreset-main { display: grid; min-width: 0; }
-.hub-wpreset-main strong { font-size: calc(13px * var(--s)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-wpreset-main strong { font-size: calc(14px * var(--s)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hub-wpreset-main small { font-size: calc(12px * var(--s)); color: var(--h-dim); }
-.hub-wpreset-x { flex: none; width: calc(26px * var(--s)); height: calc(26px * var(--s)); border-radius: 50%; border: 0; background: transparent; color: var(--h-dim); cursor: pointer; }
+.hub-wpreset-x { flex: none; width: calc(28px * var(--s)); height: calc(28px * var(--s)); border-radius: 50%; border: 0; background: transparent; color: var(--h-dim); cursor: pointer; }
 .hub-wpreset-x:hover { background: rgba(229, 72, 77, .25); color: #fff; }
-.hub-wform { display: grid; gap: calc(6px * var(--s)); }
+@media (prefers-reduced-motion: reduce) { .hub-forecasts { animation: none; } }
+
+/* a copied-and-pasted item shows what is selected */
+.hub-selected { outline: 2px solid rgba(205, 191, 255, .85); outline-offset: 4px; border-radius: 6px; }

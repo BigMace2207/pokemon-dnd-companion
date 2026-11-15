@@ -952,7 +952,7 @@ table.data-table tr.hi td { background: var(--accent-dim); font-weight: 700; }
 /* Tabs that split Settings into small pages; on a narrow phone the row
    scrolls sideways instead of wrapping onto several lines. */
 .settings-tabs {
-  display: flex; gap: calc(6px * var(--s)); margin: 0 0 calc(18px * var(--s)); padding-bottom: calc(6px * var(--s));
+  display: flex; gap: calc(6px * var(--s)); margin: 0 0 calc(18px * var(--s)); padding: calc(8px * var(--s)) calc(4px * var(--s)) calc(8px * var(--s));   /* (room above and beside, or the scrolling row clips the buttons' rim and hover lift) */
   overflow-x: auto; scrollbar-width: thin; -webkit-overflow-scrolling: touch;
   border-bottom: 1px solid var(--border);
 }
@@ -1352,3 +1352,10 @@ a, button, input, select, textarea, label, .nav-item, .pill-btn { touch-action: 
 /* Next Turn while the player on turn is still choosing: greyed out (it can still skip them after a confirm) */
 .bc-next.waiting, :root[data-theme] .bc-next.waiting { opacity: .4; filter: grayscale(1); cursor: not-allowed; box-shadow: none; }
 .bc-next.waiting:active { transform: none; }
+
+/* Control Centre: a page glides and fades in when you move between them (content that loads late fades in as it arrives) */
+.cc-body.cc-swap > * { animation: cc-in .38s cubic-bezier(.2, .8, .2, 1) both; }
+.cc-body.cc-swap > :nth-child(2) { animation-delay: .05s; } .cc-body.cc-swap > :nth-child(3) { animation-delay: .1s; } .cc-body.cc-swap > :nth-child(n+4) { animation-delay: .14s; }
+@keyframes cc-in { from { opacity: 0; transform: translateY(12px); } }
+.cc-option { transition: background-color .2s, color .2s, border-color .2s, transform .15s; }
+@media (prefers-reduced-motion: reduce) { .cc-body.cc-swap > * { animation: none; } }

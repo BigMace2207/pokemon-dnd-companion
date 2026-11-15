@@ -11,6 +11,8 @@ export function widgetDock() {
     dock.id = "widgetDock";
     dock.className = "widget-dock";
     document.body.appendChild(dock);
+    // however many buttons are in it (dice, ping, bag: it changes with the page and who you are), others can sit beside it
+    new ResizeObserver(() => document.documentElement.style.setProperty("--dock-w", `${Math.round(dock.getBoundingClientRect().width)}px`)).observe(dock);
   }
   return dock;
 }

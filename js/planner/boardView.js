@@ -51,6 +51,7 @@ function play(e, frames, ms = 220, easing = "cubic-bezier(.2,.9,.3,1.15)") {
 }
 const screenX = (e) => { const r = e?.getBoundingClientRect?.(); return r ? r.left + r.width / 2 : null; };
 
+let nodeClip = null;   // the copied node, kept across boards (module level)
 const SIZE = { note: [300, 240], list: [280, 300], gen: [320, 260], text: [210, 150], dungeon: [380, 320], libmon: [230, 190], libtrainer: [260, 240], place: [320, 500] };
 const SLOT_KINDS = new Set(["trainer", "gym", "wildmon"]);
 const MON_LINE = /^[A-Z][^()]*\(Lv \d+/;   // a generated "Pidgey (Lv 6, Normal/Flying) — ..." line, shown as a team row instead
@@ -231,6 +232,38 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     return b;
   };
 
+  // Copy and paste: the node you last clicked is the selection; Ctrl+C copies it, Ctrl+V puts a copy down and to the right (on any
+  // board, even another one), Ctrl+D copies it in one go.
+  let selectedId = null, pasteN = 0;
+  function selectNode(id) {
+    selectedId = id;
+    for (const [k, e] of nodeEls) e.classList.toggle("selected", k === id);
+  }
+  function copyNode() {
+    const n = board && board.nodes.find((x) => x.id === selectedId);
+    if (!n) return false;
+    nodeClip = JSON.parse(JSON.stringify(n)); pasteN = 0;
+    toast("Copied.", "good");
+    return true;
+  }
+  function pasteNode(inPlace = false) {
+    if (readonly || !nodeClip) return;
+    if (board.nodes.length >= MAX_NODES) { toast(`A board holds up to ${MAX_NODES} nodes.`, "bad"); return; }
+    pasteN += 1;
+    const d = inPlace ? 40 : 40 * pasteN;
+    const copy = JSON.parse(JSON.stringify(nodeClip));
+    copy.id = uid(); copy.x = Math.round(nodeClip.x + d); copy.y = Math.round(nodeClip.y + d);
+    delete copy.sessions;                                         // (a copy isn't in the original's sessions or links)
+    if (Array.isArray(copy.items)) copy.items = copy.items.map((it) => ({ ...it, id: uid() }));
+    edit((b) => { b.nodes.push(copy); syncSessions(b, copy); grow(b); });
+    applyBounds(); drawNodes();
+    selectNode(copy.id);
+    nodeEls.get(copy.id)?.style.setProperty("z-index", String(++zTop));
+    const born = nodeEls.get(copy.id);
+    nodeSound("place", kindOf(copy), screenX(born));
+    play(born, [{ transform: "scale(.9)", opacity: 0 }, { transform: "scale(1)", opacity: 1 }], 220);
+  }
+
   function drawNodes() {
     flushPending();
     nodeLayer.replaceChildren();
@@ -286,7 +319,8 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
       e.append(dot);
     }
     if (n.type === "text") e.style.setProperty("--sticky", n.color || "#f6e27a");
-    e.addEventListener("pointerdown", () => { e.style.zIndex = String(++zTop); });
+    e.addEventListener("pointerdown", () => { e.style.zIndex = String(++zTop); selectNode(n.id); });
+    if (selectedId === n.id) e.classList.add("selected");
     if (!readonly) { dragNode(e, head, n); resizeNode(e, handle, n); }
     return e;
   }
@@ -998,6 +1032,7 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
   let gesture = null;
   vp.addEventListener("pointerdown", (ev) => {
     if (ev.target.closest(".pl-node")) return;
+    selectNode(null);
     closeFly(); if (!bgPanel.hidden) bgPanel.hidden = true;
     capture(vp, ev.pointerId);
     pts.set(ev.pointerId, [ev.clientX, ev.clientY]);
@@ -1057,6 +1092,16 @@ export function renderBoardApp(panel, { system, readonly = false, boards = null,
     if (wheelIntent(ev) === "pan") { stopViewAnim(); const v = view(); setView(v.x - ev.deltaX, v.y - ev.deltaY, v.z); return; }
     zoomAt(ev.clientX, ev.clientY, ev.ctrlKey ? Math.exp(-ev.deltaY * 0.01) : ev.deltaY < 0 ? 1.18 : 1 / 1.18, ev.ctrlKey);
   }, { passive: false });
+  document.addEventListener("keydown", function nodeKeys(ev) {
+    if (!shell.isConnected) { document.removeEventListener("keydown", nodeKeys); return; }
+    if (!(ev.ctrlKey || ev.metaKey) || ev.altKey) return;
+    const t = ev.target;
+    if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;   // typing: the browser's own copy and paste
+    const k = ev.key.toLowerCase();
+    if (k === "c" && !String(getSelection() || "").trim()) { if (copyNode()) ev.preventDefault(); }
+    else if (k === "v" && nodeClip) { ev.preventDefault(); pasteNode(); }
+    else if (k === "d") { ev.preventDefault(); if (copyNode()) pasteNode(true); }
+  });
   shell.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { if (focusId) focusSession(null); closeFly(); if (!bgPanel.hidden) bgPanel.hidden = true; if (tool !== "move") setTool("move"); } });
 
   // ---- connections ---------------------------------------------------------------------------

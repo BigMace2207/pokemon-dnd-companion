@@ -330,3 +330,6 @@ html.planner-full .main::after { display: none; }
 .pl-detail-line { margin: 0; display: flex; justify-content: space-between; gap: 12px; }
 .pl-detail-line span, .pl-detail-moves > span { opacity: .6; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
 .pl-detail-moves { display: grid; gap: 4px; }
+
+/* the selected node (what Ctrl+C copies) */
+.pl-node.selected { outline: 3px solid #cdbfff; outline-offset: 5px; }

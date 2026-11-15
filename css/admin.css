@@ -135,13 +135,8 @@ html.admin-full body { background: #0b0b0c; }
   .adm-camps .adm-tr > :nth-child(5), .adm-camps .adm-tr > :nth-child(7) { display: block; }
 }
 
-/* Wider: the page uses the whole width, the accounts table gets the room, and every column has a minimum so headings never run into
-   each other (if the window is still too narrow the table scrolls sideways instead of squashing). */
-.adm { padding-left: calc(48px * var(--s)); padding-right: calc(48px * var(--s)); }
-.adm-split { grid-template-columns: minmax(0, 3fr) minmax(calc(300px * var(--s)), 1fr); }
-.adm-table { overflow-x: auto; }
-.adm-tr { min-width: calc(820px * var(--s)); grid-template-columns: minmax(calc(230px * var(--s)), 2.6fr) minmax(calc(90px * var(--s)), .8fr) minmax(calc(120px * var(--s)), 1.1fr) minmax(calc(90px * var(--s)), 1fr) repeat(3, minmax(calc(86px * var(--s)), .9fr)); column-gap: calc(18px * var(--s)); }
-.adm-camps .adm-tr { min-width: calc(760px * var(--s)); grid-template-columns: minmax(calc(200px * var(--s)), 2fr) minmax(calc(90px * var(--s)), 1fr) minmax(calc(140px * var(--s)), 1.6fr) minmax(calc(70px * var(--s)), .7fr) minmax(calc(70px * var(--s)), .7fr) minmax(calc(60px * var(--s)), .6fr) auto; }
-.adm-th > * { white-space: nowrap; }
-@media (max-width: 1500px) { .adm-split { grid-template-columns: 1fr; } }
-@media (max-width: 700px) { .adm-tr, .adm-camps .adm-tr { min-width: 0; } }
+/* The window itself fills the screen (nothing narrows it), and the accounts stay in one table. */
+html.admin-full .main { padding: 0 !important; max-width: none; display: block; }
+html.admin-full .main > .adm { width: 100%; max-width: none; margin: 0; box-sizing: border-box; min-height: 100%; }
+.adm-split { grid-template-columns: minmax(0, 2.2fr) minmax(calc(300px * var(--s)), 1fr); }
+@media (max-width: 1400px) { .adm-split { grid-template-columns: 1fr; } }

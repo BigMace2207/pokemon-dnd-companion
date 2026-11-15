@@ -2462,10 +2462,43 @@ export function renderHub(container, state) {
     if (g.kind === "text" && !g.moved) newTextAt(toWorld(e.clientX, e.clientY));
   });
 
+  // Copy and paste: whatever you last clicked on the board (a note, text, a widget, a button, a prop) is the selection; Ctrl+C copies
+  // it, Ctrl+V puts a copy a little down and to the right, Ctrl+D copies it in one go. Pages, drawings and a player's own trainer or
+  // Pokémon card are not copied: a card can only be on the board once.
+  let selectedItem = null, clipItem = null, pasteN = 0;
+  const select = (id) => {
+    itemLayer.querySelectorAll(".hub-selected").forEach((x) => x.classList.remove("hub-selected"));
+    selectedItem = id && itemEls.has(id) ? id : null;
+    if (selectedItem) itemEls.get(selectedItem).classList.add("hub-selected");
+  };
+  stage.addEventListener("pointerdown", (e) => { const n = e.target.closest?.(".hub-items [data-id]"); select(n ? n.dataset.id : null); }, true);
+  function copySelected() {
+    const it = selectedItem && itemEls.get(selectedItem)?.__item;
+    if (!it) return false;
+    if (it.link || ["page", "stroke", "shape"].includes(it.type)) { say("That can't be copied: it can only be on the board once."); return false; }
+    clipItem = JSON.parse(JSON.stringify(it)); pasteN = 0;
+    say("Copied.");
+    return true;
+  }
+  async function pasteClip(inPlace = false) {
+    if (!clipItem) return;
+    pasteN += 1;
+    const d = inPlace ? 36 : 36 * pasteN;
+    const id = uid();
+    const res = await op({ op: "put", item: { ...clipItem, id, x: Math.round(clipItem.x + d), y: Math.round(clipItem.y + d) } });
+    if (res) setTimeout(() => select(id), 120);
+  }
+
   // shortcuts anywhere on the page while the hub is open (never while typing)
   document.addEventListener("keydown", function keys(e) {
     if (!document.body.contains(root)) { document.removeEventListener("keydown", keys); return; }
     if (typing(e.target)) return;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+      const k = e.key.toLowerCase();
+      if (k === "c" && !String(getSelection() || "").trim()) { if (copySelected()) e.preventDefault(); return; }
+      if (k === "v") { if (clipItem) { e.preventDefault(); pasteClip(); } return; }
+      if (k === "d") { e.preventDefault(); if (copySelected()) pasteClip(true); return; }
+    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
       while (undoStack.length) {
         const id = undoStack.pop();

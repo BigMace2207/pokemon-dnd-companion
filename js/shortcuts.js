@@ -35,6 +35,8 @@ export function mountShortcuts() {
       if (k === "d") { e.preventDefault(); document.getElementById("diceWidgetBtn")?.click(); }
       else if (k === "p") { const b = document.getElementById("pingWidgetBtn"); if (b && !b.hidden) { e.preventDefault(); b.click(); } }
       else if (k === "h") { e.preventDefault(); import("./appMenus.js").then((m) => m.goHome()); }
+      else if (k === "t") { e.preventDefault(); import("./appMenus.js").then((m) => m.goTeam()); }
+      else if (k === "r") { e.preventDefault(); import("./appMenus.js").then((m) => m.goTo("trainer")); }
       return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;

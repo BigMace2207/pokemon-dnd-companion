@@ -14,6 +14,9 @@ const visible = (e) => !!e && e.getClientRects().length > 0 && !e.hidden;
 
 // ---------------------------------------------------------------- actions (each also a keyboard shortcut, see shortcuts.js)
 export function goHome() { location.hash = `#${activeSystem()?.defaultView || "hub"}`; }
+export const goTo = (view) => { location.hash = `#${view}`; };
+const isPokemon = () => activeSystem()?.id === "pokemon-dnd";
+export const goTeam = () => goTo(isPokemon() ? "team" : "dndCharacters");
 export function goSettings() { location.hash = "#settings"; }
 export function toggleFullscreen() {
   if (inApp()) { try { window.pywebview.api.toggle_fullscreen(); } catch { /* not ready */ } return; }
@@ -58,19 +61,28 @@ function contextItems() {
   const items = [];
   const picked = String(getSelection() || "").trim();
   if (picked) items.push({ label: "Copy", keys: "Ctrl+C", run: () => navigator.clipboard?.writeText(picked).catch(() => document.execCommand?.("copy")) }, "-");
-  const search = [...document.querySelectorAll('main input[type="text"], main input[type="search"]')].find(visible);
-  if (search) items.push({ label: "Search this page", keys: "/", run: () => { search.focus(); search.select?.(); } });
+  // where to go: the Pokémon side has a hub, a team and a trainer sheet; the D&D side its home page and characters
+  if (isPokemon()) items.push({ label: "Hub", keys: "Alt+H", run: goHome }, { label: "My Team", keys: "Alt+T", run: () => goTo("team") }, { label: "Trainer", keys: "Alt+R", run: () => goTo("trainer") });
+  else items.push({ label: "Home", keys: "Alt+H", run: goHome }, { label: "Characters", keys: "Alt+T", run: () => goTo("dndCharacters") });
+  items.push({ label: "Settings", keys: "Ctrl+,", run: goSettings }, "-");
   if (document.getElementById("diceWidgetBtn")) items.push({ label: "Dice tray", keys: "Alt+D", run: () => document.getElementById("diceWidgetBtn")?.click() });
   const ping = document.getElementById("pingWidgetBtn");
   if (ping && !ping.hidden) items.push({ label: "Ping the DM", keys: "Alt+P", run: () => ping.click() });
-  if (items.length && items[items.length - 1] !== "-") items.push("-");
-  items.push({ label: "Home", keys: "Alt+H", run: goHome }, { label: "Settings", keys: "Ctrl+,", run: goSettings }, "-",
-    { label: document.fullscreenElement ? "Leave full screen" : "Full screen", keys: "F11", run: toggleFullscreen },
+  if (items[items.length - 1] !== "-") items.push("-");
+  items.push({ label: document.fullscreenElement ? "Leave full screen" : "Full screen", keys: "F11", run: toggleFullscreen },
     { label: "Reload", keys: "Ctrl+R", run: () => location.reload() });
   return items;
 }
 
 // ---------------------------------------------------------------- escape
+// a dialog you can actually see (the hub keeps several panels in the page, invisible until opened)
+function dialogOpen() {
+  return [...document.querySelectorAll("dialog[open], [role='dialog']:not([hidden]):not(.hub-bag-drop)")].some((d) => {
+    if (!d.getClientRects().length) return false;
+    const c = getComputedStyle(d);
+    return c.visibility !== "hidden" && Number(c.opacity) > 0.1 && c.pointerEvents !== "none";
+  });
+}
 function openPause() {
   openMenu([
     { label: "Resume", keys: "Esc", run: () => {} },
@@ -90,7 +102,7 @@ export function mountAppMenus() {
 
   window.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || e.ctrlKey || e.metaKey || e.altKey || current) return;
-    if (isTyping(e.target) || document.querySelector("dialog[open], [role='dialog']:not([hidden]):not(.hub-bag-drop)")) return;
+    if (isTyping(e.target) || dialogOpen()) return;
     if (!document.getElementById("mainView") || document.querySelector(".start-page")) return;   // only inside a campaign
     // did anything on the page react to this Esc? If nothing changes within a moment, nobody used it.
     // (only changes to things that open and close count: a board that keeps redrawing itself must not stop the menu from opening)
@@ -98,11 +110,12 @@ export function mountAppMenus() {
     const closable = "[class*='pull-'], [class*='drawer'], [class*='menu'], [class*='drop'], [class*='fly'], [class*='panel'], [class*='modal'], [class*='popup'], [class*='dialog'], [class*='tool'], [role='dialog'], dialog, [aria-expanded]";
     const watch = new MutationObserver((list) => {
       for (const m of list) {
+        if (m.type === "attributes" && m.target.getAttribute(m.attributeName) === m.oldValue) continue;   // (set to what it already was)
         const nodes = [m.target, ...m.addedNodes, ...m.removedNodes].filter((n) => n.nodeType === 1);
         if (nodes.some((n) => !n.closest?.(".am-layer") && (n.matches?.(closable) || n.closest?.(closable)))) { changed = true; return; }
       }
     });
-    watch.observe(document.body, { subtree: true, childList: true, attributes: true });
+    watch.observe(document.body, { subtree: true, childList: true, attributes: true, attributeOldValue: true });
     setTimeout(() => { watch.disconnect(); if (!changed && !current) openPause(); }, 90);
   });
 }
