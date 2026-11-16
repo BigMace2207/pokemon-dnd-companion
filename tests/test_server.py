@@ -118,6 +118,13 @@ class AppDownloads(ServerCase):
         files = {f["platform"]: f["name"] for f in call(self.base, "GET", "/api/downloads")[1]["files"]}
         self.assertEqual(files, {"windows": new, "macos": "DnD-Companion-Installer-0.1.0-macos.exe"})
 
+    def test_the_two_mac_builds_are_separate_platforms(self):
+        arm = self.put("DnD-Companion-Installer-0.1.1-macos.dmg")
+        intel = self.put("DnD-Companion-Installer-0.1.1-macos-intel.dmg")
+        files = {f["platform"]: f["name"] for f in call(self.base, "GET", "/api/downloads")[1]["files"]}
+        self.assertEqual(files, {"macos": arm, "macos-intel": intel})
+        self.assertEqual(call(self.base, "GET", f"/download/files/{intel}")[0], 200)
+
     def test_nothing_else_can_be_fetched_through_it(self):
         good = self.put("DnD-Companion-Installer-0.1.0-windows.exe")
         self.put("notes.txt", b"private")

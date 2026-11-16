@@ -1,8 +1,8 @@
 // fluxdev.org/download: asks the server which builds exist (/api/downloads), then shows a big button for the visitor's own system
 // with its version and release date, and smaller buttons for the other systems. The server hands a file out only by its exact name.
 (function () {
-  var NAMES = { windows: "Windows", macos: "Mac", linux: "Linux" };
-  var ORDER = ["windows", "macos", "linux"];
+  var NAMES = { windows: "Windows", macos: "Mac (Apple Silicon)", "macos-intel": "Mac (Intel)", linux: "Linux" };
+  var ORDER = ["windows", "macos", "macos-intel", "linux"];
   var ua = navigator.userAgent;
   var mine = /Android|iPhone|iPad|iPod/.test(ua) ? "" : /Windows/.test(ua) ? "windows" : /Mac OS X|Macintosh/.test(ua) ? "macos" : /Linux|X11/.test(ua) ? "linux" : "";
   var main = mine || "windows";
@@ -17,7 +17,7 @@
       var by = {};
       (res.files || []).forEach(function (f) { by[f.platform] = f; });
 
-      document.getElementById("title").textContent = mine ? "Download for " + NAMES[mine] : "Download the app";
+      document.getElementById("title").textContent = mine ? "Download for " + (mine === "macos" ? "Mac" : NAMES[mine]) : "Download the app";
       var btn = document.getElementById("main");
       var meta = document.getElementById("meta");
       var f = by[main];

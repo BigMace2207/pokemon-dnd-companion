@@ -204,7 +204,7 @@ def static_path_allowed(url_path):
 # PokemonDnD-Companion-<version>-<windows|macos|linux>.<zip|dmg>, so no other name (and no path) can reach anything else. Deploying the
 # app never touches this folder. The page (assets/download/) and the listing (/api/downloads) are public: they only describe these files.
 DOWNLOAD_DIR = Path(os.environ.get("PKDND_DOWNLOAD_DIR") or (DATA_DIR / "downloads"))
-DOWNLOAD_NAME = re.compile(r"^DnD-Companion-Installer-(?P<version>[0-9][0-9A-Za-z.]*)-(?P<platform>windows|macos|linux)\.(?P<ext>exe|dmg)$")
+DOWNLOAD_NAME = re.compile(r"^DnD-Companion-Installer-(?P<version>[0-9][0-9A-Za-z.]*)-(?P<platform>windows|macos-intel|macos|linux)\.(?P<ext>exe|dmg)$")
 
 
 def list_downloads():
