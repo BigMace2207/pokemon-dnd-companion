@@ -133,6 +133,27 @@ export default function App() {
     if (f && e.type === "pointerup" && Math.hypot(e.clientX - f.cx, e.clientY - f.cy) < f.r) land();
   };
 
+  // the pointer's light, and a ring where a button is pressed (neither on touch screens nor with reduced motion)
+  useEffect(() => {
+    const host = root.current;
+    if (!host || reduced || !window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+    let raf = 0, x = 0, y = 0;
+    const move = (e: PointerEvent) => {
+      x = e.clientX; y = e.clientY; host.setAttribute("data-pointer", "");
+      if (!raf) raf = requestAnimationFrame(() => { raf = 0; host.style.setProperty("--mx", `${x}px`); host.style.setProperty("--my", `${y}px`); });
+    };
+    const leave = () => host.removeAttribute("data-pointer");
+    const down = (e: PointerEvent) => {
+      const b = (e.target as HTMLElement | null)?.closest<HTMLElement>(".pf-work, .pf-sound");
+      if (!b) return;
+      const r = b.getBoundingClientRect(), dot = document.createElement("span");
+      dot.className = "pf-ripple"; dot.style.left = `${e.clientX - r.left}px`; dot.style.top = `${e.clientY - r.top}px`;
+      b.append(dot); setTimeout(() => dot.remove(), 650);
+    };
+    host.addEventListener("pointermove", move); host.addEventListener("pointerleave", leave); host.addEventListener("pointerdown", down);
+    return () => { host.removeEventListener("pointermove", move); host.removeEventListener("pointerleave", leave); host.removeEventListener("pointerdown", down); cancelAnimationFrame(raf); };
+  }, [reduced]);
+
   const accent = useMemo(() => ({ "--acc": css(country.color), "--acc-soft": css(country.color, 0.16) }) as CSSProperties, [country]);
 
   return (
@@ -142,6 +163,8 @@ export default function App() {
         <Scene pos={pos} mode={mode} drag={drag} activeId={activeId} pulseKey={pulseKey} spinKey={spinKey}
           reduced={reduced} onFrame={onFrame} introSkip={introSkip} onIntroEnd={endIntro} />
       </div>
+      <div className="pf-shoot" aria-hidden="true"><i /><i /><i /></div>
+      <div className="pf-glow" aria-hidden="true" />
       <div className="pf-vignette" aria-hidden="true" />
 
       <header className="pf-top">
@@ -152,7 +175,7 @@ export default function App() {
             onClick={() => { const m = !muted; sfx.setMuted(m); setMuted(m); if (!m) sfx.ping(2); }}>
             <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M2.5 6v4h2.6L8.5 12.75v-9.5L5.1 6H2.5z" />
-              {muted ? <path d="m11 6 3 4m0-4-3 4" /> : <path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.7a6 6 0 0 1 0 8.6" />}
+              {muted ? <path d="m11 6 3 4m0-4-3 4" /> : <><path className="pf-wave" d="M11 5.5a3.5 3.5 0 0 1 0 5" /><path className="pf-wave" d="M12.8 3.7a6 6 0 0 1 0 8.6" /></>}
             </svg>
           </button>
           <button ref={workBtn} type="button" className="pf-work" aria-haspopup="dialog" aria-expanded={contactOpen} onClick={() => setContactOpen(true)}>Work with me</button>
