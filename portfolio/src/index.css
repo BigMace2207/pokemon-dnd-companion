@@ -172,11 +172,44 @@ button { font: inherit; color: inherit; cursor: pointer; user-select: none; -web
 .pf-player { position: absolute; z-index: 10; left: calc(var(--edge) + env(safe-area-inset-left, 0px)); bottom: calc(46px + env(safe-area-inset-bottom, 0px)); width: min(380px, calc(100vw - 44px)); transition: opacity 200ms var(--ease-out); }
 .pf-note { position: relative; margin: 0 0 8px 46px; font: 700 22px/1.12 var(--hand); color: var(--ink); transform: rotate(-1.5deg); transform-origin: left bottom; text-shadow: 0 2px 10px rgb(0 0 0 / 0.7); }
 .pf-note-arrow { position: absolute; left: -44px; top: 6px; width: 34px; height: 42px; color: var(--ink-2); }
-/* Spotify's own player, kept whole, set in a dark paper frame so it sits with the rest of the page */
-.pf-frame { position: relative; isolation: isolate; padding: 6px; border: 1px solid var(--rule); border-radius: 24px;
-  background: linear-gradient(180deg, rgb(37 35 50 / 0.97), rgb(14 14 22 / 0.98)); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.1), 0 14px 30px rgb(0 0 0 / 0.5); }
-.pf-frame::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--grain); opacity: 0.14; pointer-events: none; }
-.pf-frame iframe { display: block; width: 100%; height: 80px; border: 0; border-radius: 18px; color-scheme: normal; }
+/* the deck: a record, the song's name, a bar to scrub, a play button. Spotify's own player does the playing but stays out of
+   sight (.pf-engine, see deck.ts). The record turns, the title shimmers and a light runs round the edge only while it plays. */
+.pf-deck { position: relative; isolation: isolate; display: flex; align-items: center; gap: 14px; padding: 12px 14px 12px 12px; border: 1px solid var(--rule); border-radius: 24px;
+  background: linear-gradient(180deg, rgb(37 35 50 / 0.97), rgb(14 14 22 / 0.98)); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.1), 0 14px 30px rgb(0 0 0 / 0.5); transition: border-color 300ms ease; }
+.pf-deck::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--grain); opacity: 0.14; pointer-events: none; }
+.pf-deck[data-playing] { border-color: color-mix(in srgb, var(--acc) 40%, var(--rule)); }
+.pf-beam { position: absolute; inset: 0; z-index: 1; border-radius: inherit; pointer-events: none; animation: pf-fade 500ms var(--ease-out) both; }
+@keyframes pf-fade { from { opacity: 0; } }
+.pf-disc { position: relative; flex: none; width: 66px; height: 66px; border-radius: 50%; background: repeating-radial-gradient(circle, #0a0a11 0 1.4px, #16151f 1.4px 2.8px);
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.05), 0 8px 18px rgb(0 0 0 / 0.55); animation: pf-spin 3.2s linear infinite paused; }
+.pf-deck[data-playing] .pf-disc { animation-play-state: running; }
+.pf-disc::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 30deg, transparent 0 10%, rgb(255 255 255 / 0.12) 17%, transparent 25% 60%, rgb(255 255 255 / 0.09) 68%, transparent 76%); }
+.pf-disc::after { content: ""; position: absolute; inset: 31%; border-radius: 50%; box-shadow: 0 0 0 1.5px rgb(0 0 0 / 0.4);
+  background: radial-gradient(circle, #07080f 0 11%, transparent 12%), linear-gradient(135deg, color-mix(in srgb, var(--acc), #fff 25%), var(--acc) 60%, color-mix(in srgb, var(--acc), #000 45%)); }
+@keyframes pf-spin { to { transform: rotate(360deg); } }
+.pf-deck-main { flex: 1; min-width: 0; }
+.pf-track { margin: 0; font: 400 21px/1.2 var(--serif); letter-spacing: -0.01em; white-space: nowrap; }
+.pf-track > span { display: block; overflow: hidden; text-overflow: ellipsis; padding-bottom: 0.06em; }
+.pf-scrub { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 30px; margin: 0; padding: 0; background: none; cursor: pointer; --p: 0%; }
+.pf-scrub::-webkit-slider-runnable-track { height: 3px; border-radius: 3px; background: linear-gradient(90deg, var(--acc) var(--p), rgb(241 236 226 / 0.22) var(--p)); }
+.pf-scrub::-moz-range-track { height: 3px; border-radius: 3px; background: rgb(241 236 226 / 0.22); }
+.pf-scrub::-moz-range-progress { height: 3px; border-radius: 3px; background: var(--acc); }
+.pf-scrub::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; margin-top: -5px; border: 0; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 4px rgb(7 8 15 / 0.6); transition: transform 140ms var(--ease-out); }
+.pf-scrub::-moz-range-thumb { width: 13px; height: 13px; border: 0; border-radius: 50%; background: var(--ink); }
+.pf-scrub:disabled { cursor: default; opacity: 0.55; }
+.pf-scrub:disabled::-webkit-slider-thumb { visibility: hidden; }
+.pf-scrub:disabled::-moz-range-thumb { visibility: hidden; }
+@media (hover: hover) and (pointer: fine) { .pf-scrub:enabled:hover::-webkit-slider-thumb { transform: scale(1.25); } }
+.pf-times { display: flex; justify-content: space-between; gap: 10px; margin: -4px 0 0; white-space: nowrap; font: 400 18px/1.1 var(--hand); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.pf-times-note { color: var(--acc); text-align: right; }
+.pf-play { flex: none; width: 48px; height: 48px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: #0a0b12;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--acc), #fff 32%), var(--acc) 78%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.55), 0 6px 14px rgb(0 0 0 / 0.4);
+  transition: transform 140ms var(--ease-out), filter 150ms ease, opacity 200ms var(--ease-out); }
+.pf-play:disabled { opacity: 0.45; cursor: default; }
+.pf-play:enabled:active { transform: scale(0.94); }
+@media (hover: hover) and (pointer: fine) { .pf-play:enabled:hover { filter: brightness(1.1); } }
+/* Spotify's player: in the page and rendered (so it keeps playing), but transparent and unreachable */
+.pf-engine { position: absolute; left: 0; top: 0; width: 300px; height: 80px; border: 0; opacity: 0; pointer-events: none; z-index: -1; }
 .pf-caption { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 4px 0 10px; font: 400 19px/1.2 var(--hand); color: var(--ink-2); }
 .pf-caption a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; text-decoration: underline; text-decoration-color: rgb(241 236 226 / 0.3); text-underline-offset: 3px; }
 @media (hover: hover) and (pointer: fine) { .pf-caption a:hover { color: var(--ink); text-decoration-color: var(--ink); } }
@@ -223,7 +256,7 @@ button { font: inherit; color: inherit; cursor: pointer; user-select: none; -web
   .pf-hint span { display: none; }
   .pf[data-open] .pf-hint { opacity: 0; }
   .pf[data-open] .pf-sub { display: none; }
-  .pf[data-open] .pf-player { display: none; }
+  .pf[data-open] .pf-player { opacity: 0; pointer-events: none; }   /* hidden, not removed, so the song keeps playing */
   .pf-label-name { font-size: 48px; }
 }
 @media (max-width: 699px) {
@@ -238,6 +271,7 @@ button { font: inherit; color: inherit; cursor: pointer; user-select: none; -web
 
 @media (prefers-contrast: more) { :root { --rule: rgb(241 236 226 / 0.55); --ink-2: rgb(241 236 226 / 0.92); } }
 @media (prefers-reduced-motion: reduce) {
+  .pf-disc { animation: none; }
   .pf-rail-item i, .pf-rail-item span, .pf-label-name, .pf-label-go .pf-arrow, .pf-dot-mark::before, .pf-back, .pf-visit, .pf-close { transition-property: background-color, border-color, color, opacity; }
   .pf[data-mode="focus"] .pf-dots { transition-delay: 0ms; }
 }

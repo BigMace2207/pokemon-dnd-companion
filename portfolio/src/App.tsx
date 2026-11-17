@@ -204,7 +204,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <Player />
+      <Player accent={css(country.color)} />
 
       <div className="pf-panel-wrap">
         <AnimatePresence mode="wait">

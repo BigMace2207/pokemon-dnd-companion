@@ -11,7 +11,6 @@ export function parseSpotify(text: string): string | null {
   const m = LINK.exec(t) ?? URI.exec(t);
   return m ? `${m[1]}/${m[2]}` : null;
 }
-export const embedUrl = (song: string) => `https://open.spotify.com/embed/${song}?utm_source=generator&theme=0`;
 export const openUrl = (song: string) => `https://open.spotify.com/${song}`;
 
 export type Song = { spotify: string; title: string };
@@ -26,6 +25,10 @@ function authHeaders(): Record<string, string> {
 
 /** The current song, readable by everyone. */
 export async function fetchSong(): Promise<Song> {
+  if (import.meta.env.DEV) {   // `npm run dev` only (removed from the build): ?song=track/<id> tries a song without a server
+    const q = new URLSearchParams(location.search).get("song"), id = q && parseSpotify(`https://open.spotify.com/${q}`);
+    if (id) return { spotify: id, title: new URLSearchParams(location.search).get("title") ?? "Test song" };
+  }
   try {
     const r = await fetch("/api/portfolio", { cache: "no-store" });
     if (!r.ok) return { spotify: "", title: "" };
