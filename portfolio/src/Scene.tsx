@@ -29,9 +29,6 @@ const ASIDE = 0.55, TILT = 0.5;
 const FLICK = 5, FLICK_MAX = 30, FRICTION = 0.7, SPIN_REST = 0.7;
 const TAU = Math.PI * 2;
 
-// The page's two inks (--ink and --accent in index.css) for the shader.
-const INK = [0.925, 0.906, 0.863] as const, ACCENT = [0.949, 0.329, 0.176] as const;
-
 /** A damped spring that can be retargeted mid-flight (it keeps its velocity). zeta 1 = no overshoot. */
 class Spring {
   x = 0; v = 0; t = 0;
@@ -64,11 +61,10 @@ void main(){
   gl_Position = projectionMatrix * mv;
 }`;
 
-// A chart, not a render: a matte globe with a graticule, and one landmass per region drawn as a coastline with
-// hatching. The selected region is inked in the accent; the others in the page's ink.
+// One landmass per region: a noisy disc around the region's centre, drawn as a glowing outline over a lat/long grid.
 const PLANET_FRAG = /* glsl */ `
 #define N ${N}
-uniform vec3 uCen[N]; uniform vec3 uInk; uniform vec3 uAccent;
+uniform vec3 uCen[N]; uniform vec3 uCol[N];
 uniform float uSel, uFocus, uPulseT; uniform vec3 uPulsePos;
 varying vec3 vObj; varying vec3 vN; varying vec3 vView;
 ${NOISE}
@@ -79,35 +75,47 @@ void main(){
   const float CELL = 0.2617994;                      // 15 degrees
   float u = lon / CELL, v = lat / CELL;
   float du = min(fwidth(u), fwidth(fract(lon / 6.2831853 + 0.5) * 6.2831853 / CELL));   // (no seam where atan wraps)
-  float grid = max(gridLine(v, fwidth(v) * 1.1), gridLine(u, du * 1.1) * smoothstep(1.45, 1.2, abs(lat)));
-  float hatch = gridLine(v * 6.0, fwidth(v) * 6.0);  // fine parallels: the fill of a landmass
+  float grid = max(gridLine(v, fwidth(v) * 1.2), gridLine(u, du * 1.2) * smoothstep(1.45, 1.2, abs(lat)));
+  float fine = max(gridLine(v * 5.0, fwidth(v) * 6.0), gridLine(u * 5.0, du * 6.0));
 
   vec3 N_ = normalize(vN), V = normalize(-vView);
-  float lit = 0.62 + 0.38 * max(dot(N_, normalize(vec3(-0.45, 0.55, 0.7))), 0.0);
-  vec3 col = vec3(0.066, 0.075, 0.088) * lit + uInk * grid * 0.05;
+  float diff = 0.3 + 0.7 * max(dot(N_, normalize(vec3(-0.45, 0.55, 0.7))), 0.0);
+  vec3 col = (vec3(0.012, 0.02, 0.046) + vec3(0.22, 0.45, 0.8) * grid * 0.09) * diff;
 
+  vec3 accent = vec3(0.4, 0.8, 1.0);
   for (int i = 0; i < N; i++) {
     float sel = 1.0 - step(0.5, abs(float(i) - uSel));
     float d = acos(clamp(dot(o, uCen[i]), -1.0, 1.0));
     float e = d + (fbm(o * 5.0 + float(i) * 7.3) - 0.5) * 0.26 - 0.3;      // < 0 inside the landmass
     float aa = fwidth(e) + 1e-4;
     float land = 1.0 - smoothstep(-aa, aa, e);
-    float coast = 1.0 - smoothstep(aa * 0.6, aa * 2.0 + 0.002, abs(e));
-    vec3 ink = mix(uInk, uAccent, sel);
-    float strength = mix(mix(0.55, 0.22, uFocus), 1.0, sel);
-    col = mix(col, vec3(0.098, 0.11, 0.128) * lit, land);
-    col = mix(col, ink, clamp(coast * strength + land * hatch * (0.1 + 0.26 * sel), 0.0, 1.0));
+    float edge = 1.0 - smoothstep(0.0, aa * 1.5 + 0.004, abs(e));
+    float halo = exp(-max(e, 0.0) * 26.0) * (1.0 - land);
+    float b = mix(mix(0.42, 0.14, uFocus), 1.0, sel);
+    col = mix(col, uCol[i] * (0.05 + 0.09 * b) * diff, land);
+    col += uCol[i] * b * (edge * 0.95 + halo * 0.22 + land * (fine * 0.16 + grid * 0.3));
+    accent = mix(accent, uCol[i], sel);
   }
 
-  float rim = smoothstep(0.8, 1.0, 1.0 - max(dot(N_, V), 0.0));           // a thin limb line, not a glow
-  col = mix(col, uInk, rim * 0.16);
+  float fres = pow(1.0 - max(dot(N_, V), 0.0), 3.0);
+  col += mix(vec3(0.25, 0.5, 1.0), accent, 0.35) * fres * 0.75;
 
   if (uPulseT > 0.0) {                                // a ring racing outward from the chosen marker
     float dp = acos(clamp(dot(o, uPulsePos), -1.0, 1.0));
-    float ring = 1.0 - smoothstep(0.0, 0.012 + 0.03 * uPulseT, abs(dp - uPulseT * 1.5));
-    col = mix(col, uAccent, ring * (1.0 - uPulseT));
+    float ring = 1.0 - smoothstep(0.0, 0.015 + 0.05 * uPulseT, abs(dp - uPulseT * 1.5));
+    col += accent * ring * (1.0 - uPulseT) * 1.3;
   }
   gl_FragColor = vec4(col, 1.0);
+}`;
+
+const GLOW_VERT = /* glsl */ `
+varying vec3 vN;
+void main(){ vN = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const GLOW_FRAG = /* glsl */ `
+uniform vec3 uTint; varying vec3 vN;
+void main(){
+  float t = clamp(-normalize(vN).z / 0.5, 0.0, 1.0);   // 0 at the halo's outer edge, 1 where it meets the planet
+  gl_FragColor = vec4(uTint, pow(t, 2.2) * 0.7);       // additive: alpha is the glow's strength, so the page shows through
 }`;
 
 function Rig(p: Props) {
@@ -127,12 +135,16 @@ function Rig(p: Props) {
     vertexShader: PLANET_VERT, fragmentShader: PLANET_FRAG,
     uniforms: {
       uCen: { value: COUNTRIES.map((c) => new THREE.Vector3(...c.center)) },
-      uInk: { value: new THREE.Vector3(...INK) }, uAccent: { value: new THREE.Vector3(...ACCENT) },
+      uCol: { value: COUNTRIES.map((c) => new THREE.Vector3(...c.color)) },
       uSel: { value: 0 }, uFocus: { value: 0 }, uPulseT: { value: 0 }, uPulsePos: { value: new THREE.Vector3(0, 0, 1) },
     },
   }), []);
+  const glowMat = useMemo(() => new THREE.ShaderMaterial({
+    vertexShader: GLOW_VERT, fragmentShader: GLOW_FRAG, uniforms: { uTint: { value: new THREE.Vector3(0.3, 0.55, 1) } },
+    side: THREE.BackSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
+  }), []);
   const starGeo = useMemo(() => {
-    const n = 900, a = new Float32Array(n * 3);
+    const n = 1600, a = new Float32Array(n * 3);
     let seed = 7;
     const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     for (let i = 0; i < n; i++) {
@@ -199,6 +211,7 @@ function Rig(p: Props) {
 
     const un = planetMat.uniforms;
     un.uSel.value = i; un.uFocus.value = s.focus.x; un.uPulseT.value = s.pulseT < 1 ? s.pulseT : 0;
+    glowMat.uniforms.uTint.value.set(0.3 + c.color[0] * 0.25, 0.5 + c.color[1] * 0.15, 0.85 + c.color[2] * 0.15);
 
     const { width: w, height: h } = size;
     const toScreen = (v: readonly [number, number, number]) => {
@@ -217,10 +230,11 @@ function Rig(p: Props) {
   return (
     <>
       <points ref={stars} geometry={starGeo}>
-        <pointsMaterial size={1.4} sizeAttenuation={false} color="#ece7dc" transparent opacity={0.5} depthWrite={false} />
+        <pointsMaterial size={1.5} sizeAttenuation={false} color="#cfd8ff" transparent opacity={0.8} depthWrite={false} />
       </points>
       <group ref={group}>
         <mesh material={planetMat}><sphereGeometry args={[1, 128, 96]} /></mesh>
+        <mesh material={glowMat} scale={1.16}><sphereGeometry args={[1, 64, 48]} /></mesh>
       </group>
     </>
   );

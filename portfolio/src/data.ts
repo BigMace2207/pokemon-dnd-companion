@@ -10,6 +10,8 @@ export type Project = {
 };
 export type Country = {
   id: string; name: string; blurb: string;
+  /** accent colour, 0..1 rgb */
+  color: [number, number, number];
   /** latitude of the landmass, radians */
   lat: number;
   projects: Project[];
@@ -21,13 +23,13 @@ type RawCountry = Omit<Country, "center" | "projects"> & { projects: RawProject[
 
 const RAW: RawCountry[] = [
   {
-    id: "web", name: "Web & Apps", blurb: "Full-stack tools", lat: 0.18,
+    id: "web", name: "Web & Apps", blurb: "Full-stack tools", color: [0.36, 0.9, 1.0], lat: 0.18,
     projects: [
       { id: "companion", title: "Pokémon D&D Companion", year: "2025–now", kicker: "Live at fluxdev.org",
         desc: "A tabletop companion web app: Pokédex, calculators, trainer sheets and live multi-campaign multiplayer with a DM Control Centre. It also carries a full D&D 5e system, an e-reader library and a lava theme. Built with a Python standard-library server and a no-build vanilla JavaScript front end.",
         tags: ["Python", "Vanilla JS", "Realtime", "Self-hosted"], link: "/" },
       { id: "portfolio", title: "This Portfolio", year: "2026", kicker: "React · Three.js",
-        desc: "The planet you are looking at. A custom shader draws one landmass per category, springs carry the camera between orbit and surface, and a few of the small interactions come from the open-source Amicro library.",
+        desc: "The planet you are flying around. A custom shader draws one landmass per category, springs carry the camera between orbit and surface, and the interface uses Amicro's open-source micro-interactions.",
         tags: ["React", "Three.js", "GLSL", "Motion"] },
       { id: "brain", title: "Second Brain", year: "2026", kicker: "Personal knowledge base",
         desc: "A private library of articles, videos, PDFs and notes stored as an original plus an AI summary, with a search command, weekly upkeep scripts and an encrypted vault for secrets.",
@@ -35,7 +37,7 @@ const RAW: RawCountry[] = [
     ],
   },
   {
-    id: "roblox", name: "Roblox", blurb: "Live games", lat: -0.22,
+    id: "roblox", name: "Roblox", blurb: "Live games", color: [1.0, 0.37, 0.82], lat: -0.22,
     projects: [
       { id: "slime", title: "Mega Slime Factory", year: "2026", kicker: "Live on Roblox · 7 Nov 2026",
         desc: "A tycoon where you build machines that make slime. Launched on 7 November 2026 with game passes, developer products and Premium Payouts wired in, plus saved progress, a gift system and a lucky wheel. Now in its first live-ops cycle.",
@@ -46,7 +48,7 @@ const RAW: RawCountry[] = [
     ],
   },
   {
-    id: "godot", name: "Godot", blurb: "Small games", lat: 0.12,
+    id: "godot", name: "Godot", blurb: "Small games", color: [0.42, 1.0, 0.69], lat: 0.12,
     projects: [
       { id: "wandering", title: "Wandering", year: "2026", kicker: "Godot 4 · pixel art",
         desc: "An exploration game with hand-drawn Aseprite pixel art and GDScript, developed over spring 2026 and kept on GitHub.",
@@ -60,7 +62,7 @@ const RAW: RawCountry[] = [
     ],
   },
   {
-    id: "unity", name: "Unity & XR", blurb: "3D & simulation", lat: -0.15,
+    id: "unity", name: "Unity & XR", blurb: "3D & simulation", color: [0.61, 0.48, 1.0], lat: -0.15,
     projects: [
       { id: "xr", title: "XR Medical Training Assets", year: "2025–26", kicker: "Final-year project · Gener8",
         desc: "A library of performance-optimised 3D models and interface elements for an extended-reality medical training simulation. Modelled in Blender, tested in Unity and tuned to hold 60+ FPS with low polygon counts, using normal maps and human-centred design.",
@@ -77,7 +79,7 @@ const RAW: RawCountry[] = [
     ],
   },
   {
-    id: "gfx", name: "Graphics & Art", blurb: "Rendering & pixels", lat: 0.25,
+    id: "gfx", name: "Graphics & Art", blurb: "Rendering & pixels", color: [1.0, 0.78, 0.34], lat: 0.25,
     projects: [
       { id: "opengl", title: "PyGame & PyOpenGL", year: "2025", kicker: "Computer Graphics portfolio",
         desc: "A series of Python graphics programs written for a computer graphics module, from 2D PyGame experiments to PyOpenGL scenes with transforms and lighting.",
@@ -115,3 +117,5 @@ export const COUNTRIES: Country[] = RAW.map((c, i) => {
 });
 
 export const mod = (n: number, m: number) => ((n % m) + m) % m;
+export const css = (c: [number, number, number], a = 1) =>
+  `rgb(${Math.round(c[0] * 255)} ${Math.round(c[1] * 255)} ${Math.round(c[2] * 255)} / ${a})`;

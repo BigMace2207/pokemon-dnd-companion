@@ -1,27 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import Scene, { type Frame, type Mode } from "./Scene";
-import { COUNTRIES, N, STEP, mod, type Project } from "./data";
-import Plate from "./Plate";
+import { COUNTRIES, N, STEP, css, mod, type Project } from "./data";
+import SignalArt from "./SignalArt";
 import { MagneticButton } from "./amicro/magnetic-button";
 import { WordReveal } from "./amicro/word-reveal";
 import { TextReveal } from "./amicro/text-reveal";
 import { ConcentricPulse } from "./amicro/concentric-pulse";
 
+const pad = (n: number) => String(n).padStart(2, "0");
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
-
-// One small icon set, drawn here so every arrow shares a stroke.
-const PATHS = {
-  right: "M3 8h10M9 4l4 4-4 4",
-  left: "M13 8H3M7 4 3 8l4 4",
-  out: "M5 11 11 5M6 5h5v5",
-  close: "M4 4l8 8M12 4l-8 8",
-} as const;
-const Icon = ({ name }: { name: keyof typeof PATHS }) => (
-  <svg className="pf-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5"
-    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={PATHS[name]} /></svg>
-);
-const count = (n: number) => `${n} ${n === 1 ? "project" : "projects"}`;
 
 export default function App() {
   const [pos, setPos] = useState(0);            // which region is selected; unbounded, so the planet can keep turning
@@ -39,7 +27,7 @@ export default function App() {
   const root = useRef<HTMLDivElement>(null);
   const label = useRef<HTMLButtonElement>(null);
   const line = useRef<SVGLineElement>(null);
-  const pin = useRef<SVGCircleElement>(null);
+  const pin = useRef<SVGGElement>(null);
   const dots = useRef<(HTMLButtonElement | null)[]>([]);
 
   const land = useCallback(() => { drag.offset = 0; setMode("focus"); }, [drag]);
@@ -60,12 +48,12 @@ export default function App() {
     frame.current = f;
     if (el && line.current && pin.current) {
       const lw = el.offsetWidth, lh = el.offsetHeight, narrow = f.w < 700;
-      const lx = narrow ? Math.max(16, Math.min(f.cx - lw / 2 + 24, f.w - lw - 16)) : Math.min(f.cx + f.r * 0.86 + 40, f.w - lw - 24);
+      const lx = narrow ? Math.max(16, Math.min(f.ax + 28, f.w - lw - 16)) : Math.min(f.cx + f.r * 0.86 + 40, f.w - lw - 20);
       const ly = Math.max(narrow ? 64 : 76, narrow ? f.cy - f.r - lh - 34 : f.cy - f.r * 0.98 - lh * 0.55);
       el.style.transform = `translate3d(${lx.toFixed(1)}px, ${ly.toFixed(1)}px, 0)`;
       line.current.setAttribute("x1", f.ax.toFixed(1)); line.current.setAttribute("y1", f.ay.toFixed(1));
       line.current.setAttribute("x2", lx.toFixed(1)); line.current.setAttribute("y2", (ly + lh - 0.5).toFixed(1));
-      pin.current.setAttribute("cx", f.ax.toFixed(1)); pin.current.setAttribute("cy", f.ay.toFixed(1));
+      pin.current.setAttribute("transform", `translate(${f.ax.toFixed(1)} ${f.ay.toFixed(1)})`);
     }
     f.dots.forEach((d, k) => {
       const b = dots.current[k];
@@ -121,16 +109,20 @@ export default function App() {
     if (f && e.type === "pointerup" && Math.hypot(e.clientX - f.cx, e.clientY - f.cy) < f.r) land();
   };
 
+  const accent = useMemo(() => ({ "--acc": css(country.color), "--acc-soft": css(country.color, 0.16) }) as CSSProperties, [country]);
+
   return (
-    <div className="pf" ref={root} data-mode={mode} data-open={active ? "" : undefined}>
+    <div className="pf" ref={root} data-mode={mode} data-open={active ? "" : undefined} style={accent}>
       <div className="pf-stage" onPointerDown={onPointerDown} onPointerMove={onPointerMove}
         onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
         <Scene pos={pos} mode={mode} drag={drag} activeId={activeId} pulseKey={pulseKey} spinKey={spinKey}
           reduced={reduced} onFrame={onFrame} />
       </div>
+      <div className="pf-vignette" aria-hidden="true" />
 
       <header className="pf-top">
-        <a className="pf-brand" href="/" aria-label="Mason, back to fluxdev.org">Mason</a>
+        <a className="pf-brand" href="/" aria-label="Back to fluxdev.org"><i className="pf-brand-dot" />MASON<span>/ portfolio</span></a>
+        <p className="pf-count" aria-hidden="true">{pad(index + 1)}<span> / {pad(N)}</span></p>
       </header>
 
       <nav className="pf-rail" aria-label="Regions">
@@ -142,17 +134,21 @@ export default function App() {
         ))}
       </nav>
 
-      <svg className="pf-tether" aria-hidden="true"><line ref={line} /><circle ref={pin} r="4" /></svg>
+      <svg className="pf-tether" aria-hidden="true">
+        <line ref={line} />
+        <g ref={pin}><circle r="9" className="pf-pin-ring" /><circle r="3.5" className="pf-pin-core" /></g>
+      </svg>
       <button ref={label} type="button" className="pf-label" onClick={land} tabIndex={mode === "browse" ? 0 : -1}>
+        <span className="pf-label-idx">Region {pad(index + 1)}</span>
         <span className="pf-label-name">{country.name}</span>
-        <span className="pf-label-meta">{country.blurb}, {count(country.projects.length)}</span>
-        <span className="pf-label-go">Land here <Icon name="right" /></span>
+        <span className="pf-label-meta">{country.projects.length} projects · {country.blurb}</span>
+        <span className="pf-label-go">Enter region <i aria-hidden="true">→</i></span>
       </button>
 
       <div className="pf-head" aria-hidden={mode !== "focus"}>
-        <MagneticButton className="pf-back" onClick={orbit}><span className="pf-back-in"><Icon name="left" />Orbit</span></MagneticButton>
+        <MagneticButton className="pf-back" onClick={orbit}>← Orbit</MagneticButton>
         <h1 className="pf-title">{mode === "focus" && <TextReveal key={country.id} text={country.name} duration={0.5} />}</h1>
-        <p className="pf-sub">{country.blurb}, {count(country.projects.length)}</p>
+        <p className="pf-sub">{country.blurb} · {country.projects.length} projects</p>
       </div>
 
       <div className="pf-dots">
@@ -169,18 +165,20 @@ export default function App() {
         <AnimatePresence mode="wait">
           {active && (
             <motion.aside key={active.id} className="pf-panel" aria-label="Selected work"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0, transition: { duration: 0.24, ease: EASE_OUT } }}
-              exit={{ opacity: 0, transition: { duration: 0.12, ease: EASE_OUT } }}>
-              <button type="button" className="pf-close" aria-label="Close" onClick={() => setActiveId(null)}><Icon name="close" /></button>
-              <div className="pf-art">{active.img ? <img src={active.img} alt="" /> : <Plate seed={active.id} />}</div>
+              initial={{ opacity: 0, scale: 0.97, filter: "blur(6px)" }}
+              animate={{ opacity: 1, scale: 1, filter: "blur(0px)", transition: { duration: 0.24, ease: EASE_OUT } }}
+              exit={{ opacity: 0, scale: 0.985, transition: { duration: 0.12, ease: EASE_OUT } }}>
+              <button type="button" className="pf-close" aria-label="Close" onClick={() => setActiveId(null)}>×</button>
+              <div className="pf-art">
+                {active.img ? <img src={active.img} alt="" /> : <SignalArt seed={active.id} title={active.title} color={country.color} />}
+              </div>
               <div className="pf-body">
+                <p className="pf-kicker">{active.kicker}<span>{active.year}</span></p>
                 <h2 className="pf-name"><TextReveal text={active.title} duration={0.5} /></h2>
-                <p className="pf-when">{active.kicker}<span>{active.year}</span></p>
                 <WordReveal className="pf-desc" text={active.desc} duration={0.3} staggerDelay={0.012} />
-                <p className="pf-tags">{active.tags.join(" · ")}</p>
+                <ul className="pf-chips">{active.tags.map((t) => <li key={t}>{t}</li>)}</ul>
                 {active.link && (
-                  <a className="pf-visit" href={active.link} target="_blank" rel="noopener noreferrer">Open project <Icon name="out" /></a>
+                  <a className="pf-visit" href={active.link} target="_blank" rel="noopener noreferrer">Open project <i aria-hidden="true">↗</i></a>
                 )}
               </div>
             </motion.aside>
@@ -189,7 +187,7 @@ export default function App() {
       </div>
 
       <p className="pf-hint" aria-hidden="true">
-        {mode === "browse" ? <>Scroll or drag to turn the planet<span>, click it to land</span></> : active ? "Esc closes this" : "Pick a marker"}
+        {mode === "browse" ? <>Scroll or drag to spin<span><b>·</b>Click the planet to land</span></> : active ? <>Esc to close</> : <>Select a marker</>}
       </p>
       <p className="pf-sr" role="status">
         {mode === "browse" ? `${country.name}, region ${index + 1} of ${N}` : active ? `${active.title}. ${active.desc}` : `${country.name}: choose a project`}
