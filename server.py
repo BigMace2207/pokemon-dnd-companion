@@ -1469,6 +1469,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if path in ("/download", "/download/"):
             self.path = "/assets/download/index.html"   # the page is an ordinary static file under assets/
             return False
+        if path in ("/portfolio", "/portfolio/"):
+            self.path = "/assets/portfolio/index.html"   # built from portfolio/ (React + Three.js) into assets/portfolio/
+            return False
         if not path.startswith("/download/files/"):
             return False
         name = path[len("/download/files/"):]

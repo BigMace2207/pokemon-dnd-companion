@@ -95,6 +95,14 @@ class AppDownloads(ServerCase):
         self.assertEqual(call(self.base, "GET", "/download/")[0], 200)
         self.assertEqual(call(self.base, "GET", "/api/downloads"), (200, {"files": []}))
 
+    def test_the_portfolio_page_is_public_and_its_source_folder_is_not_served(self):
+        for path in ("/portfolio", "/portfolio/"):
+            status, body = call(self.base, "GET", path)
+            self.assertEqual(status, 200)
+            self.assertIn(b"<title>", body)
+        self.assertEqual(call(self.base, "GET", "/portfolio/package.json")[0], 404)   # portfolio/ is the source, not a static folder
+        self.assertEqual(call(self.base, "GET", "/portfolio/src/main.tsx")[0], 404)
+
     def test_a_build_is_listed_and_downloads_as_an_attachment(self):
         name = self.put("DnD-Companion-Installer-0.1.0-windows.exe", b"x" * 5000)
         status, listing = call(self.base, "GET", "/api/downloads")

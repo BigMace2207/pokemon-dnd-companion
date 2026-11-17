@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+/* fluxdev.org/portfolio: a star chart. Bone ink on near-black, one vermilion mark, the site's own type (Fraunces titles,
+   Space Grotesk text). Tailwind is here for the Amicro components; everything the page itself draws is below. */
+:root {
+  color-scheme: dark;
+  --ground: #0b0d10;
+  --surface: #12151a;
+  --ink: #ece7dc;
+  --ink-2: rgb(236 231 220 / 0.68);
+  --rule: rgb(236 231 220 / 0.18);
+  --accent: #f2542d;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --serif: "Fraunces", Georgia, serif;
+  --sans: "Space Grotesk", system-ui, sans-serif;
+  --edge: 28px;
+}
+html { background: var(--ground); -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
+body { margin: 0; overflow: hidden; color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+::selection { background: var(--accent); color: var(--ground); }
+button, a { touch-action: manipulation; }
+button { font: inherit; color: inherit; cursor: pointer; user-select: none; -webkit-user-select: none; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 2px; }
+.pf-icon { flex: none; display: inline-block; vertical-align: -3px; }
+
+.pf { position: fixed; inset: 0; height: 100dvh; overflow: clip; background: var(--ground); }
+.pf-stage { position: absolute; inset: 0; touch-action: none; cursor: grab; }
+.pf-stage:active { cursor: grabbing; }
+.pf[data-mode="focus"] .pf-stage { cursor: default; }
+.pf-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ---- name, top left ---- */
+.pf-top { position: absolute; inset: 0 auto auto 0; padding: calc(16px + env(safe-area-inset-top, 0px)) 0 0 calc(var(--edge) + env(safe-area-inset-left, 0px)); }
+.pf-brand { display: inline-flex; align-items: center; min-height: 44px; font: 500 22px/1 var(--serif); letter-spacing: -0.01em; color: var(--ink); text-decoration: none; }
+
+/* ---- the list of regions ---- */
+.pf-rail { position: absolute; left: calc(var(--edge) + env(safe-area-inset-left, 0px)); top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; transition: opacity 200ms var(--ease-out); }
+.pf-rail-item { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 10px 0 0; background: none; border: 0; font-size: 15px; color: var(--ink-2); transition: color 150ms ease; }
+.pf-rail-item i { display: block; width: 20px; height: 1px; background: currentColor; transform-origin: left; transform: scaleX(0.4); transition: transform 200ms var(--ease-out); }
+.pf-rail-item[aria-current] { color: var(--ink); }
+.pf-rail-item[aria-current] i { height: 2px; background: var(--accent); transform: none; }
+.pf-rail-item:active span { transform: scale(0.97); }
+.pf-rail-item span { display: block; transform-origin: left; transition: transform 140ms var(--ease-out); }
+@media (hover: hover) and (pointer: fine) { .pf-rail-item:hover { color: var(--ink); } }
+
+/* ---- the label and its line to the planet ---- */
+.pf-tether { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; transition: opacity 180ms var(--ease-out); }
+.pf-tether line { stroke: var(--ink); stroke-width: 1; opacity: 0.6; }
+.pf-tether circle { fill: var(--ground); stroke: var(--ink); stroke-width: 1.5; }
+.pf-label {
+  position: absolute; left: 0; top: 0; display: grid; min-width: 220px; max-width: min(340px, calc(100vw - 32px)); padding: 0 8px 14px 0;
+  text-align: left; background: none; border: 0; border-bottom: 1px solid rgb(236 231 220 / 0.6); will-change: transform;
+  transition: opacity 180ms var(--ease-out);
+}
+.pf-label-name { font: 500 clamp(30px, 3.4vw, 46px)/1.04 var(--serif); letter-spacing: -0.02em; text-wrap: balance; transform-origin: left bottom; transition: transform 140ms var(--ease-out); }
+.pf-label-meta { margin-top: 8px; font-size: 15px; color: var(--ink-2); }
+.pf-label-go { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 15px; font-weight: 500; }
+.pf-label-go .pf-icon { color: var(--accent); transition: transform 180ms var(--ease-out); }
+.pf-label:active .pf-label-name { transform: scale(0.985); }
+@media (hover: hover) and (pointer: fine) { .pf-label:hover .pf-label-go .pf-icon { transform: translateX(4px); } }
+
+/* ---- landed on a region ---- */
+.pf-head { position: absolute; left: calc(var(--edge) + env(safe-area-inset-left, 0px)); top: calc(76px + env(safe-area-inset-top, 0px)); display: grid; justify-items: start; transition: opacity 200ms var(--ease-out); }
+.pf-back { height: 44px; padding: 0 18px 0 14px; margin-bottom: 28px; border-radius: 999px; font-size: 15px; font-weight: 500;
+  color: var(--ink); background: var(--surface); border: 1px solid var(--rule); box-shadow: none;
+  transition: transform 140ms var(--ease-out), background-color 150ms ease, border-color 150ms ease; }
+.pf-back-in { display: inline-flex; align-items: center; gap: 8px; }
+.pf-back:active { transform: scale(0.97); }
+@media (hover: hover) and (pointer: fine) { .pf-back:hover { border-color: rgb(236 231 220 / 0.5); transform: none; } }
+.pf-title { margin: 0; font: 500 clamp(40px, 5.4vw, 76px)/1 var(--serif); letter-spacing: -0.025em; }
+.pf-title .py-1 { padding-block: 0.04em; }
+.pf-sub { margin: 10px 0 0; font-size: 16px; color: var(--ink-2); }
+
+.pf-dots { position: absolute; inset: 0; pointer-events: none; transition: opacity 200ms var(--ease-out); }
+.pf-dot { position: absolute; left: -22px; top: -22px; width: 44px; height: 44px; padding: 0; background: none; border: 0; pointer-events: auto; will-change: transform; }
+.pf-dot-mark { position: relative; display: grid; place-items: center; width: 44px; height: 44px; }
+.pf-dot-mark::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--ink); outline: 1.5px solid var(--ink); outline-offset: 4px; transition: transform 150ms var(--ease-out), background-color 150ms ease; }
+.pf-dot-mark > div { position: absolute; left: 50%; top: 50%; margin: -24px 0 0 -24px; pointer-events: none; }
+.pf-dot-mark > div > div { border-color: var(--ink); }
+.pf-dot-name { position: absolute; left: 40px; top: 50%; transform: translateY(-50%); padding: 4px 9px; border-radius: 3px; font-size: 14px; line-height: 1.3; font-weight: 500; white-space: nowrap; color: var(--ink); background: var(--ground); border: 1px solid var(--rule); transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease; }
+.pf-dot[aria-pressed="true"] .pf-dot-mark::before { transform: scale(1.2); }
+.pf-dot[aria-pressed="true"] .pf-dot-name { background: var(--ink); border-color: var(--ink); color: var(--ground); }
+.pf-dot:active .pf-dot-mark::before { transform: scale(0.9); }
+@media (hover: hover) and (pointer: fine) { .pf-dot:hover .pf-dot-name { border-color: var(--ink); } .pf-dot:hover .pf-dot-mark::before { transform: scale(1.2); } }
+
+/* nothing tethered shows until the scene has reported where the planet is, or while the region is round the back */
+.pf:not([data-ready]) :is(.pf-label, .pf-tether, .pf-dots) { opacity: 0; }
+.pf[data-away] .pf-tether { opacity: 0; }
+
+/* which layer is live in which mode (opacity only: positions keep updating underneath) */
+.pf[data-mode="browse"] :is(.pf-head, .pf-dots) { opacity: 0; pointer-events: none; }
+.pf[data-mode="browse"] .pf-dot { pointer-events: none; }
+.pf[data-mode="focus"] :is(.pf-rail, .pf-label, .pf-tether) { opacity: 0; pointer-events: none; }
+.pf[data-mode="focus"] .pf-dots { transition-delay: 320ms; }
+
+/* ---- the selected work ---- */
+.pf-panel-wrap { position: absolute; top: 0; bottom: 0; right: calc(var(--edge) + env(safe-area-inset-right, 0px)); width: min(440px, 36vw); display: flex; align-items: center; pointer-events: none; }
+.pf-panel { position: relative; width: 100%; max-height: calc(100dvh - 112px); overflow: auto; overscroll-behavior: contain; pointer-events: auto;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; box-shadow: 0 24px 60px rgb(0 0 0 / 0.5);
+  scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
+.pf-art { aspect-ratio: 40 / 21; overflow: hidden; border-bottom: 1px solid var(--rule); background: #14181d; }
+.pf-art :is(canvas, img) { display: block; width: 100%; height: 100%; object-fit: cover; }
+.pf-close { position: absolute; z-index: 1; top: 8px; right: 8px; width: 44px; height: 44px; display: grid; place-items: center; color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 50%; transition: transform 140ms var(--ease-out), border-color 150ms ease; }
+.pf-close:active { transform: scale(0.94); }
+@media (hover: hover) and (pointer: fine) { .pf-close:hover { border-color: rgb(236 231 220 / 0.5); } }
+.pf-body { padding: 26px 28px 30px; }
+.pf-name { margin: 0; font: 500 30px/1.1 var(--serif); letter-spacing: -0.015em; text-wrap: balance; }
+.pf-name .py-1 { padding-block: 0.04em; }
+.pf-when { display: flex; justify-content: space-between; gap: 16px; margin: 8px 0 18px; font-size: 14px; color: var(--ink-2); }
+.pf-when span { flex: none; font-variant-numeric: tabular-nums; }
+.pf-desc { margin: 0; font-size: 16px; line-height: 1.55; color: rgb(236 231 220 / 0.86); column-gap: 0.28em; row-gap: 0; user-select: text; }
+.pf-tags { margin: 18px 0 0; padding-top: 14px; border-top: 1px solid var(--rule); font-size: 14px; color: var(--ink-2); }
+.pf-visit { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 22px; padding: 0 20px; border-radius: 999px; font-size: 15px; font-weight: 600; color: var(--ground); background: var(--ink); text-decoration: none; transition: transform 140ms var(--ease-out), background-color 150ms ease; }
+.pf-visit:active { transform: scale(0.97); }
+@media (hover: hover) and (pointer: fine) { .pf-visit:hover { background: #fff; } }
+
+.pf-hint { position: absolute; left: 0; right: 0; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); margin: 0; text-align: center; pointer-events: none; font-size: 14px; color: var(--ink-2); }
+
+/* ---- phones and narrow windows ---- */
+@media (max-width: 899px) {
+  :root { --edge: 18px; }
+  .pf-rail { left: 0; right: 0; top: auto; bottom: calc(46px + env(safe-area-inset-bottom, 0px)); transform: none; flex-direction: row; justify-content: center; }
+  .pf-rail-item { padding: 0 6px; }
+  .pf-rail-item span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .pf-rail-item i, .pf-rail-item[aria-current] i { width: 26px; height: 2px; transform: none; }
+  .pf-rail-item i { opacity: 0.4; }
+  .pf-rail-item[aria-current] i { opacity: 1; }
+  .pf-head { top: calc(62px + env(safe-area-inset-top, 0px)); }
+  .pf-back { margin-bottom: 14px; }
+  .pf-title { font-size: 34px; }
+  .pf-sub { font-size: 15px; margin-top: 6px; }
+  .pf-dot-name { left: 50%; top: 36px; transform: translateX(-50%); }
+  .pf-dot[data-alt] .pf-dot-name { top: auto; bottom: 36px; }   /* neighbours alternate below / above so names don't collide */
+  .pf-panel-wrap { top: auto; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); width: auto; align-items: flex-end; }
+  .pf-panel { max-height: 50dvh; }
+  .pf-art { aspect-ratio: 21 / 8; }
+  .pf-body { padding: 18px 20px 22px; }
+  .pf-name { font-size: 24px; }
+  .pf-hint span { display: none; }
+  .pf[data-open] .pf-hint { opacity: 0; }
+  .pf[data-open] .pf-sub { display: none; }
+}
+
+@media (prefers-contrast: more) { :root { --rule: rgb(236 231 220 / 0.55); --ink-2: rgb(236 231 220 / 0.9); } }
+@media (prefers-reduced-motion: reduce) {
+  .pf-rail-item i, .pf-rail-item span, .pf-label-name, .pf-label-go .pf-icon, .pf-dot-mark::before, .pf-back, .pf-visit, .pf-close { transition-property: background-color, border-color, color, opacity; }
+  .pf[data-mode="focus"] .pf-dots { transition-delay: 0ms; }
+}

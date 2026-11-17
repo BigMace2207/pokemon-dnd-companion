@@ -48,6 +48,10 @@ a proxy), `PKDND_BACKUP_DIR`, `PKDND_BACKUP_INTERVAL`, `PKDND_GOOGLE_CLIENT_ID`,
   `js/views/admin.js` the admin console (admins only).
 - `js/views/planner.js` + `js/planner/` the Campaign Planner (players share notes/checklists with the DM via `/api/plan`;
   only the DM token reads `/api/plans`).
+- `portfolio/` the source of fluxdev.org/portfolio (the one part of the repo with npm: React + Three.js + Tailwind, Amicro
+  components in `src/amicro/`, content in `src/data.ts`). `cd portfolio && npm install && npm run build` writes static files
+  into `assets/portfolio/`, which `server.py` serves at `/portfolio`; commit the built files with the source. `portfolio/` itself
+  is never served. Run the scripts with `npm run`, not `npx`: the `&` in this folder's path breaks the `.bin` shims.
 - `tests/test_server.py` the server test suite (static-file lockdown, backups,
   accounts, authorization, tokens).
 
