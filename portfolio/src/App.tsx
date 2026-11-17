@@ -8,10 +8,15 @@ import { WordReveal } from "./amicro/word-reveal";
 import { TextReveal } from "./amicro/text-reveal";
 import { ConcentricPulse } from "./amicro/concentric-pulse";
 import ContactSheet from "./Contact";
-import Listen from "./Listen";
+import Player from "./Player";
 import { sfx } from "./sfx";
 
 const pad = (n: number) => String(n).padStart(2, "0");
+/** a hand-drawn-looking arrow, one stroke weight everywhere */
+const Arrow = ({ back }: { back?: boolean }) => (
+  <svg className="pf-arrow" viewBox="0 0 26 16" width="26" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+    style={back ? { transform: "scaleX(-1)" } : undefined}><path d="M2 9.5C8 6.5 15 8.5 23 8M18 3.5l5.5 4.5-5 4.5" /></svg>
+);
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 
 export default function App() {
@@ -140,7 +145,7 @@ export default function App() {
       <div className="pf-vignette" aria-hidden="true" />
 
       <header className="pf-top">
-        <a className="pf-brand" href="/" aria-label="Back to fluxdev.org"><i className="pf-brand-dot" />MASON<span>/ portfolio</span></a>
+        <a className="pf-brand" href="/" aria-label="Back to fluxdev.org"><i className="pf-brand-dot" />Mason<span>Allen</span></a>
         <div className="pf-top-right">
           <p className="pf-count" aria-hidden="true">{pad(index + 1)}<span> / {pad(N)}</span></p>
           <button type="button" className="pf-sound" aria-pressed={!muted} aria-label={muted ? "Turn sound on" : "Turn sound off"}
@@ -168,16 +173,16 @@ export default function App() {
         <g ref={pin}><circle r="9" className="pf-pin-ring" /><circle r="3.5" className="pf-pin-core" /></g>
       </svg>
       <button ref={label} type="button" className="pf-label" onClick={land} tabIndex={mode === "browse" ? 0 : -1}>
-        <span className="pf-label-idx">Region {pad(index + 1)}</span>
+        <span className="pf-label-idx">region {index + 1} of {N}</span>
         <span className="pf-label-name">{country.name}</span>
-        <span className="pf-label-meta">{country.projects.length} projects · {country.blurb}</span>
-        <span className="pf-label-go">Enter region <i aria-hidden="true">→</i></span>
+        <span className="pf-label-meta">{country.blurb}, {country.projects.length} projects</span>
+        <span className="pf-label-go">land here <Arrow /></span>
       </button>
 
       <div className="pf-head" aria-hidden={mode !== "focus"}>
-        <MagneticButton className="pf-back" onClick={orbit}>← Orbit</MagneticButton>
+        <MagneticButton className="pf-back" onClick={orbit}><span className="pf-back-in"><Arrow back />back to orbit</span></MagneticButton>
         <h1 className="pf-title">{mode === "focus" && <TextReveal key={country.id} text={country.name} duration={0.5} />}</h1>
-        <p className="pf-sub">{country.blurb} · {country.projects.length} projects</p>
+        <p className="pf-sub">{country.blurb}, {country.projects.length} projects</p>
       </div>
 
       <div className="pf-dots">
@@ -199,7 +204,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {mode === "focus" && country.me && <Listen key="listen" />}
+      <Player />
 
       <div className="pf-panel-wrap">
         <AnimatePresence mode="wait">
@@ -218,7 +223,7 @@ export default function App() {
                 <WordReveal className="pf-desc" text={active.desc} duration={0.3} staggerDelay={0.012} />
                 <ul className="pf-chips">{active.tags.map((t) => <li key={t}>{t}</li>)}</ul>
                 {active.link && (
-                  <a className="pf-visit" href={active.link} target="_blank" rel="noopener noreferrer">Open project <i aria-hidden="true">↗</i></a>
+                  <a className="pf-visit" href={active.link} target="_blank" rel="noopener noreferrer">Open project <Arrow /></a>
                 )}
               </div>
             </motion.aside>
@@ -227,7 +232,7 @@ export default function App() {
       </div>
 
       <p className="pf-hint" aria-hidden="true">
-        {introOn ? <>Click anywhere to skip</> : mode === "browse" ? <>Scroll or drag to spin<span><b>·</b>Click the planet to land</span></> : active ? <>Esc to close</> : <>Select a marker</>}
+        {introOn ? <>click anywhere to skip</> : mode === "browse" ? <>scroll or drag to spin<span>, click the planet to land</span></> : active ? <>esc closes this</> : <>pick a marker</>}
       </p>
       <p className="pf-sr" role="status">
         {mode === "browse" ? `${country.name}, region ${index + 1} of ${N}` : active ? `${active.title}. ${active.desc}` : `${country.name}: choose a project`}

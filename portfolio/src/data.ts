@@ -24,7 +24,7 @@ export type Country = {
 export const CONTACT = {
   email: "masona.2207@gmail.com",
   github: "https://github.com/BigMace2207",
-  linkedin: "",
+  linkedin: "https://www.linkedin.com/in/mason-allen-75979b281/",
   subject: "Work with you",
   body: "Hi Mason,\n\nI found your portfolio and I'd like to talk about a project.\n\nWhat I need:\n\nThanks,\n",
 };

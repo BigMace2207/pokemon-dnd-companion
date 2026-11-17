@@ -54,7 +54,8 @@ import sys
 import threading
 import time
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs, unquote
+import urllib.request
+from urllib.parse import urlparse, parse_qs, unquote, quote
 
 import auth
 import mailer
@@ -245,20 +246,34 @@ def clean_spotify(text):
     return f"{m.group(1)}/{m.group(2)}" if m else None
 
 
+def fetch_spotify_title(song):
+    """The name Spotify's public oEmbed gives this track/album/playlist, or "" if it can't be had (the page then just says
+    "Now playing"). The address is built only from the already-checked "kind/id", never from what was pasted."""
+    try:
+        url = "https://open.spotify.com/oembed?url=" + quote("https://open.spotify.com/" + song, safe="")
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "fluxdev-portfolio"}), timeout=6) as r:
+            title = json.loads(r.read(20000).decode("utf-8")).get("title")
+    except Exception:
+        return ""
+    return title.strip()[:120] if isinstance(title, str) else ""
+
+
 def portfolio_config():
     try:
         with open(STATE_FILE.parent / "portfolio.json", encoding="utf-8") as f:
-            song = clean_spotify("https://open.spotify.com/" + str(json.load(f).get("spotify") or ""))
+            raw = json.load(f)
+        song = clean_spotify("https://open.spotify.com/" + str(raw.get("spotify") or ""))
+        title = raw.get("title") if isinstance(raw.get("title"), str) else ""
     except (OSError, ValueError, AttributeError):
-        song = ""
-    return {"spotify": song or ""}
+        song, title = "", ""
+    return {"spotify": song or "", "title": (title or "")[:120] if song else ""}
 
 
-def save_portfolio_config(spotify):
+def save_portfolio_config(spotify, title=""):
     path = STATE_FILE.parent / "portfolio.json"
     with PORTFOLIO_LOCK:
         tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"spotify": spotify}), encoding="utf-8")
+        tmp.write_text(json.dumps({"spotify": spotify, "title": title}), encoding="utf-8")
         os.replace(tmp, path)
 
 
@@ -2164,7 +2179,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 song = clean_spotify(data.get("spotify"))
                 if song is None:
                     return self._send_json({"error": "That isn't a Spotify track, album, playlist, artist, episode or show link."}, 400)
-                save_portfolio_config(song)
+                save_portfolio_config(song, fetch_spotify_title(song) if song else "")
                 return self._send_json(portfolio_config())
         return self._send_json({"error": "not found"}, 404)
 
