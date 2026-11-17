@@ -1,0 +1,23 @@
+/* The title screen (js/intro.js): deep space, the name, PLAY, and the maker's credit in the bottom right corner. */
+.intro { position: fixed; inset: 0; z-index: 400; isolation: isolate; display: grid; place-items: center; overflow: hidden; color: #fff; background: #07070d; font-family: var(--font-body, system-ui, sans-serif); }
+.intro-bg { position: absolute; inset: 0; z-index: -1; overflow: hidden; background: radial-gradient(80% 60% at 70% 20%, rgba(98, 70, 190, .42), transparent 70%), radial-gradient(70% 55% at 15% 85%, rgba(40, 90, 190, .3), transparent 70%), #07070d; }
+.intro-main { display: grid; justify-items: center; gap: calc(34px * var(--s)); padding: 0 calc(24px * var(--s)); text-align: center; }
+.intro-title { margin: 0; font-family: var(--font-head, Georgia, serif); font-weight: 400; font-size: clamp(44px, 9vw, 112px); line-height: 1; letter-spacing: -.02em; text-wrap: balance; }
+.intro-play { min-width: calc(190px * var(--s)); min-height: 44px; padding: calc(14px * var(--s)) calc(44px * var(--s)); border: 0; border-radius: 999px; font: 600 calc(19px * var(--s)) / 1 var(--font-body, system-ui, sans-serif); letter-spacing: .24em; text-indent: .24em; color: #0b0b0c; background: #fff; cursor: pointer;
+  transition: transform .14s cubic-bezier(.23, 1, .32, 1), background-color .15s; }
+.intro-play:active { transform: scale(.97); }
+.intro-play:focus-visible { outline: 3px solid #ffd23f; outline-offset: 4px; }
+@media (hover: hover) and (pointer: fine) { .intro-play:hover { background: #e9e9ee; } }
+
+.intro-credit { position: absolute; right: calc(24px * var(--s)); bottom: calc(20px * var(--s) + env(safe-area-inset-bottom, 0px)); margin: 0; display: grid; justify-items: end; gap: calc(2px * var(--s)); font-size: max(12px, calc(15px * var(--s))); color: rgba(255, 255, 255, .66); }
+.intro-more { display: inline-flex; align-items: center; min-height: 44px; color: #fff; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: rgba(255, 255, 255, .4); transition: text-decoration-color .15s; }
+.intro-more:focus-visible { outline: 3px solid #ffd23f; outline-offset: 2px; border-radius: 4px; }
+@media (hover: hover) and (pointer: fine) { .intro-more:hover { text-decoration-color: #fff; } }
+
+/* the title and button settle in once, when the page opens */
+@media (prefers-reduced-motion: no-preference) {
+  .intro-main > * { animation: intro-in .6s cubic-bezier(.23, 1, .32, 1) both; }
+  .intro-main > :nth-child(2) { animation-delay: .12s; }
+  .intro-credit { animation: intro-in .6s .3s cubic-bezier(.23, 1, .32, 1) both; }
+}
+@keyframes intro-in { from { opacity: 0; transform: translateY(12px); } }

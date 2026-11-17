@@ -162,3 +162,70 @@ button { font: inherit; color: inherit; cursor: pointer; user-select: none; -web
   .pf-rail-item i, .pf-label-go i, .pf-dot-mark::before, .pf-back, .pf-visit, .pf-close { transition-property: background-color, color, opacity; }
   .pf[data-mode="focus"] .pf-dots { transition-delay: 0ms; }
 }
+
+/* ---- top right: sound and "Work with me" ---- */
+.pf-top-right { pointer-events: auto; display: flex; align-items: center; gap: 12px; }
+.pf-sound { width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border-radius: 50%; color: var(--text); background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line); transition: transform 140ms var(--ease-out), background-color 150ms ease, color 150ms ease; }
+.pf-sound[aria-pressed="false"] { color: var(--dim); }
+.pf-sound:active { transform: scale(0.94); }
+@media (hover: hover) and (pointer: fine) { .pf-sound:hover { background: rgba(255, 255, 255, 0.14); } }
+.pf-work { height: 44px; padding: 0 22px; border: 0; border-radius: 999px; font-size: 15px; font-weight: 600; letter-spacing: 0.01em; color: #05070f; background: var(--acc); transition: transform 140ms var(--ease-out), background-color 150ms ease, opacity 200ms var(--ease-out); }
+.pf-work:active { transform: scale(0.97); }
+@media (hover: hover) and (pointer: fine) { .pf-work:hover { background: #fff; } }
+
+.pf-scrim { position: absolute; inset: 0; z-index: 20; background: rgba(2, 3, 8, 0.5); }
+.pf-sheet-host { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
+.pf-sheet { position: absolute; top: calc(70px + env(safe-area-inset-top, 0px)); right: calc(22px + env(safe-area-inset-right, 0px)); z-index: 31; width: min(360px, calc(100vw - 24px)); padding: 26px 24px 24px; pointer-events: auto; transform-origin: top right;
+  border-radius: 14px; border: 1px solid var(--line); border-top-color: rgba(255, 255, 255, 0.26);
+  background: rgba(7, 10, 22, 0.86); backdrop-filter: blur(22px) saturate(150%); -webkit-backdrop-filter: blur(22px) saturate(150%); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55); }
+.pf-scrim { pointer-events: auto; }
+.pf-sheet-title { margin: 0 0 8px; font-size: 26px; font-weight: 600; line-height: 1.1; letter-spacing: -0.015em; }
+.pf-sheet-text { margin: 0 0 20px; font-size: 15px; line-height: 1.5; color: rgba(255, 255, 255, 0.8); }
+.pf-sheet-main { width: 100%; justify-content: center; margin-top: 0; background: var(--acc); }
+.pf-sheet-addr { margin: 10px 0 18px; text-align: center; font: 400 13px/1.3 var(--mono); letter-spacing: 0.02em; color: var(--dim); user-select: text; }
+.pf-sheet-links { display: flex; flex-wrap: wrap; gap: 10px; }
+.pf-chip-link { flex: 1 1 120px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 999px; font-size: 15px; font-weight: 500; color: var(--text); text-decoration: none; transition: transform 140ms var(--ease-out), border-color 150ms ease, background-color 150ms ease; }
+.pf-chip-link:active { transform: scale(0.97); }
+@media (hover: hover) and (pointer: fine) { .pf-chip-link:hover { border-color: rgba(255, 255, 255, 0.5); background: rgba(255, 255, 255, 0.07); } }
+@media (prefers-reduced-motion: no-preference) { .pf-sheet { animation: pf-pop 200ms var(--ease-out) both; } }
+@keyframes pf-pop { from { opacity: 0; transform: scale(0.97); } }
+
+/* ---- the music box (Me region) ---- */
+.pf-listen { position: absolute; left: calc(22px + env(safe-area-inset-left, 0px)); bottom: calc(52px + env(safe-area-inset-bottom, 0px)); width: min(350px, calc(100vw - 44px)); padding: 16px 16px 14px; border-radius: 14px;
+  border: 1px solid var(--line); border-top-color: rgba(255, 255, 255, 0.26); background: rgba(7, 10, 22, 0.78); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5); }
+.pf-listen-title { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; font-size: 15px; font-weight: 600; line-height: 1.3; }
+.pf-eq { flex: none; display: flex; align-items: flex-end; gap: 3px; width: 22px; height: 20px; }
+.pf-eq i { flex: 1; height: 100%; border-radius: 1px; background: var(--acc); transform-origin: bottom; transform: scaleY(0.35); }
+.pf-listen-frame { display: block; width: 100%; height: 152px; border: 0; border-radius: 12px; background: rgba(255, 255, 255, 0.05); color-scheme: normal; }
+.pf-listen-empty { margin: 0; padding: 18px 12px; text-align: center; font-size: 14px; color: var(--dim); border: 1px dashed var(--line); border-radius: 12px; }
+.pf-listen-form { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.pf-listen-form label { display: block; margin-bottom: 6px; font: 400 12px/1.3 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+.pf-listen-form div { display: flex; gap: 8px; }
+.pf-listen-form input { flex: 1; min-width: 0; height: 44px; padding: 0 12px; font: 400 16px var(--sans); color: var(--text); background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line); border-radius: 8px; }
+.pf-listen-form input::placeholder { color: var(--dim); }
+.pf-listen-form button { flex: none; height: 44px; padding: 0 18px; border: 0; border-radius: 8px; font-size: 15px; font-weight: 600; color: #05070f; background: var(--acc); transition: transform 140ms var(--ease-out); }
+.pf-listen-form button:active { transform: scale(0.97); }
+.pf-listen-form button:disabled { opacity: 0.6; }
+.pf-listen-note { margin: 8px 0 0; font-size: 13px; color: var(--dim); }
+@media (prefers-reduced-motion: no-preference) {
+  .pf-listen { animation: pf-pop 240ms 120ms var(--ease-out) both; }
+  .pf-eq i { animation: pf-eq 900ms ease-in-out infinite alternate; }
+  .pf-eq i:nth-child(2) { animation-duration: 700ms; animation-delay: -200ms; }
+  .pf-eq i:nth-child(3) { animation-duration: 1100ms; animation-delay: -450ms; }
+  .pf-eq i:nth-child(4) { animation-duration: 800ms; animation-delay: -600ms; }
+}
+@keyframes pf-eq { to { transform: scaleY(1); } }
+
+/* ---- the opening: only the planet until it has risen ---- */
+.pf[data-intro] :is(.pf-rail, .pf-label, .pf-tether, .pf-count, .pf-work, .pf-sound) { opacity: 0; pointer-events: none; }
+.pf-top-right > * { transition-property: opacity, transform, background-color, color; }
+
+@media (max-width: 699px) {
+  .pf-count { display: none; }
+  .pf-top-right { gap: 8px; }
+  .pf-brand span { display: none; }
+  .pf-work { padding: 0 16px; }
+  .pf-listen { left: 12px; right: 12px; width: auto; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  .pf[data-open] .pf-listen { display: none; }
+  .pf-sheet { right: 12px; left: 12px; width: auto; top: calc(66px + env(safe-area-inset-top, 0px)); }
+}

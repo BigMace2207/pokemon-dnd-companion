@@ -3,6 +3,7 @@ import { renderLibrary } from "./views/library.js";
 import { renderPlanner } from "./views/planner.js";
 import { renderAdmin } from "./views/admin.js";
 import { el } from "./components.js";
+import { showIntro } from "./intro.js";
 import "./systems/index.js"; // registers every game system
 import { setActiveSystem, activeSystem, viewsOf } from "./systems/registry.js";
 import { clearAllIntervals } from "./intervals.js";
@@ -409,4 +410,4 @@ async function startApp() {
   }, 5000);
 }
 
-init();
+showIntro().then(init);   // the title screen first (once per browser session), then the sign-in / campaign flow

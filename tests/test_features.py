@@ -132,6 +132,22 @@ class AdminAndPermissions(Base):
         self.assertEqual({a["email"] for a in out["accounts"]}, {"boss@example.com", "pal@example.com"})
         self.assertEqual(call(self.base, "GET", "/api/admin/overview", token=self.pal)[0], 404, "nobody else even sees it")
 
+    def test_only_the_owner_can_set_the_portfolio_song_and_only_to_a_spotify_link(self):
+        self.confirm_email(self.boss, "boss@example.com")
+        self.assertEqual(call(self.base, "GET", "/api/portfolio"), (200, {"spotify": ""}), "public, empty to start with")
+        link = "https://open.spotify.com/intl-gb/track/4uLU6hMCjMI75M1A2tKUQC?si=abc123"
+        self.assertEqual(call(self.base, "POST", "/api/admin/portfolio", {"spotify": link}, token=self.pal)[0], 404)
+        self.assertEqual(call(self.base, "POST", "/api/admin/portfolio", {"spotify": link})[0], 404)
+        self.assertEqual(call(self.base, "GET", "/api/admin/portfolio", token=self.pal)[0], 404, "the page only learns you are the owner if you are")
+        for bad in ("https://evil.example/track/4uLU6hMCjMI75M1A2tKUQC", "https://open.spotify.com.evil.example/track/4uLU6hMCjMI75M1A2tKUQC",
+                    "javascript:alert(1)", "https://open.spotify.com/track/short", 5):
+            self.assertEqual(call(self.base, "POST", "/api/admin/portfolio", {"spotify": bad}, token=self.boss)[0], 400, bad)
+        self.assertEqual(call(self.base, "GET", "/api/portfolio")[1], {"spotify": ""}, "nothing bad was kept")
+        self.assertEqual(call(self.base, "POST", "/api/admin/portfolio", {"spotify": link}, token=self.boss), (200, {"spotify": "track/4uLU6hMCjMI75M1A2tKUQC"}))
+        self.assertEqual(call(self.base, "GET", "/api/portfolio"), (200, {"spotify": "track/4uLU6hMCjMI75M1A2tKUQC"}))
+        self.assertEqual(call(self.base, "POST", "/api/admin/portfolio", {"spotify": "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"}, token=self.boss)[1], {"spotify": "playlist/37i9dQZF1DXcBWIGoYBM5M"})
+        self.assertEqual(call(self.base, "POST", "/api/admin/portfolio", {"spotify": ""}, token=self.boss)[1], {"spotify": ""}, "an empty box clears it")
+
     def test_grant_and_revoke_from_the_command_line(self):
         self.confirm_email(self.boss, "boss@example.com")
         out = call(self.base, "POST", "/api/admin/command", {"text": "grant pal@example.com cloudLibrary"}, token=self.boss)[1]

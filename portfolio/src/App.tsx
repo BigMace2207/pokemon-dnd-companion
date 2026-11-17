@@ -7,6 +7,9 @@ import { MagneticButton } from "./amicro/magnetic-button";
 import { WordReveal } from "./amicro/word-reveal";
 import { TextReveal } from "./amicro/text-reveal";
 import { ConcentricPulse } from "./amicro/concentric-pulse";
+import ContactSheet from "./Contact";
+import Listen from "./Listen";
+import { sfx } from "./sfx";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
@@ -18,6 +21,12 @@ export default function App() {
   const [pulseKey, setPulseKey] = useState(0);
   const [spinKey, setSpinKey] = useState(0);
   const reduced = !!useReducedMotion();
+  // the opening animation: the planet turns once and each region rises. Not for reduced motion; any click, key or scroll skips it.
+  const [introOn, setIntroOn] = useState(() => !matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const [introSkip, setIntroSkip] = useState(0);
+  const [contactOpen, setContactOpen] = useState(false);
+  const [muted, setMuted] = useState(sfx.muted);
+  const workBtn = useRef<HTMLButtonElement>(null);
 
   const index = mod(pos, N), country = COUNTRIES[index];
   const active = country.projects.find((p) => p.id === activeId) ?? null;
@@ -30,9 +39,11 @@ export default function App() {
   const pin = useRef<SVGGElement>(null);
   const dots = useRef<(HTMLButtonElement | null)[]>([]);
 
-  const land = useCallback(() => { drag.offset = 0; setMode("focus"); }, [drag]);
+  const land = useCallback(() => { drag.offset = 0; sfx.land(); setMode("focus"); }, [drag]);
   const orbit = useCallback(() => { setActiveId(null); setMode("browse"); }, []);
-  const open = useCallback((p: Project) => { setActiveId(p.id); setPulseKey((k) => k + 1); }, []);
+  const open = useCallback((p: Project, k: number) => { setActiveId(p.id); setPulseKey((n) => n + 1); sfx.ping(k); }, []);
+  const closeContact = useCallback(() => { setContactOpen(false); workBtn.current?.focus({ preventScroll: true }); }, []);
+  const endIntro = useCallback(() => setIntroOn(false), []);
   /** A region in the list: go to it by the short way round, or, if it is already the one selected, flick the planet. */
   const pick = useCallback((k: number) => {
     if (k === mod(pos, N)) { setSpinKey((n) => n + 1); return; }
@@ -63,11 +74,19 @@ export default function App() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!introOn) return;
+    const skip = () => setIntroSkip((n) => n + 1);
+    const evs = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
+    evs.forEach((e) => window.addEventListener(e, skip, { once: true, passive: true }));
+    return () => evs.forEach((e) => window.removeEventListener(e, skip));
+  }, [introOn]);
+
   // Scroll: one region per notch (or per trackpad flick), with a short lock so inertia doesn't skip past the next one.
   useEffect(() => {
     let acc = 0, lockedUntil = 0;
     const onWheel = (e: WheelEvent) => {
-      if (mode !== "browse") return;
+      if (mode !== "browse" || introOn) return;
       const now = performance.now();
       if (now < lockedUntil) return;
       acc += e.deltaY + e.deltaX;
@@ -76,20 +95,20 @@ export default function App() {
       acc = 0; lockedUntil = now + 320;
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { if (activeId) setActiveId(null); else if (mode === "focus") orbit(); return; }
-      if (mode !== "browse" || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.key === "Escape") { if (contactOpen) closeContact(); else if (activeId) setActiveId(null); else if (mode === "focus") orbit(); return; }
+      if (mode !== "browse" || introOn || contactOpen || e.altKey || e.ctrlKey || e.metaKey) return;
       if (e.key === "ArrowDown" || e.key === "ArrowRight") { e.preventDefault(); setPos((p) => p + 1); }
       if (e.key === "ArrowUp" || e.key === "ArrowLeft") { e.preventDefault(); setPos((p) => p - 1); }
     };
     window.addEventListener("wheel", onWheel, { passive: true });
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("wheel", onWheel); window.removeEventListener("keydown", onKey); };
-  }, [mode, activeId, orbit]);
+  }, [mode, activeId, orbit, introOn, contactOpen, closeContact]);
 
   // Drag (or swipe) turns the planet under the finger, then it settles on the nearest region. A tap on it lands.
   const press = useRef<{ id: number; x: number; y: number; moved: boolean } | null>(null);
   const onPointerDown = (e: React.PointerEvent) => {
-    if (mode !== "browse" || press.current) return;
+    if (mode !== "browse" || introOn || press.current) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     press.current = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
   };
@@ -112,17 +131,27 @@ export default function App() {
   const accent = useMemo(() => ({ "--acc": css(country.color), "--acc-soft": css(country.color, 0.16) }) as CSSProperties, [country]);
 
   return (
-    <div className="pf" ref={root} data-mode={mode} data-open={active ? "" : undefined} style={accent}>
+    <div className="pf" ref={root} data-mode={mode} data-open={active ? "" : undefined} data-intro={introOn ? "" : undefined} style={accent}>
       <div className="pf-stage" onPointerDown={onPointerDown} onPointerMove={onPointerMove}
         onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
         <Scene pos={pos} mode={mode} drag={drag} activeId={activeId} pulseKey={pulseKey} spinKey={spinKey}
-          reduced={reduced} onFrame={onFrame} />
+          reduced={reduced} onFrame={onFrame} introSkip={introSkip} onIntroEnd={endIntro} />
       </div>
       <div className="pf-vignette" aria-hidden="true" />
 
       <header className="pf-top">
         <a className="pf-brand" href="/" aria-label="Back to fluxdev.org"><i className="pf-brand-dot" />MASON<span>/ portfolio</span></a>
-        <p className="pf-count" aria-hidden="true">{pad(index + 1)}<span> / {pad(N)}</span></p>
+        <div className="pf-top-right">
+          <p className="pf-count" aria-hidden="true">{pad(index + 1)}<span> / {pad(N)}</span></p>
+          <button type="button" className="pf-sound" aria-pressed={!muted} aria-label={muted ? "Turn sound on" : "Turn sound off"}
+            onClick={() => { const m = !muted; sfx.setMuted(m); setMuted(m); if (!m) sfx.ping(2); }}>
+            <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M2.5 6v4h2.6L8.5 12.75v-9.5L5.1 6H2.5z" />
+              {muted ? <path d="m11 6 3 4m0-4-3 4" /> : <path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.7a6 6 0 0 1 0 8.6" />}
+            </svg>
+          </button>
+          <button ref={workBtn} type="button" className="pf-work" aria-haspopup="dialog" aria-expanded={contactOpen} onClick={() => setContactOpen(true)}>Work with me</button>
+        </div>
       </header>
 
       <nav className="pf-rail" aria-label="Regions">
@@ -154,12 +183,23 @@ export default function App() {
       <div className="pf-dots">
         {country.projects.map((p, k) => (
           <button key={p.id} type="button" className="pf-dot" data-alt={k % 2 ? "" : undefined} ref={(el) => { dots.current[k] = el; }}
-            aria-pressed={p.id === activeId} tabIndex={mode === "focus" ? 0 : -1} onClick={() => open(p)}>
+            aria-pressed={p.id === activeId} tabIndex={mode === "focus" ? 0 : -1} onClick={() => open(p, k)}>
             <i className="pf-dot-mark" aria-hidden="true">{p.id === activeId && !reduced && <ConcentricPulse />}</i>
             <span className="pf-dot-name">{p.title}</span>
           </button>
         ))}
       </div>
+
+      <AnimatePresence>
+        {contactOpen && (
+          <motion.div key="sheet" className="pf-sheet-host" initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.2, ease: EASE_OUT } }}
+            exit={{ opacity: 0, transition: { duration: 0.12, ease: EASE_OUT } }}>
+            <ContactSheet onClose={closeContact} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {mode === "focus" && country.me && <Listen key="listen" />}
 
       <div className="pf-panel-wrap">
         <AnimatePresence mode="wait">
@@ -187,7 +227,7 @@ export default function App() {
       </div>
 
       <p className="pf-hint" aria-hidden="true">
-        {mode === "browse" ? <>Scroll or drag to spin<span><b>·</b>Click the planet to land</span></> : active ? <>Esc to close</> : <>Select a marker</>}
+        {introOn ? <>Click anywhere to skip</> : mode === "browse" ? <>Scroll or drag to spin<span><b>·</b>Click the planet to land</span></> : active ? <>Esc to close</> : <>Select a marker</>}
       </p>
       <p className="pf-sr" role="status">
         {mode === "browse" ? `${country.name}, region ${index + 1} of ${N}` : active ? `${active.title}. ${active.desc}` : `${country.name}: choose a project`}

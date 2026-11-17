@@ -225,6 +225,43 @@ def list_downloads():
     return {"files": out}
 
 
+# --- The portfolio's song (fluxdev.org/portfolio) ---------------------------------------------------------------
+# One Spotify link the site owner (an admin) can set from the portfolio page; everyone can read it. It is kept as "kind/id"
+# (never the pasted text) in its own small file next to the save file, so it can't touch the save and can only ever name a
+# Spotify track/album/playlist/artist/episode/show: the page builds the player URL from it.
+SPOTIFY_LINK = re.compile(r"^https://open\.spotify\.com/(?:intl-[a-z]{2,3}(?:-[A-Za-z]+)?/)?(track|album|playlist|artist|episode|show)/([A-Za-z0-9]{10,40})(?:[?#].*)?$")
+SPOTIFY_URI = re.compile(r"^spotify:(track|album|playlist|artist|episode|show):([A-Za-z0-9]{10,40})$")
+PORTFOLIO_LOCK = threading.Lock()
+
+
+def clean_spotify(text):
+    """"kind/id" for a pasted Spotify link or URI, "" for an empty box (clears it), None for anything else."""
+    text = (text or "").strip() if isinstance(text, str) else None
+    if text is None or len(text) > 300:
+        return None
+    if text == "":
+        return ""
+    m = SPOTIFY_LINK.match(text) or SPOTIFY_URI.match(text)
+    return f"{m.group(1)}/{m.group(2)}" if m else None
+
+
+def portfolio_config():
+    try:
+        with open(STATE_FILE.parent / "portfolio.json", encoding="utf-8") as f:
+            song = clean_spotify("https://open.spotify.com/" + str(json.load(f).get("spotify") or ""))
+    except (OSError, ValueError, AttributeError):
+        song = ""
+    return {"spotify": song or ""}
+
+
+def save_portfolio_config(spotify):
+    path = STATE_FILE.parent / "portfolio.json"
+    with PORTFOLIO_LOCK:
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"spotify": spotify}), encoding="utf-8")
+        os.replace(tmp, path)
+
+
 # --- Persistence -----------------------------------------------------------
 STATE_FILE = DATA_DIR / ".server_state.dat"
 AUTOSAVE_INTERVAL = 5  # seconds between disk writes, only if something changed
@@ -1361,7 +1398,7 @@ CONTENT_SECURITY_POLICY = "; ".join([
     "img-src 'self' data: blob:",   # blob: shows map images fetched with the session (never a URL with a token in it)
     # Pokémon cries are streamed from the PokeAPI cries collection, or Showdown's MP3s for browsers without Ogg (js/hubSound.js)
     "media-src 'self' https://raw.githubusercontent.com https://play.pokemonshowdown.com",
-    "frame-src https://accounts.google.com https://appleid.apple.com",
+    "frame-src https://accounts.google.com https://appleid.apple.com https://open.spotify.com",   # the portfolio's song player
     "connect-src 'self' https://accounts.google.com https://appleid.apple.com",
     "object-src 'none'",
     "base-uri 'self'",
@@ -2090,6 +2127,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._send_json({"error": "not found"}, 404)   # the console doesn't admit it exists
             if parts[2:] == ["overview"]:
                 return self._send_json(self._admin_overview())
+            if parts[2:] == ["portfolio"]:
+                return self._send_json(portfolio_config())
         return self._send_json({"error": "not found"}, 404)
 
     def _set_perm(self, me, target, perm, value):
@@ -2121,6 +2160,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if parts[2:] == ["campaign"]:
                 msg = self._archive_campaign(me, data.get("id"), data.get("action"))
                 return self._send_json({"message": msg, "overview": self._admin_overview()})
+            if parts[2:] == ["portfolio"]:
+                song = clean_spotify(data.get("spotify"))
+                if song is None:
+                    return self._send_json({"error": "That isn't a Spotify track, album, playlist, artist, episode or show link."}, 400)
+                save_portfolio_config(song)
+                return self._send_json(portfolio_config())
         return self._send_json({"error": "not found"}, 404)
 
     def _archive_campaign(self, me, cid, action):
@@ -2211,6 +2256,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         if parts[1:] == ["downloads"]:
             return self._send_json(list_downloads())   # public: it only describes the app's downloads
+        if parts[1:] == ["portfolio"]:
+            return self._send_json(portfolio_config())   # public: the portfolio page's song
         if len(parts) >= 2 and parts[1] == "auth":
             return self._auth_get(parts)
         if len(parts) >= 2 and parts[1] == "files":

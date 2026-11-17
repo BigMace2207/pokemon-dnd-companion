@@ -2,6 +2,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useMemo, useRef } from "react";
 import { COUNTRIES, N, STEP, mod } from "./data";
+import { sfx } from "./sfx";
 
 export type Mode = "browse" | "focus";
 /** Screen positions (CSS px) the HUD needs each frame. */
@@ -19,6 +20,9 @@ type Props = {
   /** goes up each time the already-selected region is clicked again: each one flicks the planet into a free spin */
   spinKey: number;
   reduced: boolean; onFrame: (f: Frame) => void;
+  /** goes up when the visitor skips the opening animation */
+  introSkip: number;
+  onIntroEnd: () => void;
 };
 
 const FOV = 35;
@@ -28,6 +32,11 @@ const ASIDE = 0.55, TILT = 0.5;
 /** the free spin, as on the old Lava Tower: each click adds this much (rad/s) up to a cap, and friction coasts it down */
 const FLICK = 5, FLICK_MAX = 30, FRICTION = 0.7, SPIN_REST = 0.7;
 const TAU = Math.PI * 2;
+/** the opening: the planet turns once, and each region rises out of it as it comes round to face us */
+const INTRO_START = 0.45, INTRO_GAP = 0.62, INTRO_OMEGA = STEP / INTRO_GAP, INTRO_TAIL = 0.5;
+/** regions pop in the order the turn brings them round: 0, then N-1, N-2 ... */
+const popOrder = (k: number) => mod(-k, N);
+const BURST = 44;
 
 /** A damped spring that can be retargeted mid-flight (it keeps its velocity). zeta 1 = no overshoot. */
 class Spring {
@@ -66,6 +75,7 @@ const PLANET_FRAG = /* glsl */ `
 #define N ${N}
 uniform vec3 uCen[N]; uniform vec3 uCol[N];
 uniform float uSel, uFocus, uPulseT; uniform vec3 uPulsePos;
+uniform float uReveal[N]; uniform float uPopT[N];
 varying vec3 vObj; varying vec3 vN; varying vec3 vView;
 ${NOISE}
 float gridLine(float u, float du){ return 1.0 - clamp(abs(fract(u - 0.5) - 0.5) / max(du, 1e-5), 0.0, 1.0); }
@@ -86,7 +96,9 @@ void main(){
   for (int i = 0; i < N; i++) {
     float sel = 1.0 - step(0.5, abs(float(i) - uSel));
     float d = acos(clamp(dot(o, uCen[i]), -1.0, 1.0));
-    float e = d + (fbm(o * 5.0 + float(i) * 7.3) - 0.5) * 0.26 - 0.3;      // < 0 inside the landmass
+    float rv = uReveal[i];
+    if (rv < 0.004) continue;                                               // not risen yet
+    float e = d + (fbm(o * 5.0 + float(i) * 7.3) - 0.5) * 0.26 * min(rv, 1.0) - 0.3 * rv;      // < 0 inside the landmass
     float aa = fwidth(e) + 1e-4;
     float land = 1.0 - smoothstep(-aa, aa, e);
     float edge = 1.0 - smoothstep(0.0, aa * 1.5 + 0.004, abs(e));
@@ -95,6 +107,11 @@ void main(){
     col = mix(col, uCol[i] * (0.05 + 0.09 * b) * diff, land);
     col += uCol[i] * b * (edge * 0.95 + halo * 0.22 + land * (fine * 0.16 + grid * 0.3));
     accent = mix(accent, uCol[i], sel);
+    float pt = uPopT[i];
+    if (pt >= 0.0 && pt < 1.0) {                       // the moment it rises: a shock ring and a flash on the new land
+      float ring = 1.0 - smoothstep(0.0, 0.02 + 0.05 * pt, abs(d - pt * 1.1));
+      col += uCol[i] * (ring * (1.0 - pt) * 1.8 + land * (1.0 - pt) * (1.0 - pt) * 1.1 + edge * (1.0 - pt) * 1.2);
+    }
   }
 
   float fres = pow(1.0 - max(dot(N_, V), 0.0), 3.0);
@@ -129,6 +146,8 @@ function Rig(p: Props) {
     yaw: new Spring(34), pitch: new Spring(34), dist: new Spring(26), camX: new Spring(26), camY: new Spring(26),
     focus: new Spring(26), bump: new Spring(190, 0.42), ready: false, pulseKey: p.pulseKey, pulseT: 1,
     spinKey: p.spinKey, spinning: false, spinVel: 0, where: "",
+    intro: { on: !matchMedia("(prefers-reduced-motion: reduce)").matches, t: 0, next: 0, last: 0, ended: false, skip: p.introSkip, whooshed: false, chimed: false },
+    reveal: COUNTRIES.map(() => new Spring(115, 0.42)), popT: COUNTRIES.map(() => -1),
   }).current;
 
   const planetMat = useMemo(() => new THREE.ShaderMaterial({
@@ -137,6 +156,7 @@ function Rig(p: Props) {
       uCen: { value: COUNTRIES.map((c) => new THREE.Vector3(...c.center)) },
       uCol: { value: COUNTRIES.map((c) => new THREE.Vector3(...c.color)) },
       uSel: { value: 0 }, uFocus: { value: 0 }, uPulseT: { value: 0 }, uPulsePos: { value: new THREE.Vector3(0, 0, 1) },
+      uReveal: { value: COUNTRIES.map(() => 1) }, uPopT: { value: COUNTRIES.map(() => -1) },
     },
   }), []);
   const glowMat = useMemo(() => new THREE.ShaderMaterial({
@@ -154,10 +174,33 @@ function Rig(p: Props) {
     return new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(a, 3));
   }, []);
   const tmp = useMemo(() => new THREE.Vector3(), []);
+  // sparks thrown off the planet when a region rises (they turn with the planet, and fade as they fly)
+  const sparks = useMemo(() => {
+    const total = COUNTRIES.length * BURST;
+    const pos = new Float32Array(total * 3), col = new Float32Array(total * 3);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute("color", new THREE.BufferAttribute(col, 3).setUsage(THREE.DynamicDrawUsage));
+    return { geo, pos, col, vel: new Float32Array(total * 3), life: new Float32Array(total), max: new Float32Array(total).fill(1), tint: new Float32Array(total * 3) };
+  }, []);
+  const burst = (region: number) => {
+    const c = COUNTRIES[region], base = region * BURST;
+    for (let j = 0; j < BURST; j++) {
+      const k = base + j;
+      const r = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+      const cen = new THREE.Vector3(...c.center);
+      const tang = r.sub(cen.clone().multiplyScalar(r.dot(cen))).multiplyScalar(0.25 + Math.random() * 0.55);
+      const n = cen.clone().add(tang).normalize(), up = 0.5 + Math.random() * 1.1;
+      sparks.pos.set([n.x * 1.005, n.y * 1.005, n.z * 1.005], k * 3);
+      sparks.vel.set([n.x * up + tang.x * 0.5, n.y * up + tang.y * 0.5, n.z * up + tang.z * 0.5], k * 3);
+      sparks.tint.set(c.color, k * 3);
+      sparks.life[k] = sparks.max[k] = 0.7 + Math.random() * 0.8;
+    }
+  };
 
   useFrame((_, rawDt) => {
     const dt = Math.min(rawDt, 1 / 30);
-    const { pos, mode, drag, activeId, pulseKey, spinKey, reduced, onFrame } = live.current;
+    const { pos, mode, drag, activeId, pulseKey, spinKey, reduced, onFrame, introSkip, onIntroEnd } = live.current;
     const i = mod(pos, N), c = COUNTRIES[i], focus = mode === "focus";
     const aspect = size.width / size.height, wide = size.width >= 900;
 
@@ -172,6 +215,35 @@ function Rig(p: Props) {
     s.focus.t = focus ? 1 : 0;
     s.bump.t = 0;
 
+    // The opening. The planet sits far back, turns once at a steady rate, and each region rises as it comes round.
+    const intro = s.intro;
+    if (spinKey !== s.spinKey && intro.on) s.spinKey = spinKey;   // nothing to flick yet
+    const finishIntro = (snap: boolean) => {
+      intro.on = false; intro.ended = true;
+      s.reveal.forEach((r) => { r.t = 1; if (snap) r.snap(); });
+      s.yaw.v = snap ? 0 : INTRO_OMEGA * 0.6; s.spinning = false;
+      s.yaw.x -= TAU * Math.ceil((s.yaw.x - s.yaw.t) / TAU);
+      if (snap) { s.yaw.snap(); s.dist.snap(); } else sfx.chime();
+      onIntroEnd();
+    };
+    if (intro.on) {
+      if (!s.ready) { s.dist.x = orbit * 1.7; s.pitch.x = c.lat - TILT; s.pitch.v = 0; s.yaw.v = 0; s.ready = true; }
+      if (introSkip !== intro.skip) { intro.skip = introSkip; s.dist.x = orbit; s.dist.v = 0; finishIntro(true); }
+    }
+    if (intro.on) {
+      intro.t += dt;
+      if (!intro.whooshed) { intro.whooshed = true; sfx.whoosh(); }
+      s.yaw.x = ASIDE + INTRO_OMEGA * (intro.t - INTRO_START); s.yaw.v = 0;
+      while (intro.next < N && intro.t >= INTRO_START + intro.next * INTRO_GAP) {
+        const reg = popOrder(intro.next);
+        s.reveal[reg].t = 1; s.reveal[reg].v = 2.4; s.popT[reg] = 0; intro.last = reg;
+        s.bump.v = 0.2; burst(reg); sfx.pop(intro.next);
+        intro.next++;
+      }
+      if (intro.next >= N && intro.t >= INTRO_START + (N - 1) * INTRO_GAP + INTRO_TAIL) finishIntro(false);
+    }
+    for (let k = 0; k < N; k++) if (s.popT[k] >= 0) { s.popT[k] += dt / 1.1; if (s.popT[k] >= 1) s.popT[k] = -1; }
+
     // The free spin. Letting go hands the planet back to its spring, which carries it on round to the region.
     const release = () => {
       s.spinning = false;
@@ -180,7 +252,7 @@ function Rig(p: Props) {
     };
     if (spinKey !== s.spinKey) {
       s.spinKey = spinKey;
-      if (!reduced && !focus) { s.spinVel = Math.min(FLICK_MAX, (s.spinning ? s.spinVel : 0) + FLICK); s.spinning = true; }
+      if (!reduced && !focus && !intro.on) { s.spinVel = Math.min(FLICK_MAX, (s.spinning ? s.spinVel : 0) + FLICK); s.spinning = true; }
     }
     const where = `${pos}|${mode}`;
     if (where !== s.where) { s.where = where; if (s.spinning) release(); }   // choosing a region locks the rotation again
@@ -199,8 +271,9 @@ function Rig(p: Props) {
     if (s.pulseT < 1) s.pulseT = Math.min(1, s.pulseT + dt / 0.9);
 
     const springs = [s.yaw, s.pitch, s.dist, s.camX, s.camY, s.focus, s.bump];
-    if (!s.ready || reduced) { springs.forEach((x) => x.snap()); s.ready = true; }
-    else springs.forEach((x) => { if (!(s.spinning && x === s.yaw)) x.step(dt); });
+    if (!s.ready || reduced) { springs.forEach((x) => x.snap()); s.reveal.forEach((r) => { r.t = 1; r.snap(); }); s.ready = true; }
+    else springs.forEach((x) => { if (!((s.spinning || intro.on) && x === s.yaw)) x.step(dt); });
+    s.reveal.forEach((r) => r.step(dt));
 
     group.current.rotation.set(s.pitch.x, s.yaw.x, 0);
     group.current.scale.setScalar(1 + s.bump.x);
@@ -209,9 +282,22 @@ function Rig(p: Props) {
     camera.updateMatrixWorld();
     stars.current.rotation.set(s.pitch.x * 0.1, s.yaw.x * 0.1, 0);
 
+    for (let k = 0; k < sparks.life.length; k++) {
+      if (sparks.life[k] <= 0) { sparks.col[k * 3] = sparks.col[k * 3 + 1] = sparks.col[k * 3 + 2] = 0; continue; }
+      sparks.life[k] -= dt;
+      const damp = Math.exp(-dt * 1.6), fade = Math.max(0, sparks.life[k] / sparks.max[k]) ** 1.6;
+      for (let a = 0; a < 3; a++) {
+        sparks.vel[k * 3 + a] *= damp; sparks.pos[k * 3 + a] += sparks.vel[k * 3 + a] * dt;
+        sparks.col[k * 3 + a] = Math.min(1, sparks.tint[k * 3 + a] * 1.3 + 0.25) * fade;
+      }
+    }
+    sparks.geo.attributes.position.needsUpdate = true; sparks.geo.attributes.color.needsUpdate = true;
+
     const un = planetMat.uniforms;
-    un.uSel.value = i; un.uFocus.value = s.focus.x; un.uPulseT.value = s.pulseT < 1 ? s.pulseT : 0;
-    glowMat.uniforms.uTint.value.set(0.3 + c.color[0] * 0.25, 0.5 + c.color[1] * 0.15, 0.85 + c.color[2] * 0.15);
+    un.uReveal.value = s.reveal.map((r) => Math.max(0, r.x)); un.uPopT.value = s.popT.slice();
+    un.uSel.value = intro.on ? intro.last : i; un.uFocus.value = s.focus.x; un.uPulseT.value = s.pulseT < 1 ? s.pulseT : 0;
+    const gc = (intro.on ? COUNTRIES[intro.last] : c).color;
+    glowMat.uniforms.uTint.value.set(0.3 + gc[0] * 0.25, 0.5 + gc[1] * 0.15, 0.85 + gc[2] * 0.15);
 
     const { width: w, height: h } = size;
     const toScreen = (v: readonly [number, number, number]) => {
@@ -235,6 +321,9 @@ function Rig(p: Props) {
       <group ref={group}>
         <mesh material={planetMat}><sphereGeometry args={[1, 128, 96]} /></mesh>
         <mesh material={glowMat} scale={1.16}><sphereGeometry args={[1, 64, 48]} /></mesh>
+        <points geometry={sparks.geo} frustumCulled={false}>
+          <pointsMaterial size={3.2} sizeAttenuation={false} vertexColors transparent blending={THREE.AdditiveBlending} depthWrite={false} />
+        </points>
       </group>
     </>
   );

@@ -4,6 +4,8 @@
 
 **A tabletop companion for Pokémon D&D: Pokédex, calculators, trainer sheets and live multiplayer with a DM Control Centre.**
 
+**Play it: [fluxdev.org](https://fluxdev.org)** · Made by Mason Allen · [More from me](https://fluxdev.org/portfolio)
+
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
 
